@@ -107,6 +107,24 @@ function PRT.Profiles:Delete(name)
     return true
 end
 
+-- Rename a profile (cannot rename Default)
+function PRT.Profiles:Rename(oldName, newName)
+    local db = PurplexityRaidToolsDB
+    if oldName == "Default" then return false end
+    if not newName or newName == "" then return false end
+    if not db.profiles or not db.profiles[oldName] then return false end
+    if db.profiles[newName] then return false end
+
+    db.profiles[newName] = db.profiles[oldName]
+    db.profiles[oldName] = nil
+
+    if db.currentProfile == oldName then
+        db.currentProfile = newName
+    end
+
+    return true
+end
+
 -- Helper to get a saved value with fallback to default (profile-aware)
 function PRT:GetSetting(key)
     local profile = self.Profiles:GetCurrent()

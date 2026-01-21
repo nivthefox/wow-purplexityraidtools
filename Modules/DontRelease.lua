@@ -24,10 +24,10 @@ PRT.defaults.dontRelease = {
 -- State
 --------------------------------------------------------------------------------
 
-local deathPopupShownTime = 0
+local delayAccumulated = 0
 local requiredModifier = nil
-local isBlocking = false
-local originalButtonText = nil
+local overlayButton = nil
+local blockingActive = false
 
 --------------------------------------------------------------------------------
 -- Modifier Keys
@@ -120,8 +120,7 @@ end
 
 function DontRelease:GetDelayRemaining()
     local settings = PRT:GetSetting("dontRelease")
-    local elapsed = GetTime() - deathPopupShownTime
-    return math.max(0, settings.delay - elapsed)
+    return math.max(0, settings.delay - delayAccumulated)
 end
 
 function DontRelease:IsModifierSatisfied()
@@ -162,17 +161,89 @@ function DontRelease:ShouldBlockRelease()
 end
 
 --------------------------------------------------------------------------------
+-- Overlay Button
+--------------------------------------------------------------------------------
+
+local function CreateOverlayButton()
+    local button = CreateFrame("Button", "PRT_DontReleaseOverlay", UIParent, "UIPanelButtonTemplate")
+    button:SetSize(120, 22)
+    button:SetFrameStrata("DIALOG")
+    button:SetFrameLevel(100)
+    button:Hide()
+
+    button:SetScript("OnClick", function()
+        -- Absorb click - do nothing
+    end)
+
+    button:SetScript("OnUpdate", function(self, elapsed)
+        if not blockingActive then return end
+
+        local settings = PRT:GetSetting("dontRelease")
+        local modifierRequired = settings.requireModifier
+        local modifierHeld = not modifierRequired or DontRelease:IsModifierSatisfied()
+
+        if modifierRequired then
+            if modifierHeld then
+                delayAccumulated = delayAccumulated + elapsed
+            else
+                delayAccumulated = 0
+            end
+        else
+            delayAccumulated = delayAccumulated + elapsed
+        end
+
+        local delayRemaining = settings.delay - delayAccumulated
+
+        if delayRemaining > 0 then
+            if modifierRequired and not modifierHeld then
+                self:SetText(string.format("Hold [%s]", requiredModifier))
+            else
+                self:SetText(string.format("%.1f", delayRemaining))
+            end
+            self:EnableMouse(true)
+            self:SetAlpha(1)
+        elseif modifierRequired and not modifierHeld then
+            delayAccumulated = 0
+            self:SetText(string.format("Hold [%s]", requiredModifier))
+            self:EnableMouse(true)
+            self:SetAlpha(1)
+        else
+            self:EnableMouse(false)
+            self:SetAlpha(0)
+        end
+    end)
+
+    return button
+end
+
+local function PositionOverlay(dialog)
+    if not overlayButton then
+        overlayButton = CreateOverlayButton()
+    end
+
+    local button1 = dialog.button1
+    if not button1 then return end
+
+    overlayButton:ClearAllPoints()
+    overlayButton:SetPoint("CENTER", button1, "CENTER", 0, 0)
+    overlayButton:SetSize(button1:GetSize())
+end
+
+--------------------------------------------------------------------------------
 -- Hook Handlers
 --------------------------------------------------------------------------------
 
 function DontRelease:OnDeathPopupShow(dialog)
     if not self:IsBlockingEnabled() then
-        isBlocking = false
+        blockingActive = false
+        if overlayButton then
+            overlayButton:Hide()
+        end
         return
     end
 
-    deathPopupShownTime = GetTime()
-    isBlocking = true
+    delayAccumulated = 0
+    blockingActive = true
 
     local settings = PRT:GetSetting("dontRelease")
     if settings.requireModifier then
@@ -185,44 +256,25 @@ function DontRelease:OnDeathPopupShow(dialog)
         requiredModifier = nil
     end
 
-    local button1 = dialog:GetButton1()
-    if button1 then
-        originalButtonText = button1:GetText()
+    PositionOverlay(dialog)
+
+    if settings.requireModifier then
+        overlayButton:SetText(string.format("Hold [%s]", requiredModifier))
+    else
+        overlayButton:SetText(string.format("%.1f", settings.delay))
     end
+    overlayButton:EnableMouse(true)
+    overlayButton:SetAlpha(1)
+    overlayButton:Show()
 end
 
-function DontRelease:OnDeathPopupUpdate(dialog, elapsed)
-    if not isBlocking then
-        return false
-    end
-    if not self:IsBlockingEnabled() then
-        isBlocking = false
-        return false
-    end
-
-    local button1 = dialog:GetButton1()
-    if not button1 then
-        return false
-    end
-
-    local delayRemaining = self:GetDelayRemaining()
-    local settings = PRT:GetSetting("dontRelease")
-
-    if delayRemaining > 0 then
-        button1:Disable()
-        button1:SetText(string.format("%.1f", delayRemaining))
-        return true
-    elseif settings.requireModifier and not self:IsModifierSatisfied() then
-        button1:Disable()
-        button1:SetText(string.format("Hold [%s]", requiredModifier))
-        return true
-    else
-        button1:Enable()
-        if originalButtonText then
-            button1:SetText(originalButtonText)
-        end
-        isBlocking = false
-        return false
+function DontRelease:OnDeathPopupHide(dialog)
+    blockingActive = false
+    delayAccumulated = 0
+    if overlayButton then
+        overlayButton:Hide()
+        overlayButton:EnableMouse(true)
+        overlayButton:SetAlpha(1)
     end
 end
 
@@ -237,29 +289,19 @@ function DontRelease:Initialize()
     end
 
     local originalOnShow = deathDialog.OnShow
-    local originalOnUpdate = deathDialog.OnUpdate
-    local originalOnButton1 = deathDialog.OnButton1
+    local originalOnHide = deathDialog.OnHide
 
     deathDialog.OnShow = function(dialog, data)
-        DontRelease:OnDeathPopupShow(dialog)
         if originalOnShow then
-            return originalOnShow(dialog, data)
+            originalOnShow(dialog, data)
         end
+        DontRelease:OnDeathPopupShow(dialog)
     end
 
-    deathDialog.OnUpdate = function(dialog, elapsed)
-        local handled = DontRelease:OnDeathPopupUpdate(dialog, elapsed)
-        if not handled and originalOnUpdate then
-            return originalOnUpdate(dialog, elapsed)
-        end
-    end
-
-    deathDialog.OnButton1 = function(dialog, data)
-        if DontRelease:ShouldBlockRelease() then
-            return true
-        end
-        if originalOnButton1 then
-            return originalOnButton1(dialog, data)
+    deathDialog.OnHide = function(dialog, data)
+        DontRelease:OnDeathPopupHide(dialog)
+        if originalOnHide then
+            originalOnHide(dialog, data)
         end
     end
 end
@@ -344,100 +386,43 @@ PRT:RegisterTab("Don't Release", function(parent)
     contentHeader:SetPoint("TOPLEFT", 0, yOffset)
     yOffset = yOffset - 28
 
-    local openWorldCheckbox = PRT.Components.GetCheckbox(scrollChild, "Open World", function(value)
-        EnsureSettingsTable().contentTypes.openWorld = value
-    end)
-    openWorldCheckbox:SetPoint("TOPLEFT", 0, yOffset)
-    openWorldCheckbox:SetValue(GetSettings().contentTypes.openWorld)
-    yOffset = yOffset - ROW_HEIGHT
+    -- Flat list of all content types
+    local contentCheckboxes = {
+        { label = "Open World", path = {"contentTypes", "openWorld"} },
+        { label = "Dungeon (Normal)", path = {"contentTypes", "dungeon", "normal"} },
+        { label = "Dungeon (Heroic)", path = {"contentTypes", "dungeon", "heroic"} },
+        { label = "Dungeon (Mythic)", path = {"contentTypes", "dungeon", "mythic"} },
+        { label = "Dungeon (Mythic+)", path = {"contentTypes", "dungeon", "mythicPlus"} },
+        { label = "Raid (LFR)", path = {"contentTypes", "raid", "lfr"} },
+        { label = "Raid (Normal)", path = {"contentTypes", "raid", "normal"} },
+        { label = "Raid (Heroic)", path = {"contentTypes", "raid", "heroic"} },
+        { label = "Raid (Mythic)", path = {"contentTypes", "raid", "mythic"} },
+        { label = "Scenario (Normal)", path = {"contentTypes", "scenario", "normal"} },
+        { label = "Scenario (Heroic)", path = {"contentTypes", "scenario", "heroic"} },
+    }
 
-    -- Dungeon sub-header
-    local dungeonLabel = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    dungeonLabel:SetPoint("TOPLEFT", 20, yOffset - 6)
-    dungeonLabel:SetText("Dungeons:")
-    yOffset = yOffset - 24
+    for _, info in ipairs(contentCheckboxes) do
+        local checkbox = PRT.Components.GetCheckbox(scrollChild, info.label, function(value)
+            local settings = EnsureSettingsTable()
+            if #info.path == 2 then
+                settings[info.path[1]][info.path[2]] = value
+            else
+                settings[info.path[1]][info.path[2]][info.path[3]] = value
+            end
+        end)
+        checkbox:SetPoint("TOPLEFT", 0, yOffset)
 
-    local dungeonNormalCheckbox = PRT.Components.GetCheckbox(scrollChild, "Normal", function(value)
-        EnsureSettingsTable().contentTypes.dungeon.normal = value
-    end)
-    dungeonNormalCheckbox:SetPoint("TOPLEFT", 20, yOffset)
-    dungeonNormalCheckbox:SetValue(GetSettings().contentTypes.dungeon.normal)
-    yOffset = yOffset - ROW_HEIGHT
+        local settings = GetSettings()
+        local currentValue
+        if #info.path == 2 then
+            currentValue = settings[info.path[1]][info.path[2]]
+        else
+            currentValue = settings[info.path[1]][info.path[2]][info.path[3]]
+        end
+        checkbox:SetValue(currentValue)
 
-    local dungeonHeroicCheckbox = PRT.Components.GetCheckbox(scrollChild, "Heroic", function(value)
-        EnsureSettingsTable().contentTypes.dungeon.heroic = value
-    end)
-    dungeonHeroicCheckbox:SetPoint("TOPLEFT", 20, yOffset)
-    dungeonHeroicCheckbox:SetValue(GetSettings().contentTypes.dungeon.heroic)
-    yOffset = yOffset - ROW_HEIGHT
-
-    local dungeonMythicCheckbox = PRT.Components.GetCheckbox(scrollChild, "Mythic", function(value)
-        EnsureSettingsTable().contentTypes.dungeon.mythic = value
-    end)
-    dungeonMythicCheckbox:SetPoint("TOPLEFT", 20, yOffset)
-    dungeonMythicCheckbox:SetValue(GetSettings().contentTypes.dungeon.mythic)
-    yOffset = yOffset - ROW_HEIGHT
-
-    local dungeonMythicPlusCheckbox = PRT.Components.GetCheckbox(scrollChild, "Mythic+", function(value)
-        EnsureSettingsTable().contentTypes.dungeon.mythicPlus = value
-    end)
-    dungeonMythicPlusCheckbox:SetPoint("TOPLEFT", 20, yOffset)
-    dungeonMythicPlusCheckbox:SetValue(GetSettings().contentTypes.dungeon.mythicPlus)
-    yOffset = yOffset - ROW_HEIGHT
-
-    -- Raid sub-header
-    local raidLabel = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    raidLabel:SetPoint("TOPLEFT", 20, yOffset - 6)
-    raidLabel:SetText("Raids:")
-    yOffset = yOffset - 24
-
-    local raidLFRCheckbox = PRT.Components.GetCheckbox(scrollChild, "LFR", function(value)
-        EnsureSettingsTable().contentTypes.raid.lfr = value
-    end)
-    raidLFRCheckbox:SetPoint("TOPLEFT", 20, yOffset)
-    raidLFRCheckbox:SetValue(GetSettings().contentTypes.raid.lfr)
-    yOffset = yOffset - ROW_HEIGHT
-
-    local raidNormalCheckbox = PRT.Components.GetCheckbox(scrollChild, "Normal", function(value)
-        EnsureSettingsTable().contentTypes.raid.normal = value
-    end)
-    raidNormalCheckbox:SetPoint("TOPLEFT", 20, yOffset)
-    raidNormalCheckbox:SetValue(GetSettings().contentTypes.raid.normal)
-    yOffset = yOffset - ROW_HEIGHT
-
-    local raidHeroicCheckbox = PRT.Components.GetCheckbox(scrollChild, "Heroic", function(value)
-        EnsureSettingsTable().contentTypes.raid.heroic = value
-    end)
-    raidHeroicCheckbox:SetPoint("TOPLEFT", 20, yOffset)
-    raidHeroicCheckbox:SetValue(GetSettings().contentTypes.raid.heroic)
-    yOffset = yOffset - ROW_HEIGHT
-
-    local raidMythicCheckbox = PRT.Components.GetCheckbox(scrollChild, "Mythic", function(value)
-        EnsureSettingsTable().contentTypes.raid.mythic = value
-    end)
-    raidMythicCheckbox:SetPoint("TOPLEFT", 20, yOffset)
-    raidMythicCheckbox:SetValue(GetSettings().contentTypes.raid.mythic)
-    yOffset = yOffset - ROW_HEIGHT
-
-    -- Scenario sub-header
-    local scenarioLabel = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    scenarioLabel:SetPoint("TOPLEFT", 20, yOffset - 6)
-    scenarioLabel:SetText("Scenarios:")
-    yOffset = yOffset - 24
-
-    local scenarioNormalCheckbox = PRT.Components.GetCheckbox(scrollChild, "Normal", function(value)
-        EnsureSettingsTable().contentTypes.scenario.normal = value
-    end)
-    scenarioNormalCheckbox:SetPoint("TOPLEFT", 20, yOffset)
-    scenarioNormalCheckbox:SetValue(GetSettings().contentTypes.scenario.normal)
-    yOffset = yOffset - ROW_HEIGHT
-
-    local scenarioHeroicCheckbox = PRT.Components.GetCheckbox(scrollChild, "Heroic", function(value)
-        EnsureSettingsTable().contentTypes.scenario.heroic = value
-    end)
-    scenarioHeroicCheckbox:SetPoint("TOPLEFT", 20, yOffset)
-    scenarioHeroicCheckbox:SetValue(GetSettings().contentTypes.scenario.heroic)
-    yOffset = yOffset - ROW_HEIGHT
+        yOffset = yOffset - ROW_HEIGHT
+    end
 
     -- Modifier Key Section
     yOffset = yOffset - 10
@@ -533,6 +518,19 @@ PRT:RegisterTab("Don't Release", function(parent)
         StaticPopup_Show("PRT_DELETE_PROFILE", currentName)
     end)
 
+    local renameButton = CreateFrame("Button", nil, buttonHolder, "UIPanelButtonTemplate")
+    renameButton:SetSize(80, 22)
+    renameButton:SetPoint("LEFT", deleteButton, "RIGHT", 5, 0)
+    renameButton:SetText("Rename")
+    renameButton:SetScript("OnClick", function()
+        local currentName = PRT.Profiles:GetCurrentName()
+        if currentName == "Default" then
+            print("|cFFFF0000PurplexityRaidTools:|r Cannot rename the Default profile.")
+            return
+        end
+        StaticPopup_Show("PRT_RENAME_PROFILE", currentName)
+    end)
+
     return container
 end)
 
@@ -625,6 +623,40 @@ StaticPopupDialogs["PRT_DELETE_PROFILE"] = {
     whileDead = true,
     hideOnEscape = true,
     showAlert = true,
+}
+
+StaticPopupDialogs["PRT_RENAME_PROFILE"] = {
+    text = "Enter a new name for profile '%s':",
+    button1 = "Rename",
+    button2 = "Cancel",
+    hasEditBox = true,
+    OnAccept = function(self)
+        local newName = self.editBox:GetText()
+        local oldName = PRT.Profiles:GetCurrentName()
+        if newName and newName ~= "" then
+            if PRT.Profiles:Rename(oldName, newName) then
+                print("|cFF00FF00PurplexityRaidTools:|r Renamed profile to: " .. newName)
+            else
+                print("|cFFFF0000PurplexityRaidTools:|r Could not rename profile. Name may already exist.")
+            end
+        end
+    end,
+    EditBoxOnEnterPressed = function(self)
+        local parent = self:GetParent()
+        local newName = self:GetText()
+        local oldName = PRT.Profiles:GetCurrentName()
+        if newName and newName ~= "" then
+            if PRT.Profiles:Rename(oldName, newName) then
+                print("|cFF00FF00PurplexityRaidTools:|r Renamed profile to: " .. newName)
+            else
+                print("|cFFFF0000PurplexityRaidTools:|r Could not rename profile. Name may already exist.")
+            end
+        end
+        parent:Hide()
+    end,
+    timeout = 0,
+    whileDead = true,
+    hideOnEscape = true,
 }
 
 --------------------------------------------------------------------------------

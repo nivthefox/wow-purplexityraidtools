@@ -166,11 +166,6 @@ PRT:RegisterTab("Ready Check", function(parent)
         return profile.readyCheck
     end
 
-    -- Soulstone Section
-    local soulstoneHeader = PRT.Components.GetHeader(container, "Soulstone Reminder")
-    soulstoneHeader:SetPoint("TOPLEFT", 0, yOffset)
-    yOffset = yOffset - 28
-
     local enabledCheckbox = PRT.Components.GetCheckbox(container, "Enable Ready Check Features", function(value)
         EnsureSettingsTable().enabled = value
     end)

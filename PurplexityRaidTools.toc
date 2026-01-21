@@ -1,0 +1,9 @@
+## Interface: 120000
+## Title: PurplexityRaidTools
+## Notes: Raid tools for Purplexity
+## Author: Niv
+## Version: 1.0.0
+## SavedVariables: PurplexityRaidToolsDB
+
+PurplexityRaidTools.lua
+ConfigFrame.lua

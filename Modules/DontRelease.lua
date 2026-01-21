@@ -167,8 +167,8 @@ end
 local function CreateOverlayButton()
     local button = CreateFrame("Button", "PRT_DontReleaseOverlay", UIParent, "UIPanelButtonTemplate")
     button:SetSize(120, 22)
-    button:SetFrameStrata("DIALOG")
-    button:SetFrameLevel(100)
+    button:SetFrameStrata("TOOLTIP")
+    button:SetFrameLevel(1000)
     button:Hide()
 
     button:SetScript("OnClick", function()

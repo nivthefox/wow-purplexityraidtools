@@ -14,7 +14,7 @@ PRT.defaults.dontRelease = {
     randomizeModifier = false,
     contentTypes = {
         openWorld = false,
-        dungeon = { normal = false, heroic = false, mythic = true, mythicPlus = true },
+        dungeon = { normal = false, heroic = false, mythic = false, mythicPlus = false },
         raid = { lfr = false, normal = false, heroic = true, mythic = true },
         scenario = { normal = false, heroic = false },
     },
@@ -221,7 +221,7 @@ local function PositionOverlay(dialog)
         overlayButton = CreateOverlayButton()
     end
 
-    local button1 = dialog.button1
+    local button1 = dialog:GetButton1()
     if not button1 then return end
 
     overlayButton:ClearAllPoints()
@@ -524,10 +524,6 @@ PRT:RegisterTab("Don't Release", function(parent)
     renameButton:SetText("Rename")
     renameButton:SetScript("OnClick", function()
         local currentName = PRT.Profiles:GetCurrentName()
-        if currentName == "Default" then
-            print("|cFFFF0000PurplexityRaidTools:|r Cannot rename the Default profile.")
-            return
-        end
         StaticPopup_Show("PRT_RENAME_PROFILE", currentName)
     end)
 

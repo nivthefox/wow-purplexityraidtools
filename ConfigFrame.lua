@@ -353,7 +353,8 @@ PRT.RegisterTab = function(self, name, setupFunc)
     else
         tab:SetPoint("LEFT", tabs[#tabs], "RIGHT", 0, 0)
     end
-    tab:SetScript("OnClick", function() SelectTab(#tabs + 1) end)
+    local tabIndex = #tabs + 1
+    tab:SetScript("OnClick", function() SelectTab(tabIndex) end)
     table.insert(tabs, tab)
 end
 

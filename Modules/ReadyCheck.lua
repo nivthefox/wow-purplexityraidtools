@@ -264,7 +264,7 @@ PRT:RegisterTab("Ready Check", function(parent)
     enabledCheckbox:SetValue(GetSettings().enabled)
 
     local raidLeaderNote = enabledCheckbox:CreateFontString(nil, "OVERLAY", "GameFontDisable")
-    raidLeaderNote:SetPoint("LEFT", enabledCheckbox, "CENTER", 10, 0)
+    raidLeaderNote:SetPoint("LEFT", enabledCheckbox, "CENTER", 20, 0)
     raidLeaderNote:SetText("(requires Raid Leader)")
 
     yOffset = yOffset - ROW_HEIGHT

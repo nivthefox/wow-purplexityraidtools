@@ -1,7 +1,58 @@
--- ReadyCheck: Monitors ready checks and reminds Warlocks to soulstone healers
+-- ReadyCheck: Monitors ready checks and reminds players about missing buffs
 local PRT = PurplexityRaidTools
 local ReadyCheck = {}
 PRT.ReadyCheck = ReadyCheck
+
+--------------------------------------------------------------------------------
+-- Buff Definitions
+--------------------------------------------------------------------------------
+
+local RAID_BUFFS = {
+    {
+        key = "arcaneIntellect",
+        name = "Arcane Intellect",
+        spellId = 1458,
+        class = "MAGE",
+        message = "Some players are missing Arcane Intellect. Could you please buff the raid?",
+    },
+    {
+        key = "battleShout",
+        name = "Battle Shout",
+        spellId = 6673,
+        class = "WARRIOR",
+        message = "Some players are missing Battle Shout. Could you please buff the raid?",
+    },
+    {
+        key = "blessingOfTheBronze",
+        name = "Blessing of the Bronze",
+        spellId = 364342,
+        class = "EVOKER",
+        message = "Some players are missing Blessing of the Bronze. Could you please buff the raid?",
+    },
+    {
+        key = "markOfTheWild",
+        name = "Mark of the Wild",
+        spellId = 1126,
+        class = "DRUID",
+        message = "Some players are missing Mark of the Wild. Could you please buff the raid?",
+    },
+    {
+        key = "powerWordFortitude",
+        name = "Power Word: Fortitude",
+        spellId = 21562,
+        class = "PRIEST",
+        message = "Some players are missing Power Word: Fortitude. Could you please buff the raid?",
+    },
+    {
+        key = "skyfury",
+        name = "Skyfury",
+        spellId = 462854,
+        class = "SHAMAN",
+        message = "Some players are missing Skyfury. Could you please buff the raid?",
+    },
+}
+
+local SOULSTONE_SPELL_ID = 20707
 
 --------------------------------------------------------------------------------
 -- Default Settings
@@ -10,26 +61,48 @@ PRT.ReadyCheck = ReadyCheck
 PRT.defaults.readyCheck = {
     enabled = true,
     checkSoulstones = true,
+    arcaneIntellect = true,
+    battleShout = true,
+    blessingOfTheBronze = true,
+    markOfTheWild = true,
+    powerWordFortitude = true,
+    skyfury = true,
 }
 
 --------------------------------------------------------------------------------
 -- Raid Scanning
 --------------------------------------------------------------------------------
 
-local function GetWarlocks()
-    local warlocks = {}
+local function GetPlayersByClass(className)
+    local players = {}
     local numMembers = GetNumGroupMembers()
     if numMembers == 0 then
-        return warlocks
+        return players
     end
 
     for i = 1, numMembers do
         local name, _, _, _, _, fileName, _, online = GetRaidRosterInfo(i)
-        if name and fileName == "WARLOCK" and online then
-            table.insert(warlocks, name)
+        if name and fileName == className and online then
+            table.insert(players, name)
         end
     end
-    return warlocks
+    return players
+end
+
+local function GetAllRaidMembers()
+    local members = {}
+    local numMembers = GetNumGroupMembers()
+    if numMembers == 0 then
+        return members
+    end
+
+    for i = 1, numMembers do
+        local name, _, _, _, _, _, _, online = GetRaidRosterInfo(i)
+        if name and online then
+            table.insert(members, { name = name, unit = "raid" .. i })
+        end
+    end
+    return members
 end
 
 local function GetHealers()
@@ -40,8 +113,8 @@ local function GetHealers()
     end
 
     for i = 1, numMembers do
-        local name = GetRaidRosterInfo(i)
-        if name then
+        local name, _, _, _, _, _, _, online = GetRaidRosterInfo(i)
+        if name and online then
             local role = UnitGroupRolesAssigned("raid" .. i)
             if role == "HEALER" then
                 table.insert(healers, { name = name, unit = "raid" .. i })
@@ -51,28 +124,35 @@ local function GetHealers()
     return healers
 end
 
-local function HasSoulstone(unit)
-    local auraName = AuraUtil.FindAuraByName("Soulstone", unit, "HELPFUL")
-    return auraName ~= nil
+local function HasBuff(unit, spellId)
+    local auraData = C_UnitAuras.GetAuraDataBySpellID(unit, spellId)
+    return auraData ~= nil
 end
 
-local function AnyHealerHasSoulstone(healers)
-    for _, healer in ipairs(healers) do
-        if HasSoulstone(healer.unit) then
+local function AnyoneHasBuff(members, spellId)
+    for _, member in ipairs(members) do
+        if HasBuff(member.unit, spellId) then
             return true
         end
     end
     return false
 end
 
+local function EveryoneHasBuff(members, spellId)
+    for _, member in ipairs(members) do
+        if not HasBuff(member.unit, spellId) then
+            return false
+        end
+    end
+    return true
+end
+
 --------------------------------------------------------------------------------
 -- Messaging
 --------------------------------------------------------------------------------
 
-local MESSAGE = "No healer has a soulstone. Could you please soulstone a healer?"
-
 local function SendWhisper(playerName, message)
-    local success, err = pcall(function()
+    local success = pcall(function()
         C_ChatInfo.SendChatMessage(message, "WHISPER", nil, playerName)
     end)
     return success
@@ -84,18 +164,18 @@ local function SendRaidMessage(message)
     end)
 end
 
-local function NotifyWarlocks(warlocks)
+local function NotifyPlayers(players, message)
     local whisperFailed = false
 
-    for _, name in ipairs(warlocks) do
-        if not SendWhisper(name, MESSAGE) then
+    for _, name in ipairs(players) do
+        if not SendWhisper(name, message) then
             whisperFailed = true
             break
         end
     end
 
     if whisperFailed then
-        SendRaidMessage(MESSAGE)
+        SendRaidMessage(message)
     end
 end
 
@@ -109,29 +189,35 @@ function ReadyCheck:OnReadyCheck()
         return
     end
 
-    if not settings.checkSoulstones then
-        return
-    end
-
     if not IsInRaid() then
         return
     end
 
-    local warlocks = GetWarlocks()
-    if #warlocks == 0 then
+    local allMembers = GetAllRaidMembers()
+    if #allMembers == 0 then
         return
     end
 
-    local healers = GetHealers()
-    if #healers == 0 then
-        return
+    -- Check raid buffs
+    for _, buff in ipairs(RAID_BUFFS) do
+        if settings[buff.key] then
+            local providers = GetPlayersByClass(buff.class)
+            if #providers > 0 and not EveryoneHasBuff(allMembers, buff.spellId) then
+                NotifyPlayers(providers, buff.message)
+            end
+        end
     end
 
-    if AnyHealerHasSoulstone(healers) then
-        return
+    -- Check soulstones (special case: only check healers)
+    if settings.checkSoulstones then
+        local warlocks = GetPlayersByClass("WARLOCK")
+        if #warlocks > 0 then
+            local healers = GetHealers()
+            if #healers > 0 and not AnyoneHasBuff(healers, SOULSTONE_SPELL_ID) then
+                NotifyPlayers(warlocks, "No healer has a soulstone. Could you please soulstone a healer?")
+            end
+        end
     end
-
-    NotifyWarlocks(warlocks)
 end
 
 --------------------------------------------------------------------------------
@@ -166,6 +252,7 @@ PRT:RegisterTab("Ready Check", function(parent)
         return profile.readyCheck
     end
 
+    -- Master toggle
     local enabledCheckbox = PRT.Components.GetCheckbox(container, "Enable Ready Check Features", function(value)
         EnsureSettingsTable().enabled = value
     end)
@@ -173,6 +260,20 @@ PRT:RegisterTab("Ready Check", function(parent)
     enabledCheckbox:SetValue(GetSettings().enabled)
     yOffset = yOffset - ROW_HEIGHT
 
+    -- Spacing before buff checks
+    yOffset = yOffset - 10
+
+    -- Raid buff checkboxes
+    for _, buff in ipairs(RAID_BUFFS) do
+        local checkbox = PRT.Components.GetCheckbox(container, "Check " .. buff.name, function(value)
+            EnsureSettingsTable()[buff.key] = value
+        end)
+        checkbox:SetPoint("TOPLEFT", 0, yOffset)
+        checkbox:SetValue(GetSettings()[buff.key])
+        yOffset = yOffset - ROW_HEIGHT
+    end
+
+    -- Soulstone checkbox
     local soulstoneCheckbox = PRT.Components.GetCheckbox(container, "Check Soul Stones", function(value)
         EnsureSettingsTable().checkSoulstones = value
     end)

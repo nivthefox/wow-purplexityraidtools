@@ -326,7 +326,7 @@ PRT:RegisterTab("Don't Release", function(parent)
     scrollFrame:SetScrollChild(scrollChild)
 
     local yOffset = 0
-    local ROW_HEIGHT = 32
+    local ROW_HEIGHT = 24
 
     local function GetSettings()
         return PRT:GetSetting("dontRelease")

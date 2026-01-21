@@ -7,3 +7,4 @@
 
 PurplexityRaidTools.lua
 ConfigFrame.lua
+Modules/DontRelease.lua

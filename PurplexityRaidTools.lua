@@ -30,36 +30,119 @@ function PRT:ApplySettings(settingName)
     end
 end
 
--- Helper to get a saved value with fallback to default
-function PRT:GetSetting(key)
+--------------------------------------------------------------------------------
+-- Profile System
+--------------------------------------------------------------------------------
+
+PRT.Profiles = {}
+
+-- Deep copy a table
+local function DeepCopy(source)
+    if type(source) ~= "table" then return source end
+    local copy = {}
+    for k, v in pairs(source) do
+        copy[k] = DeepCopy(v)
+    end
+    return copy
+end
+
+-- Get the current profile's data table
+function PRT.Profiles:GetCurrent()
     local db = PurplexityRaidToolsDB
-    if db[key] ~= nil then
-        return db[key]
+    local profileName = db.currentProfile or "Default"
+    return db.profiles and db.profiles[profileName] or {}
+end
+
+-- Get array of all profile names
+function PRT.Profiles:GetNames()
+    local names = {}
+    local db = PurplexityRaidToolsDB
+    if db.profiles then
+        for name in pairs(db.profiles) do
+            table.insert(names, name)
+        end
+        table.sort(names)
+    end
+    return names
+end
+
+-- Get the current profile name
+function PRT.Profiles:GetCurrentName()
+    return PurplexityRaidToolsDB.currentProfile or "Default"
+end
+
+-- Switch to a different profile
+function PRT.Profiles:Switch(name)
+    local db = PurplexityRaidToolsDB
+    if not db.profiles or not db.profiles[name] then return false end
+    db.currentProfile = name
+    PRT:ImportDefaultsToProfile()
+    PRT:ApplySettings()
+    return true
+end
+
+-- Create a new profile (optionally clone from another)
+function PRT.Profiles:Create(name, cloneFrom)
+    local db = PurplexityRaidToolsDB
+    if not db.profiles then db.profiles = {} end
+    if db.profiles[name] then return false end
+
+    if cloneFrom and db.profiles[cloneFrom] then
+        db.profiles[name] = DeepCopy(db.profiles[cloneFrom])
+    else
+        db.profiles[name] = {}
+    end
+
+    return true
+end
+
+-- Delete a profile (cannot delete Default or current)
+function PRT.Profiles:Delete(name)
+    local db = PurplexityRaidToolsDB
+    if name == "Default" then return false end
+    if name == db.currentProfile then return false end
+    if not db.profiles or not db.profiles[name] then return false end
+
+    db.profiles[name] = nil
+    return true
+end
+
+-- Helper to get a saved value with fallback to default (profile-aware)
+function PRT:GetSetting(key)
+    local profile = self.Profiles:GetCurrent()
+    if profile[key] ~= nil then
+        return profile[key]
     end
     return self.defaults[key]
 end
 
--- Initialize saved variables with defaults (call on ADDON_LOADED)
-function PRT:InitializeDB()
+-- Import defaults into the current profile (non-destructive)
+function PRT:ImportDefaultsToProfile()
+    local profile = self.Profiles:GetCurrent()
     for k, v in pairs(self.defaults) do
-        if PurplexityRaidToolsDB[k] == nil then
-            if type(v) == "table" then
-                PurplexityRaidToolsDB[k] = {}
-                for k2, v2 in pairs(v) do
-                    if type(v2) == "table" then
-                        PurplexityRaidToolsDB[k][k2] = {}
-                        for k3, v3 in pairs(v2) do
-                            PurplexityRaidToolsDB[k][k2][k3] = v3
-                        end
-                    else
-                        PurplexityRaidToolsDB[k][k2] = v2
-                    end
-                end
-            else
-                PurplexityRaidToolsDB[k] = v
-            end
+        if profile[k] == nil then
+            profile[k] = DeepCopy(v)
         end
     end
+end
+
+-- Initialize saved variables with profile structure
+function PRT:InitializeDB()
+    local db = PurplexityRaidToolsDB
+
+    -- Ensure profile structure exists
+    if not db.profiles then
+        db.profiles = {}
+    end
+    if not db.profiles["Default"] then
+        db.profiles["Default"] = {}
+    end
+    if not db.currentProfile then
+        db.currentProfile = "Default"
+    end
+
+    -- Import defaults into current profile
+    self:ImportDefaultsToProfile()
 end
 
 -- Event frame for initialization

@@ -125,8 +125,14 @@ local function GetHealers()
 end
 
 local function HasBuff(unit, spellId)
-    local auraData = C_UnitAuras.GetAuraDataBySpellID(unit, spellId)
-    return auraData ~= nil
+    local found = false
+    AuraUtil.ForEachAura(unit, "HELPFUL", nil, function(auraData)
+        if auraData.spellId == spellId then
+            found = true
+            return true -- stop iteration
+        end
+    end, true) -- usePackedAura = true
+    return found
 end
 
 local function AnyoneHasBuff(members, spellId)

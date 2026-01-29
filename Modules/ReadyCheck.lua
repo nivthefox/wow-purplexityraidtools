@@ -119,6 +119,14 @@ PRT.defaults.readyCheck = {
     skyfury = true,
 }
 
+-- Helper to get a readyCheck setting with fallback to default
+local function GetReadyCheckSetting(settings, key)
+    if settings[key] ~= nil then
+        return settings[key]
+    end
+    return PRT.defaults.readyCheck[key]
+end
+
 --------------------------------------------------------------------------------
 -- Raid Scanning
 --------------------------------------------------------------------------------
@@ -249,7 +257,7 @@ function ReadyCheck:OnReadyCheck()
 
     -- Check raid buffs
     for _, buff in ipairs(RAID_BUFFS) do
-        local enabled = settings[buff.key]
+        local enabled = GetReadyCheckSetting(settings, buff.key)
         local providers = GetPlayersByClass(buff.class)
         local missing = not EveryoneHasBuff(allMembers, buff.spellId)
         print(string.format("PRT: %s - enabled: %s, providers: %d, missing: %s",
@@ -260,7 +268,7 @@ function ReadyCheck:OnReadyCheck()
     end
 
     -- Check soulstones (special case: only check healers)
-    if settings.checkSoulstones then
+    if GetReadyCheckSetting(settings, "checkSoulstones") then
         local warlocks = GetPlayersByClass("WARLOCK")
         if #warlocks > 0 then
             local healers = GetHealers()

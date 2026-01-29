@@ -260,8 +260,9 @@ function ReadyCheck:OnReadyCheck()
         local enabled = GetReadyCheckSetting(settings, buff.key)
         local providers = GetPlayersByClass(buff.class)
         local missing = not EveryoneHasBuff(allMembers, buff.spellId)
-        print(string.format("PRT: %s - enabled: %s, providers: %d, missing: %s",
-            buff.name, tostring(enabled), #providers, tostring(missing)))
+        local rawValue = settings[buff.key]
+        print(string.format("PRT: %s - raw: %s (%s), enabled: %s, providers: %d, missing: %s",
+            buff.name, tostring(rawValue), type(rawValue), tostring(enabled), #providers, tostring(missing)))
         if enabled and #providers > 0 and missing then
             NotifyPlayers(providers, GetRandomMessage(buff.messages))
         end

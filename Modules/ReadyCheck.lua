@@ -164,24 +164,9 @@ local function SendWhisper(playerName, message)
     return success
 end
 
-local function SendRaidMessage(message)
-    pcall(function()
-        C_ChatInfo.SendChatMessage(message, "RAID")
-    end)
-end
-
 local function NotifyPlayers(players, message)
-    local whisperFailed = false
-
     for _, name in ipairs(players) do
-        if not SendWhisper(name, message) then
-            whisperFailed = true
-            break
-        end
-    end
-
-    if whisperFailed then
-        SendRaidMessage(message)
+        SendWhisper(name, message)
     end
 end
 

@@ -249,11 +249,13 @@ function ReadyCheck:OnReadyCheck()
 
     -- Check raid buffs
     for _, buff in ipairs(RAID_BUFFS) do
-        if settings[buff.key] then
-            local providers = GetPlayersByClass(buff.class)
-            if #providers > 0 and not EveryoneHasBuff(allMembers, buff.spellId) then
-                NotifyPlayers(providers, GetRandomMessage(buff.messages))
-            end
+        local enabled = settings[buff.key]
+        local providers = GetPlayersByClass(buff.class)
+        local missing = not EveryoneHasBuff(allMembers, buff.spellId)
+        print(string.format("PRT: %s - enabled: %s, providers: %d, missing: %s",
+            buff.name, tostring(enabled), #providers, tostring(missing)))
+        if enabled and #providers > 0 and missing then
+            NotifyPlayers(providers, GetRandomMessage(buff.messages))
         end
     end
 

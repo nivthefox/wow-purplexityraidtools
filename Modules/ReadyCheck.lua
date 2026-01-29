@@ -226,9 +226,9 @@ local function SendWhisper(playerName, message)
     return success
 end
 
-local function NotifyPlayers(players, message)
+local function NotifyPlayers(players, messages)
     for _, name in ipairs(players) do
-        SendWhisper(name, message)
+        SendWhisper(name, GetRandomMessage(messages))
     end
 end
 
@@ -257,14 +257,11 @@ function ReadyCheck:OnReadyCheck()
 
     -- Check raid buffs
     for _, buff in ipairs(RAID_BUFFS) do
-        local enabled = GetReadyCheckSetting(settings, buff.key)
-        local providers = GetPlayersByClass(buff.class)
-        local missing = not EveryoneHasBuff(allMembers, buff.spellId)
-        local rawValue = settings[buff.key]
-        print(string.format("PRT: %s - raw: %s (%s), enabled: %s, providers: %d, missing: %s",
-            buff.name, tostring(rawValue), type(rawValue), tostring(enabled), #providers, tostring(missing)))
-        if enabled and #providers > 0 and missing then
-            NotifyPlayers(providers, GetRandomMessage(buff.messages))
+        if GetReadyCheckSetting(settings, buff.key) then
+            local providers = GetPlayersByClass(buff.class)
+            if #providers > 0 and not EveryoneHasBuff(allMembers, buff.spellId) then
+                NotifyPlayers(providers, buff.messages)
+            end
         end
     end
 
@@ -274,7 +271,7 @@ function ReadyCheck:OnReadyCheck()
         if #warlocks > 0 then
             local healers = GetHealers()
             if #healers > 0 and not AnyoneHasBuff(healers, SOULSTONE_SPELL_ID) then
-                NotifyPlayers(warlocks, GetRandomMessage(SOULSTONE_MESSAGES))
+                NotifyPlayers(warlocks, SOULSTONE_MESSAGES)
             end
         end
     end

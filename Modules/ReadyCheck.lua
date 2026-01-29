@@ -13,46 +13,96 @@ local RAID_BUFFS = {
         name = "Arcane Intellect",
         spellId = 1458,
         class = "MAGE",
-        message = "Some players are missing Arcane Intellect. Could you please buff the raid?",
+        messages = {
+            "It's ironic that the 'smart' class has forgotten the Intellect buff. Again.",
+            "Do you even know what Arcane Intellect is?",
+            "Big brain class forgot the brain buff. Classic.",
+            "Please provide Arcane Intellect. Some of us need all the help we can get.",
+            "Arcane Intellect is missing. I'd explain why that's bad, but you wouldn't understand.",
+            "No Arcane Intellect? Did you spec out of reading?",
+        },
     },
     {
         key = "battleShout",
         name = "Battle Shout",
         spellId = 6673,
         class = "WARRIOR",
-        message = "Some players are missing Battle Shout. Could you please buff the raid?",
+        messages = {
+            "You have ONE job: yelling at people. Why is Battle Shout missing?",
+            "BATTLE SHOUT. DO THE YELLING THING.",
+            "The buff where you scream? Do that.",
+            "I need you to be angry at the raid. Professionally.",
+            "Someone needs Battle Shout. Thinking isn't your strong suit, but try.",
+            "You're telling me the class that solves every problem by hitting it forgot to yell?",
+        },
     },
     {
         key = "blessingOfTheBronze",
         name = "Blessing of the Bronze",
         spellId = 364342,
         class = "EVOKER",
-        message = "Some players are missing Blessing of the Bronze. Could you please buff the raid?",
+        messages = {
+            "Do I need to get Nozdormu on the phone, or do you think you can find his blessing on your own?",
+            "Blessing of the Bronze missing. Did you forget you're a dragon?",
+            "Blessing of the Bronze. Yes, you, the fancy lizard.",
+            "You have time magic and you still forgot to buff before pull?",
+            "Your draconic duties include buffing. Get on it.",
+            "The Aspects didn't empower you so you could forget Blessing of the Bronze.",
+        },
     },
     {
         key = "markOfTheWild",
         name = "Mark of the Wild",
         spellId = 1126,
         class = "DRUID",
-        message = "Some players are missing Mark of the Wild. Could you please buff the raid?",
+        messages = {
+            "Did you forget to pet the raid? Mark of the Wild is missing.",
+            "Mark of the Wild missing. Did you shapeshift into someone who doesn't buff?",
+            "The raid is feeling distinctly un-Marked and un-Wild.",
+            "You can be like six different animals and none of them know how to buff?",
+            "One with nature, zero with the buff bar. Mark of the Wild, please.",
+            "You have an entire form dedicated to healing and you still forgot to buff the raid.",
+        },
     },
     {
         key = "powerWordFortitude",
         name = "Power Word: Fortitude",
         spellId = 21562,
         class = "PRIEST",
-        message = "Some players are missing Power Word: Fortitude. Could you please buff the raid?",
+        messages = {
+            "Power Word: Fortitude. It's right there between Power Word: Shield and Power Word: Disappointment.",
+            "The bubble class forgot the stamina buff. Incredible.",
+            "No Fort? What's next, life grip the tank off the platform?",
+            "Fort is missing. I'm starting to think 'Discipline' is just your spec name, not a personality trait.",
+            "You can resurrect the dead but you can't remember to buff them after?",
+            "Power Word: Please.",
+        },
     },
     {
         key = "skyfury",
         name = "Skyfury",
         spellId = 462854,
         class = "SHAMAN",
-        message = "Some players are missing Skyfury. Could you please buff the raid?",
+        messages = {
+            "Skyfury is missing. Did your totems unionize or something?",
+            "Skyfury is missing; did you leave it in the Maelstrom?",
+            "Hey shaman. Do the windy thing so that we have Skyfury.",
+            "Are the elements not responding today, or did you just forget about Skyfury?",
+            "Shamans are supposed to master the elements, so why is the Mastery buff the one that's missing?",
+            "You commune with the spirits and none of them reminded you about Skyfury?"
+        },
     },
 }
 
 local SOULSTONE_SPELL_ID = 20707
+local SOULSTONE_MESSAGES = {
+    "Why have you not soulstoned a healer? What am I even paying you for?",
+    "Soulstone a healer. It's the closest you'll get to being useful after you die.",
+    "A healer needs a soulstone. You know, for when we inevitably wipe.",
+    "No soulstone on a healer? Bold of you to assume we won't need it.",
+    "The soulstone exists specifically because we don't trust you. Please put it on a healer.",
+    "You enslave demons for a living. Putting a rock on a healer shouldn't be this hard.",
+}
 
 --------------------------------------------------------------------------------
 -- Default Settings
@@ -157,6 +207,10 @@ end
 -- Messaging
 --------------------------------------------------------------------------------
 
+local function GetRandomMessage(messages)
+    return messages[math.random(#messages)]
+end
+
 local function SendWhisper(playerName, message)
     local success = pcall(function()
         C_ChatInfo.SendChatMessage(message, "WHISPER", nil, playerName)
@@ -198,7 +252,7 @@ function ReadyCheck:OnReadyCheck()
         if settings[buff.key] then
             local providers = GetPlayersByClass(buff.class)
             if #providers > 0 and not EveryoneHasBuff(allMembers, buff.spellId) then
-                NotifyPlayers(providers, buff.message)
+                NotifyPlayers(providers, GetRandomMessage(buff.messages))
             end
         end
     end
@@ -209,7 +263,7 @@ function ReadyCheck:OnReadyCheck()
         if #warlocks > 0 then
             local healers = GetHealers()
             if #healers > 0 and not AnyoneHasBuff(healers, SOULSTONE_SPELL_ID) then
-                NotifyPlayers(warlocks, "No healer has a soulstone. Could you please soulstone a healer?")
+                NotifyPlayers(warlocks, GetRandomMessage(SOULSTONE_MESSAGES))
             end
         end
     end

@@ -183,8 +183,16 @@ local function GetHealers()
 end
 
 local function HasBuff(unit, spellId)
-    local auraData = C_UnitAuras.GetAuraDataBySpellID(unit, spellId, "HELPFUL")
-    return auraData ~= nil
+    for i = 1, 40 do
+        local name, _, _, _, _, _, _, _, _, id = UnitBuff(unit, i)
+        if not name then
+            break
+        end
+        if id == spellId then
+            return true
+        end
+    end
+    return false
 end
 
 local function AnyoneHasBuff(members, spellId)

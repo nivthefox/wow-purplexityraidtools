@@ -183,16 +183,18 @@ local function GetHealers()
 end
 
 local function HasBuff(unit, spellId)
-    for i = 1, 40 do
-        local name, _, _, _, _, _, _, _, _, id = UnitBuff(unit, i)
-        if not name then
-            break
+    local found = false
+    AuraUtil.ForEachAura(unit, "HELPFUL", nil, function(auraData)
+        -- Debug: print all auras on first unit check
+        if unit == "raid1" and spellId == 1458 then
+            print(string.format("PRT DEBUG: Found aura %s (id: %d)", auraData.name or "?", auraData.spellId or 0))
         end
-        if id == spellId then
-            return true
+        if auraData.spellId == spellId then
+            found = true
+            return true -- stop iteration
         end
-    end
-    return false
+    end, true) -- usePackedAura = true
+    return found
 end
 
 local function AnyoneHasBuff(members, spellId)

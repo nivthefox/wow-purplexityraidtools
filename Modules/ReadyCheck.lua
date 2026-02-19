@@ -149,18 +149,24 @@ end
 
 local function GetAllRaidMembers()
     local members = {}
+    local skipped = {}
     local numMembers = GetNumGroupMembers()
     if numMembers == 0 then
-        return members
+        return members, skipped
     end
 
     for i = 1, numMembers do
         local name, _, _, _, _, _, _, online = GetRaidRosterInfo(i)
         if name and online then
-            table.insert(members, { name = name, unit = "raid" .. i })
+            local unit = "raid" .. i
+            if UnitIsVisible(unit) then
+                table.insert(members, { name = name, unit = unit })
+            else
+                table.insert(skipped, name)
+            end
         end
     end
-    return members
+    return members, skipped
 end
 
 local function GetHealers()
@@ -185,10 +191,6 @@ end
 local function HasBuff(unit, spellId)
     local found = false
     AuraUtil.ForEachAura(unit, "HELPFUL", nil, function(auraData)
-        -- Debug: print all auras on first unit check
-        if unit == "raid1" and spellId == 1458 then
-            print(string.format("PRT DEBUG: Found aura %s (id: %d)", auraData.name or "?", auraData.spellId or 0))
-        end
         if auraData.spellId == spellId then
             found = true
             return true -- stop iteration
@@ -254,17 +256,34 @@ function ReadyCheck:OnReadyCheck()
         return
     end
 
-    local allMembers = GetAllRaidMembers()
+    local allMembers, skippedMembers = GetAllRaidMembers()
     if #allMembers == 0 then
         return
     end
 
     -- Check raid buffs
+    local totalRaid = #allMembers + #skippedMembers
     for _, buff in ipairs(RAID_BUFFS) do
         if GetReadyCheckSetting(settings, buff.key) then
             local providers = GetPlayersByClass(buff.class)
-            if #providers > 0 and not EveryoneHasBuff(allMembers, buff.spellId) then
-                NotifyPlayers(providers, buff.messages)
+            if #providers > 0 then
+                local missing = {}
+                for _, member in ipairs(allMembers) do
+                    if not HasBuff(member.unit, buff.spellId) then
+                        table.insert(missing, member.name)
+                    end
+                end
+                if #missing > 0 then
+                    print(string.format(
+                        "PRT: %s missing — checked %d/%d, missing: %s%s",
+                        buff.name,
+                        #allMembers,
+                        totalRaid,
+                        table.concat(missing, ", "),
+                        #skippedMembers > 0 and (", skipped (out of range): " .. table.concat(skippedMembers, ", ")) or ""
+                    ))
+                    NotifyPlayers(providers, buff.messages)
+                end
             end
         end
     end

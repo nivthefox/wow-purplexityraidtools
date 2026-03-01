@@ -9,3 +9,4 @@ PurplexityRaidTools.lua
 ConfigFrame.lua
 Modules/DontRelease.lua
 Modules/ReadyCheck.lua
+Modules/AutoMarking.lua

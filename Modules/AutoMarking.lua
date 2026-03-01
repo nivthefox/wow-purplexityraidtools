@@ -24,6 +24,14 @@ local MARK_NAMES = {
     [5] = "Moon", [6] = "Square", [7] = "Cross", [8] = "Skull",
 }
 
+local DEBUG = true
+
+local function DebugPrint(...)
+    if DEBUG then
+        print("|cFF999999PRT AutoMarking:|r", ...)
+    end
+end
+
 --------------------------------------------------------------------------------
 -- Application Loop
 --------------------------------------------------------------------------------
@@ -58,36 +66,59 @@ end
 local function ApplyMarks()
     local settings = PRT:GetSetting("autoMarking")
     if not settings or not settings.enabled then
+        DebugPrint("Skipped: disabled or no settings")
         return
     end
 
     if not IsInRaid() then
+        DebugPrint("Skipped: not in raid")
         return
     end
 
     if InCombatLockdown() then
+        DebugPrint("Skipped: in combat")
         return
     end
 
     if not UnitIsGroupLeader("player") and not UnitIsGroupAssistant("player") then
+        DebugPrint("Skipped: not leader or assistant")
         return
     end
 
+    local appliedAny = false
     for markIndex = 1, 8 do
         local nameString = settings.marks[markIndex]
         if nameString and nameString ~= "" then
             local names = SplitNames(nameString)
+            local matched = false
             for _, name in ipairs(names) do
                 local unit = FindUnitByName(name)
                 if unit then
                     local currentMark = GetRaidTargetIndex(unit)
                     if currentMark ~= markIndex then
-                        SetRaidTargetIcon(unit, markIndex)
+                        DebugPrint(string.format(
+                            "Setting %s (%d) on %s (%s), had mark %s",
+                            MARK_NAMES[markIndex], markIndex, name, unit,
+                            tostring(currentMark)
+                        ))
+                        SetRaidTarget(unit, markIndex)
+                        appliedAny = true
                     end
+                    matched = true
                     break
                 end
             end
+            if not matched then
+                DebugPrint(string.format(
+                    "%s (%d): no match in raid for [%s]",
+                    MARK_NAMES[markIndex], markIndex, nameString
+                ))
+            end
         end
+    end
+
+    if not appliedAny then
+        DebugPrint("Tick: all marks already correct (or no names configured)")
     end
 end
 
@@ -216,7 +247,7 @@ PRT:RegisterTab("Auto-Marking", function(parent)
         for i = 1, numMembers do
             local unit = "raid" .. i
             if GetRaidTargetIndex(unit) then
-                SetRaidTargetIcon(unit, 0)
+                SetRaidTarget(unit, 0)
             end
         end
     end)
@@ -229,6 +260,7 @@ end)
 --------------------------------------------------------------------------------
 
 function AutoMarking:Initialize()
+    DebugPrint("Initialized, starting 2s ticker")
     C_Timer.NewTicker(2, ApplyMarks)
 end
 

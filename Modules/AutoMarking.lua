@@ -24,7 +24,7 @@ local MARK_NAMES = {
     [5] = "Moon", [6] = "Square", [7] = "Cross", [8] = "Skull",
 }
 
-local DEBUG = true
+local DEBUG = false
 
 local function DebugPrint(...)
     if DEBUG then
@@ -47,16 +47,47 @@ local function SplitNames(str)
     return names
 end
 
-local function FindUnitByName(targetName)
+local function NameMatches(fullName, targetName)
+    local lowerFull = string.lower(fullName)
     local lowerTarget = string.lower(targetName)
-    local numMembers = GetNumGroupMembers()
-    for i = 1, numMembers do
-        local name = GetRaidRosterInfo(i)
-        if name then
-            local lowerName = string.lower(name)
-            -- Match full name or just the character part before the server
-            if lowerName == lowerTarget or string.match(lowerName, "^([^-]+)") == lowerTarget then
+    if lowerFull == lowerTarget then
+        return true
+    end
+    local charName = string.match(lowerFull, "^([^-]+)")
+    return charName == lowerTarget
+end
+
+local function GetUnitFullName(unit)
+    local name, realm = UnitName(unit)
+    if not name then
+        return nil
+    end
+    if realm and realm ~= "" then
+        return name .. "-" .. realm
+    end
+    return name
+end
+
+local function FindUnitByName(targetName)
+    if IsInRaid() then
+        local numMembers = GetNumGroupMembers()
+        for i = 1, numMembers do
+            local name = GetRaidRosterInfo(i)
+            if name and NameMatches(name, targetName) then
                 return "raid" .. i
+            end
+        end
+    else
+        local fullName = GetUnitFullName("player")
+        if fullName and NameMatches(fullName, targetName) then
+            return "player"
+        end
+        local numMembers = GetNumGroupMembers()
+        for i = 1, numMembers - 1 do
+            local unit = "party" .. i
+            fullName = GetUnitFullName(unit)
+            if fullName and NameMatches(fullName, targetName) then
+                return unit
             end
         end
     end
@@ -70,8 +101,8 @@ local function ApplyMarks()
         return
     end
 
-    if not IsInRaid() then
-        DebugPrint("Skipped: not in raid")
+    if not IsInGroup() then
+        DebugPrint("Skipped: not in group")
         return
     end
 
@@ -80,8 +111,7 @@ local function ApplyMarks()
         return
     end
 
-    if not UnitIsGroupLeader("player") and not UnitIsGroupAssistant("player") then
-        DebugPrint("Skipped: not leader or assistant")
+    if IsInRaid() and not UnitIsGroupLeader("player") and not UnitIsGroupAssistant("player") then
         return
     end
 
@@ -110,7 +140,7 @@ local function ApplyMarks()
             end
             if not matched then
                 DebugPrint(string.format(
-                    "%s (%d): no match in raid for [%s]",
+                    "%s (%d): no match in group for [%s]",
                     MARK_NAMES[markIndex], markIndex, nameString
                 ))
             end
@@ -240,14 +270,30 @@ PRT:RegisterTab("Auto-Marking", function(parent)
     clearButton:SetPoint("TOPLEFT", 20, yOffset)
     clearButton:SetText("Clear All Marks")
     clearButton:SetScript("OnClick", function()
-        if not IsInRaid() then
+        if not IsInGroup() then
             return
         end
-        local numMembers = GetNumGroupMembers()
-        for i = 1, numMembers do
-            local unit = "raid" .. i
-            if GetRaidTargetIndex(unit) then
-                SetRaidTarget(unit, 0)
+        if IsInRaid() and not UnitIsGroupLeader("player") and not UnitIsGroupAssistant("player") then
+            return
+        end
+        if IsInRaid() then
+            local numMembers = GetNumGroupMembers()
+            for i = 1, numMembers do
+                local unit = "raid" .. i
+                if GetRaidTargetIndex(unit) then
+                    SetRaidTarget(unit, 0)
+                end
+            end
+        else
+            if GetRaidTargetIndex("player") then
+                SetRaidTarget("player", 0)
+            end
+            local numMembers = GetNumGroupMembers()
+            for i = 1, numMembers - 1 do
+                local unit = "party" .. i
+                if GetRaidTargetIndex(unit) then
+                    SetRaidTarget(unit, 0)
+                end
             end
         end
     end)

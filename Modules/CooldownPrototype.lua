@@ -1,0 +1,194 @@
+-- CooldownPrototype: Diagnostic tool for testing UNIT_AURA + C_UnitAuras API
+-- feasibility under Midnight's combat log restrictions
+local PRT = PurplexityRaidTools
+local CooldownPrototype = {}
+PRT.CooldownPrototype = CooldownPrototype
+
+--------------------------------------------------------------------------------
+-- Default Settings
+--------------------------------------------------------------------------------
+
+PRT.defaults.cooldownPrototype = {
+    enabled = false,
+}
+
+--------------------------------------------------------------------------------
+-- Local State
+--------------------------------------------------------------------------------
+
+local loggingEnabled = false
+local eventFrame = nil
+
+--------------------------------------------------------------------------------
+-- Safe Field Reading
+--------------------------------------------------------------------------------
+
+-- Wrap every field read in pcall to catch secret-ified values that may error
+-- on tostring, comparison, or concatenation.
+local function SafeRead(value, fallback)
+    local ok, result = pcall(tostring, value)
+    if ok and result ~= nil then
+        return result
+    end
+    return fallback or "<error>"
+end
+
+local function SafeCall(func, ...)
+    local ok, result = pcall(func, ...)
+    if ok then
+        return SafeRead(result, "nil")
+    end
+    return "<error>"
+end
+
+--------------------------------------------------------------------------------
+-- Chat Output
+--------------------------------------------------------------------------------
+
+local PREFIX = "|cFF00CCFFPRT Proto:|r "
+
+local function Print(msg)
+    print(PREFIX .. msg)
+end
+
+--------------------------------------------------------------------------------
+-- Aura Processing
+--------------------------------------------------------------------------------
+
+local function ProcessNewAura(auraData)
+    local spellId = SafeRead(auraData.spellId, "<secret>")
+    local name = SafeRead(auraData.name, "<secret>")
+    local sourceUnit = SafeRead(auraData.sourceUnit, "<secret>")
+    local duration = SafeRead(auraData.duration, "<secret>")
+    local expirationTime = SafeRead(auraData.expirationTime, "<secret>")
+
+    -- Test C_Spell.IsExternalDefensive if it exists
+    local externalDef = "<no API>"
+    if C_Spell and C_Spell.IsExternalDefensive then
+        local rawId = auraData.spellId
+        local ok, result = pcall(C_Spell.IsExternalDefensive, rawId)
+        if ok then
+            externalDef = SafeRead(result, "nil")
+        else
+            externalDef = "<error: " .. SafeRead(result, "unknown") .. ">"
+        end
+    end
+
+    -- Test C_CombatLog.IsCombatLogRestricted if it exists
+    local restricted = "<no API>"
+    if C_CombatLog and C_CombatLog.IsCombatLogRestricted then
+        local ok, result = pcall(C_CombatLog.IsCombatLogRestricted)
+        if ok then
+            restricted = SafeRead(result, "nil")
+        else
+            restricted = "<error>"
+        end
+    end
+
+    Print(string.format(
+        "SpellID: %s | Name: %s | Source: %s | Duration: %s | ExternalDef: %s | Restricted: %s",
+        spellId, name, sourceUnit, duration, externalDef, restricted
+    ))
+end
+
+local function OnUnitAura(unit, updateInfo)
+    if unit ~= "player" then
+        return
+    end
+
+    if not updateInfo or not updateInfo.addedAuras then
+        return
+    end
+
+    for _, auraData in ipairs(updateInfo.addedAuras) do
+        local ok, err = pcall(ProcessNewAura, auraData)
+        if not ok then
+            Print("Failed to process aura: " .. SafeRead(err, "unknown error"))
+        end
+    end
+end
+
+--------------------------------------------------------------------------------
+-- Group Check
+--------------------------------------------------------------------------------
+
+local function IsInGroupContent()
+    return IsInGroup() or IsInRaid()
+end
+
+--------------------------------------------------------------------------------
+-- Enable / Disable Logging
+--------------------------------------------------------------------------------
+
+local function EnableLogging()
+    if loggingEnabled then
+        return
+    end
+    loggingEnabled = true
+    eventFrame:RegisterUnitEvent("UNIT_AURA", "player")
+    Print("Logging enabled.")
+end
+
+local function DisableLogging()
+    if not loggingEnabled then
+        return
+    end
+    loggingEnabled = false
+    eventFrame:UnregisterEvent("UNIT_AURA")
+    Print("Logging disabled.")
+end
+
+--------------------------------------------------------------------------------
+-- Slash Command
+--------------------------------------------------------------------------------
+
+SLASH_PRTPROTO1 = "/prtproto"
+SlashCmdList["PRTPROTO"] = function()
+    if not IsInGroupContent() then
+        Print("Not in a group. Logging is only active in party or raid.")
+        return
+    end
+
+    if loggingEnabled then
+        DisableLogging()
+    else
+        EnableLogging()
+    end
+end
+
+--------------------------------------------------------------------------------
+-- Event Handling
+--------------------------------------------------------------------------------
+
+local function OnEvent(_, event, ...)
+    if event == "UNIT_AURA" then
+        if loggingEnabled and IsInGroupContent() then
+            local unit, updateInfo = ...
+            OnUnitAura(unit, updateInfo)
+        end
+    elseif event == "GROUP_ROSTER_UPDATE" then
+        if loggingEnabled and not IsInGroupContent() then
+            DisableLogging()
+            Print("Left group. Logging auto-disabled.")
+        end
+    end
+end
+
+--------------------------------------------------------------------------------
+-- Initialization
+--------------------------------------------------------------------------------
+
+function CooldownPrototype:Initialize()
+    eventFrame = CreateFrame("Frame")
+    eventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
+    eventFrame:SetScript("OnEvent", OnEvent)
+end
+
+local initFrame = CreateFrame("Frame")
+initFrame:RegisterEvent("ADDON_LOADED")
+initFrame:SetScript("OnEvent", function(_, event, addonName)
+    if event == "ADDON_LOADED" and addonName == "PurplexityRaidTools" then
+        CooldownPrototype:Initialize()
+        initFrame:UnregisterEvent("ADDON_LOADED")
+    end
+end)

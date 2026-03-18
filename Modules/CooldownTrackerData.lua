@@ -33,7 +33,7 @@ PRT.CooldownTrackerSpells = {
     [196718] = { spellId = 196718, name = "Darkness",           category = "defensive", cooldown = 300, class = "DEMONHUNTER",  specId = nil },                      -- cast ID
 
     -- Movement
-    [106898] = { spellId = 106898, name = "Stampeding Roar",    category = "movement",  cooldown = 120, class = "DRUID",        specId = nil },                      -- cast ID
+    [106898] = { spellId = 106898, name = "Stampeding Roar",    category = "movement",  cooldown = 120, class = "DRUID",        specId = nil },                      -- confirmed buff ID
     [192077] = { spellId = 192077, name = "Wind Rush Totem",    category = "movement",  cooldown = 120, class = "SHAMAN",       specId = nil },                      -- cast ID
     [374968] = { spellId = 374968, name = "Time Spiral",        category = "movement",  cooldown = 120, class = "EVOKER",       specId = nil },                      -- cast ID
 
@@ -53,6 +53,13 @@ for _, spellData in pairs(PRT.CooldownTrackerSpells) do
         PRT.CooldownTrackerSpellsByClass[class] = {}
     end
     table.insert(PRT.CooldownTrackerSpellsByClass[class], spellData)
+end
+
+-- Build a reverse lookup from spell name to spell data entry.
+-- Used as a fallback when spellId is secret during combat restrictions.
+PRT.CooldownTrackerSpellsByName = {}
+for _, spellData in pairs(PRT.CooldownTrackerSpells) do
+    PRT.CooldownTrackerSpellsByName[spellData.name] = spellData
 end
 
 -- Default settings

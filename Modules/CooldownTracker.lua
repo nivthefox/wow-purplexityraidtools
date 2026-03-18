@@ -59,6 +59,16 @@ local function IsCategoryEnabled(category)
     return settings.categories[category] ~= false
 end
 
+-- Safely read a field that may be secret-ified during combat restrictions.
+-- Returns the value if readable, or the fallback if access errors.
+local function SafeRead(value, fallback)
+    local ok, result = pcall(tostring, value)
+    if ok and result ~= nil then
+        return value
+    end
+    return fallback
+end
+
 --------------------------------------------------------------------------------
 -- State Transitions
 --------------------------------------------------------------------------------
@@ -274,10 +284,20 @@ end
 --------------------------------------------------------------------------------
 
 -- Find the first tracked entry matching a spell ID, regardless of source.
--- Used as a fallback when sourceUnit is unavailable (combat restrictions).
 local function FindEntryBySpellId(spellId)
     for _, entry in pairs(trackedCooldowns) do
         if entry.spellData.spellId == spellId then
+            return entry
+        end
+    end
+    return nil
+end
+
+-- Find the first tracked entry matching a spell name, regardless of source.
+-- Used when spellId is secret during combat restrictions.
+local function FindEntryByName(name)
+    for _, entry in pairs(trackedCooldowns) do
+        if entry.spellData.name == name then
             return entry
         end
     end
@@ -294,55 +314,69 @@ local function OnUnitAura(unit, updateInfo)
     end
 
     local spells = PRT.CooldownTrackerSpells
+    local spellsByName = PRT.CooldownTrackerSpellsByName
 
     -- Check added auras
     if updateInfo.addedAuras then
         for _, auraData in ipairs(updateInfo.addedAuras) do
-            local spellId = auraData.spellId
-            if spellId and spells[spellId] then
-                local spellData = spells[spellId]
-                if IsCategoryEnabled(spellData.category) then
-                    -- Try to identify the source
-                    local sourceName
-                    local ok, sourceUnit = pcall(function() return auraData.sourceUnit end)
-                    if ok and sourceUnit then
-                        sourceName = UnitName(sourceUnit)
-                    end
+            -- spellId and name may be secret during combat restrictions.
+            -- Try spellId first (exact match), fall back to name (fuzzy match).
+            local spellId = SafeRead(auraData.spellId, nil)
+            local spellData = spellId and spells[spellId]
 
-                    local entry
-                    if sourceName then
-                        -- Source known: match by player+spell key
-                        local key = GetCooldownKey(sourceName, spellId)
-                        entry = trackedCooldowns[key]
+            if not spellData then
+                -- spellId was secret or didn't match; try matching by name
+                local auraName = SafeRead(auraData.name, nil)
+                if auraName then
+                    spellData = spellsByName[auraName]
+                end
+            end
 
-                        -- Dynamic discovery: source not in pre-scan
-                        if not entry then
-                            local _, classToken
-                            if sourceUnit then
-                                _, classToken = UnitClass(sourceUnit)
-                            end
-                            entry = {
-                                playerName = sourceName,
-                                spellData = spellData,
-                                state = STATE_AVAILABLE,
-                                stateStartTime = GetTime(),
-                                auraInstanceID = nil,
-                                buffDuration = nil,
-                                expirationTime = nil,
-                                cooldownTimer = nil,
-                                classToken = classToken or spellData.class,
-                            }
-                            trackedCooldowns[key] = entry
+            if spellData and IsCategoryEnabled(spellData.category) then
+                -- Try to identify the source
+                local sourceName
+                local sourceUnit = SafeRead(auraData.sourceUnit, nil)
+                if sourceUnit then
+                    sourceName = UnitName(sourceUnit)
+                end
+
+                local duration = SafeRead(auraData.duration, 0)
+                local expirationTime = SafeRead(auraData.expirationTime, 0)
+                local auraInstanceID = SafeRead(auraData.auraInstanceID, nil)
+
+                local entry
+                if sourceName then
+                    -- Source known: match by player+spell key
+                    local key = GetCooldownKey(sourceName, spellData.spellId)
+                    entry = trackedCooldowns[key]
+
+                    -- Dynamic discovery: source not in pre-scan
+                    if not entry then
+                        local _, classToken
+                        if sourceUnit then
+                            _, classToken = UnitClass(sourceUnit)
                         end
-                    else
-                        -- Source unknown (combat restriction): match any
-                        -- tracked entry for this spell ID
-                        entry = FindEntryBySpellId(spellId)
+                        entry = {
+                            playerName = sourceName,
+                            spellData = spellData,
+                            state = STATE_AVAILABLE,
+                            stateStartTime = GetTime(),
+                            auraInstanceID = nil,
+                            buffDuration = nil,
+                            expirationTime = nil,
+                            cooldownTimer = nil,
+                            classToken = classToken or spellData.class,
+                        }
+                        trackedCooldowns[key] = entry
                     end
+                else
+                    -- Source unknown (combat restriction): match any tracked
+                    -- entry for this spell, preferring by ID then by name
+                    entry = FindEntryBySpellId(spellData.spellId) or FindEntryByName(spellData.name)
+                end
 
-                    if entry then
-                        TransitionToActive(entry, auraData.auraInstanceID, auraData.duration, auraData.expirationTime)
-                    end
+                if entry then
+                    TransitionToActive(entry, auraInstanceID, duration, expirationTime)
                 end
             end
         end

@@ -10,6 +10,3 @@ ConfigFrame.lua
 Modules/DontRelease.lua
 Modules/ReadyCheck.lua
 Modules/AutoInvite.lua
-Modules/CooldownTrackerData.lua
-Modules/CooldownTracker.lua
-Modules/CooldownTrackerDisplay.lua

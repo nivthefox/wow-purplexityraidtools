@@ -234,8 +234,8 @@ local function UpdateBar(bar, entry)
     -- Color
     bar:SetStatusBarColor(color.r, color.g, color.b)
 
-    -- Icon
-    local iconId = select(3, GetSpellInfo(spellData.spellId))
+    -- Icon (C_Spell.GetSpellTexture replaces deprecated GetSpellInfo for icons)
+    local iconId = C_Spell.GetSpellTexture(spellData.spellId)
     if iconId then
         bar.icon:SetTexture(iconId)
     end

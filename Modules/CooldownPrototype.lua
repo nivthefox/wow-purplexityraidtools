@@ -33,6 +33,16 @@ local function SafeRead(value, fallback)
     return fallback or "<error>"
 end
 
+-- Check if a value is usable (not secret). Tries to use it as a table key.
+local function IsUsable(value)
+    if value == nil then
+        return false
+    end
+    local test = {}
+    local ok = pcall(function() test[value] = true end)
+    return ok
+end
+
 --------------------------------------------------------------------------------
 -- Chat Output
 --------------------------------------------------------------------------------
@@ -47,7 +57,28 @@ end
 -- Aura Processing
 --------------------------------------------------------------------------------
 
+local function IsFromSelf(auraData)
+    -- Try sourceUnit first
+    if IsUsable(auraData.sourceUnit) and auraData.sourceUnit then
+        local ok, result = pcall(UnitIsUnit, auraData.sourceUnit, "player")
+        if ok then
+            return result
+        end
+    end
+    -- Try isFromPlayerOrPlayerPet
+    if IsUsable(auraData.isFromPlayerOrPlayerPet) then
+        return auraData.isFromPlayerOrPlayerPet == true
+    end
+    -- Can't determine source; it's probably secret, so not from self
+    return false
+end
+
 local function ProcessNewAura(auraData)
+    -- Skip self-cast auras to reduce spam
+    if IsFromSelf(auraData) then
+        return
+    end
+
     local spellId = SafeRead(auraData.spellId, "<secret>")
     local name = SafeRead(auraData.name, "<secret>")
     local sourceUnit = SafeRead(auraData.sourceUnit, "<secret>")
@@ -106,7 +137,7 @@ local function EnableLogging()
     end
     loggingEnabled = true
     eventFrame:RegisterUnitEvent("UNIT_AURA", "player")
-    Print("Logging enabled.")
+    Print("Logging enabled. Self-cast auras are filtered out.")
 end
 
 local function DisableLogging()

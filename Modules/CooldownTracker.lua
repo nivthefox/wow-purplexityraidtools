@@ -21,6 +21,7 @@ CooldownTracker.STATE_ON_COOLDOWN = STATE_ON_COOLDOWN
 --------------------------------------------------------------------------------
 
 local eventFrame = nil
+local initialized = false
 local enabled = false
 
 -- Tracked cooldowns keyed by "playerName:spellId"
@@ -272,6 +273,17 @@ end
 -- Aura Handling
 --------------------------------------------------------------------------------
 
+-- Find the first tracked entry matching a spell ID, regardless of source.
+-- Used as a fallback when sourceUnit is unavailable (combat restrictions).
+local function FindEntryBySpellId(spellId)
+    for _, entry in pairs(trackedCooldowns) do
+        if entry.spellData.spellId == spellId then
+            return entry
+        end
+    end
+    return nil
+end
+
 local function OnUnitAura(unit, updateInfo)
     if unit ~= "player" then
         return
@@ -290,21 +302,24 @@ local function OnUnitAura(unit, updateInfo)
             if spellId and spells[spellId] then
                 local spellData = spells[spellId]
                 if IsCategoryEnabled(spellData.category) then
-                    -- Find the matching entry by source, or discover dynamically
-                    local sourceName = auraData.sourceName
-                    if not sourceName and auraData.sourceUnit then
-                        sourceName = UnitName(auraData.sourceUnit)
+                    -- Try to identify the source
+                    local sourceName
+                    local ok, sourceUnit = pcall(function() return auraData.sourceUnit end)
+                    if ok and sourceUnit then
+                        sourceName = UnitName(sourceUnit)
                     end
 
+                    local entry
                     if sourceName then
+                        -- Source known: match by player+spell key
                         local key = GetCooldownKey(sourceName, spellId)
-                        local entry = trackedCooldowns[key]
+                        entry = trackedCooldowns[key]
 
                         -- Dynamic discovery: source not in pre-scan
                         if not entry then
                             local _, classToken
-                            if auraData.sourceUnit then
-                                _, classToken = UnitClass(auraData.sourceUnit)
+                            if sourceUnit then
+                                _, classToken = UnitClass(sourceUnit)
                             end
                             entry = {
                                 playerName = sourceName,
@@ -319,7 +334,13 @@ local function OnUnitAura(unit, updateInfo)
                             }
                             trackedCooldowns[key] = entry
                         end
+                    else
+                        -- Source unknown (combat restriction): match any
+                        -- tracked entry for this spell ID
+                        entry = FindEntryBySpellId(spellId)
+                    end
 
+                    if entry then
                         TransitionToActive(entry, auraData.auraInstanceID, auraData.duration, auraData.expirationTime)
                     end
                 end
@@ -445,6 +466,12 @@ end
 --------------------------------------------------------------------------------
 
 local function CheckModuleState()
+    -- Guard against being called before Initialize (e.g., config tab slider
+    -- triggers ApplySettings at file-load time before ADDON_LOADED fires)
+    if not initialized then
+        return
+    end
+
     local settings = GetSettings()
     local shouldEnable = settings and settings.enabled and IsInGroupContent()
 
@@ -489,6 +516,7 @@ end
 function CooldownTracker:Initialize()
     eventFrame = CreateFrame("Frame")
     eventFrame:SetScript("OnEvent", OnEvent)
+    initialized = true
 
     -- These two events stay registered permanently so we detect group
     -- join/leave even when the module is disabled. PLAYER_ENTERING_WORLD

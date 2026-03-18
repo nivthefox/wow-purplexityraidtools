@@ -377,9 +377,9 @@ end
 -- Enable / Disable
 --------------------------------------------------------------------------------
 
--- GROUP_ROSTER_UPDATE is always registered (in Initialize) so we can detect
--- group join/leave regardless of module state. Only the combat, aura, and
--- inspection events are toggled with enable/disable.
+-- GROUP_ROSTER_UPDATE and PLAYER_ENTERING_WORLD are always registered (in
+-- Initialize) so we can detect group join/leave regardless of module state.
+-- Only the combat, aura, and inspection events are toggled with enable/disable.
 
 local function EnableModule()
     if enabled then
@@ -470,7 +470,7 @@ local function OnEvent(_, event, ...)
     if event == "UNIT_AURA" then
         local unit, updateInfo = ...
         OnUnitAura(unit, updateInfo)
-    elseif event == "GROUP_ROSTER_UPDATE" then
+    elseif event == "GROUP_ROSTER_UPDATE" or event == "PLAYER_ENTERING_WORLD" then
         CheckModuleState()
     elseif event == "PLAYER_REGEN_DISABLED" then
         OnCombatStart()
@@ -490,9 +490,12 @@ function CooldownTracker:Initialize()
     eventFrame = CreateFrame("Frame")
     eventFrame:SetScript("OnEvent", OnEvent)
 
-    -- GROUP_ROSTER_UPDATE stays registered permanently so we detect group
-    -- join/leave even when the module is disabled
+    -- These two events stay registered permanently so we detect group
+    -- join/leave even when the module is disabled. PLAYER_ENTERING_WORLD
+    -- catches the case where party data isn't available at ADDON_LOADED
+    -- time (e.g., during /reload while already in a group).
     eventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
+    eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 
     -- Check initial state (enables module if already in a group)
     CheckModuleState()

@@ -478,6 +478,12 @@ PRT:RegisterTab("Auto-Invite", function(parent)
     --------------------------------------------------------------------
 
     container:SetScript("OnShow", function()
+        -- Refresh whisper invite widgets from saved settings
+        local settings = GetSettings()
+        whisperEnabledCB:SetValue(settings.whisperInviteEnabled)
+        keywordsEditBox:SetText(settings.keywords)
+        guildOnlyCB:SetValue(settings.guildOnly)
+
         -- Hide old rank checkboxes
         for _, cb in ipairs(rankCheckboxes) do
             cb:Hide()
@@ -485,7 +491,6 @@ PRT:RegisterTab("Auto-Invite", function(parent)
         rankCheckboxes = {}
 
         local dynY = rankStartY
-        local settings = GetSettings()
         local numRanks = GuildControlGetNumRanks()
 
         for rankIdx = 1, numRanks do

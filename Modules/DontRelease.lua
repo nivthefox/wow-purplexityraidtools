@@ -401,7 +401,7 @@ PRT:RegisterTab("Don't Release", function(parent)
         { label = "Scenario (Heroic)", path = {"contentTypes", "scenario", "heroic"} },
     }
 
-    for _, info in ipairs(contentCheckboxes) do
+    for i, info in ipairs(contentCheckboxes) do
         local checkbox = PRT.Components.GetCheckbox(scrollChild, info.label, function(value)
             local settings = EnsureSettingsTable()
             if #info.path == 2 then
@@ -411,6 +411,7 @@ PRT:RegisterTab("Don't Release", function(parent)
             end
         end)
         checkbox:SetPoint("TOPLEFT", 0, yOffset)
+        contentCheckboxes[i].widget = checkbox
 
         local settings = GetSettings()
         local currentValue
@@ -457,6 +458,31 @@ PRT:RegisterTab("Don't Release", function(parent)
         randomizeCheckbox:EnableMouse(false)
     end
     yOffset = yOffset - ROW_HEIGHT
+
+    -- Refresh all widget values from saved settings on show
+    container:SetScript("OnShow", function()
+        local settings = GetSettings()
+        enabledCheckbox:SetValue(settings.enabled)
+        delaySlider:SetValue(settings.delay)
+        for _, info in ipairs(contentCheckboxes) do
+            local currentValue
+            if #info.path == 2 then
+                currentValue = settings[info.path[1]][info.path[2]]
+            else
+                currentValue = settings[info.path[1]][info.path[2]][info.path[3]]
+            end
+            info.widget:SetValue(currentValue)
+        end
+        requireModifierCheckbox:SetValue(settings.requireModifier)
+        randomizeCheckbox:SetValue(settings.randomizeModifier)
+        if settings.requireModifier then
+            randomizeCheckbox:SetAlpha(1)
+            randomizeCheckbox:EnableMouse(true)
+        else
+            randomizeCheckbox:SetAlpha(0.5)
+            randomizeCheckbox:EnableMouse(false)
+        end
+    end)
 
     -- Profile Section
     yOffset = yOffset - 10

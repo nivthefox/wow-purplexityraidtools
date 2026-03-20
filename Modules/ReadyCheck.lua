@@ -349,12 +349,14 @@ PRT:RegisterTab("Ready Check", function(parent)
     yOffset = yOffset - 10
 
     -- Raid buff checkboxes
+    local buffCheckboxes = {}
     for _, buff in ipairs(RAID_BUFFS) do
         local checkbox = PRT.Components.GetCheckbox(container, "Check " .. buff.name, function(value)
             EnsureSettingsTable()[buff.key] = value
         end)
         checkbox:SetPoint("TOPLEFT", 0, yOffset)
         checkbox:SetValue(GetSettings()[buff.key])
+        buffCheckboxes[buff.key] = checkbox
         yOffset = yOffset - ROW_HEIGHT
     end
 
@@ -365,6 +367,16 @@ PRT:RegisterTab("Ready Check", function(parent)
     soulstoneCheckbox:SetPoint("TOPLEFT", 0, yOffset)
     soulstoneCheckbox:SetValue(GetSettings().checkSoulstones)
     yOffset = yOffset - ROW_HEIGHT
+
+    -- Refresh all widget values from saved settings on show
+    container:SetScript("OnShow", function()
+        local settings = GetSettings()
+        enabledCheckbox:SetValue(settings.enabled)
+        for _, buff in ipairs(RAID_BUFFS) do
+            buffCheckboxes[buff.key]:SetValue(settings[buff.key])
+        end
+        soulstoneCheckbox:SetValue(settings.checkSoulstones)
+    end)
 
     return container
 end)

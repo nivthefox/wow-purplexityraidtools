@@ -176,6 +176,13 @@ end)
 SLASH_PURPLEXITYRAIDTOOLS1 = "/prt"
 SLASH_PURPLEXITYRAIDTOOLS2 = "/purplexity"
 SlashCmdList["PURPLEXITYRAIDTOOLS"] = function(msg)
+    local cmd = string.lower(string.match(msg or "", "^%s*(%S+)") or "")
+
+    if cmd == "inv" or cmd == "invite" then
+        PRT.AutoInvite:InviteByRank()
+        return
+    end
+
     if PurplexityRaidToolsConfigFrame then
         if PurplexityRaidToolsConfigFrame:IsShown() then
             PurplexityRaidToolsConfigFrame:Hide()

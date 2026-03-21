@@ -278,6 +278,34 @@ function AutoInvite:OnGuildRosterUpdate()
 end
 
 --------------------------------------------------------------------------------
+-- Public Actions
+--------------------------------------------------------------------------------
+
+function AutoInvite:InviteByRank()
+    local settings = PRT:GetSetting("autoInvite")
+    if not settings then
+        return
+    end
+
+    massInviteRanks = {}
+    local hasRanks = false
+    for rankIndex, enabled in pairs(settings.inviteRanks) do
+        if enabled then
+            massInviteRanks[rankIndex] = true
+            hasRanks = true
+        end
+    end
+
+    if not hasRanks then
+        print("|cFFFF0000PurplexityRaidTools:|r No ranks selected for mass invite.")
+        return
+    end
+
+    pendingMassInvite = true
+    C_GuildInfo.GuildRoster()
+end
+
+--------------------------------------------------------------------------------
 -- Config UI
 --------------------------------------------------------------------------------
 
@@ -411,23 +439,7 @@ PRT:RegisterTab("Auto-Invite", function(parent)
     inviteButton:SetText("Invite by Rank")
 
     inviteButton:SetScript("OnClick", function()
-        local settings = EnsureSettingsTable()
-        massInviteRanks = {}
-        local hasRanks = false
-        for rankIndex, enabled in pairs(settings.inviteRanks) do
-            if enabled then
-                massInviteRanks[rankIndex] = true
-                hasRanks = true
-            end
-        end
-
-        if not hasRanks then
-            print("|cFFFF0000PurplexityRaidTools:|r No ranks selected for mass invite.")
-            return
-        end
-
-        pendingMassInvite = true
-        C_GuildInfo.GuildRoster()
+        AutoInvite:InviteByRank()
     end)
 
     --------------------------------------------------------------------
@@ -515,7 +527,8 @@ PRT:RegisterTab("Auto-Invite", function(parent)
         dynY = dynY - 10
 
         promoteHeader:ClearAllPoints()
-        promoteHeader:SetPoint("TOPLEFT", 0, dynY)
+        promoteHeader:SetPoint("TOPLEFT", 10, dynY)
+        promoteHeader:SetPoint("RIGHT", scrollChild, "RIGHT", -10, 0)
         dynY = dynY - 28
 
         promoteEnabledCB:ClearAllPoints()

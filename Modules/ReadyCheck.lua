@@ -110,6 +110,7 @@ local SOULSTONE_MESSAGES = {
 
 PRT.defaults.readyCheck = {
     enabled = true,
+    snarkyMessages = false,
     checkSoulstones = true,
     arcaneIntellect = true,
     battleShout = true,
@@ -252,6 +253,8 @@ function ReadyCheck:OnReadyCheck()
         return
     end
 
+    local snarky = GetReadyCheckSetting(settings, "snarkyMessages")
+
     if not UnitIsGroupLeader("player") then
         return
     end
@@ -282,7 +285,9 @@ function ReadyCheck:OnReadyCheck()
                         table.concat(missing, ", "),
                         #skippedMembers > 0 and (", skipped (out of range): " .. table.concat(skippedMembers, ", ")) or ""
                     ))
-                    NotifyPlayers(providers, buff.messages)
+                    local messages = snarky and buff.messages
+                        or { string.format("It looks like %s may be missing. Please cast it, just in case.", buff.name) }
+                    NotifyPlayers(providers, messages)
                 end
             end
         end
@@ -294,7 +299,9 @@ function ReadyCheck:OnReadyCheck()
         if #warlocks > 0 then
             local healers = GetHealers()
             if #healers > 0 and not AnyoneHasBuff(healers, SOULSTONE_SPELL_ID) then
-                NotifyPlayers(warlocks, SOULSTONE_MESSAGES)
+                local messages = snarky and SOULSTONE_MESSAGES
+                    or { "It looks like no healer has a Soulstone. Please cast it on one, just in case." }
+                NotifyPlayers(warlocks, messages)
             end
         end
     end
@@ -345,6 +352,14 @@ PRT:RegisterTab("Ready Check", function(parent)
 
     yOffset = yOffset - ROW_HEIGHT
 
+    -- Snarky messages toggle
+    local snarkyCheckbox = PRT.Components.GetCheckbox(container, "Use snarky messages", function(value)
+        EnsureSettingsTable().snarkyMessages = value
+    end)
+    snarkyCheckbox:SetPoint("TOPLEFT", 0, yOffset)
+    snarkyCheckbox:SetValue(GetSettings().snarkyMessages)
+    yOffset = yOffset - ROW_HEIGHT
+
     -- Spacing before buff checks
     yOffset = yOffset - 10
 
@@ -372,6 +387,7 @@ PRT:RegisterTab("Ready Check", function(parent)
     container:SetScript("OnShow", function()
         local settings = GetSettings()
         enabledCheckbox:SetValue(settings.enabled)
+        snarkyCheckbox:SetValue(settings.snarkyMessages)
         for _, buff in ipairs(RAID_BUFFS) do
             buffCheckboxes[buff.key]:SetValue(settings[buff.key])
         end

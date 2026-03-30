@@ -10,4 +10,4 @@ ConfigFrame.lua
 Modules/DontRelease.lua
 Modules/ReadyCheck.lua
 Modules/AutoInvite.lua
-Modules/CooldownPrototype.lua
+Modules/CooldownRoster.lua

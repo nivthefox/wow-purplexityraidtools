@@ -172,6 +172,80 @@ eventFrame:SetScript("OnEvent", function(_, event, addonName)
     end
 end)
 
+--------------------------------------------------------------------------------
+-- Content Type Detection (shared by DontRelease, CooldownRoster, etc.)
+--------------------------------------------------------------------------------
+
+function PRT.GetCurrentContentType()
+    local _, instanceType, difficultyID = GetInstanceInfo()
+
+    if instanceType == "none" then
+        return "openWorld", nil
+    end
+
+    local _, _, isHeroic, isChallengeMode, _, displayMythic, _, isLFR = GetDifficultyInfo(difficultyID)
+
+    if instanceType == "party" then
+        if isChallengeMode then
+            return "dungeon", "mythicPlus"
+        elseif displayMythic then
+            return "dungeon", "mythic"
+        elseif isHeroic then
+            return "dungeon", "heroic"
+        else
+            return "dungeon", "normal"
+        end
+    end
+
+    if instanceType == "raid" then
+        if isLFR then
+            return "raid", "lfr"
+        elseif displayMythic then
+            return "raid", "mythic"
+        elseif isHeroic then
+            return "raid", "heroic"
+        else
+            return "raid", "normal"
+        end
+    end
+
+    if instanceType == "scenario" then
+        if isHeroic then
+            return "scenario", "heroic"
+        else
+            return "scenario", "normal"
+        end
+    end
+
+    return nil, nil
+end
+
+function PRT.IsContentTypeEnabled(contentTypes)
+    if not contentTypes then
+        return false
+    end
+
+    local contentType, subType = PRT.GetCurrentContentType()
+    if not contentType then
+        return false
+    end
+
+    if contentType == "openWorld" then
+        return contentTypes.openWorld == true
+    end
+
+    local contentSettings = contentTypes[contentType]
+    if not contentSettings then
+        return false
+    end
+
+    if subType then
+        return contentSettings[subType] == true
+    end
+
+    return false
+end
+
 -- Slash command
 SLASH_PURPLEXITYRAIDTOOLS1 = "/prt"
 SLASH_PURPLEXITYRAIDTOOLS2 = "/purplexity"

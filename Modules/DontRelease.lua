@@ -43,75 +43,12 @@ local MODIFIERS = {
 -- Content Detection
 --------------------------------------------------------------------------------
 
-local function GetCurrentContentType()
-    local _, instanceType, difficultyID = GetInstanceInfo()
-
-    if instanceType == "none" then
-        return "openWorld", nil
-    end
-
-    local _, _, isHeroic, isChallengeMode, _, displayMythic, _, isLFR = GetDifficultyInfo(difficultyID)
-
-    if instanceType == "party" then
-        if isChallengeMode then
-            return "dungeon", "mythicPlus"
-        elseif displayMythic then
-            return "dungeon", "mythic"
-        elseif isHeroic then
-            return "dungeon", "heroic"
-        else
-            return "dungeon", "normal"
-        end
-    end
-
-    if instanceType == "raid" then
-        if isLFR then
-            return "raid", "lfr"
-        elseif displayMythic then
-            return "raid", "mythic"
-        elseif isHeroic then
-            return "raid", "heroic"
-        else
-            return "raid", "normal"
-        end
-    end
-
-    if instanceType == "scenario" then
-        if isHeroic then
-            return "scenario", "heroic"
-        else
-            return "scenario", "normal"
-        end
-    end
-
-    return nil, nil
-end
-
 function DontRelease:IsBlockingEnabled()
     local settings = PRT:GetSetting("dontRelease")
     if not settings or not settings.enabled then
         return false
     end
-
-    local contentType, subType = GetCurrentContentType()
-    if not contentType then
-        return false
-    end
-
-    if contentType == "openWorld" then
-        return settings.contentTypes.openWorld == true
-    end
-
-    local contentSettings = settings.contentTypes[contentType]
-    if not contentSettings then
-        return false
-    end
-
-    if subType then
-        return contentSettings[subType] == true
-    end
-
-    return false
+    return PRT.IsContentTypeEnabled(settings.contentTypes)
 end
 
 --------------------------------------------------------------------------------

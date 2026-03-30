@@ -58,6 +58,7 @@ local SPELL_DATA = {
     { spellId = 102342, name = "Ironbark",                category = "external",  class = "DRUID",        specId = 105  },
     { spellId = 6940,   name = "Blessing of Sacrifice",   category = "external",  class = "PALADIN",      specId = nil  },
     { spellId = 47788,  name = "Guardian Spirit",         category = "external",  class = "PRIEST",       specId = 257  },
+    { spellId = 53480,  name = "Roar of Sacrifice",      category = "external",  class = "HUNTER",       specId = nil  },
 
     -- Movement
     { spellId = 106898, name = "Stampeding Roar",         category = "movement",  class = "DRUID",        specId = nil  },
@@ -266,6 +267,18 @@ local function CreateBar(parent)
     playerText:SetJustifyH("LEFT")
     bar.playerText = playerText
 
+    bar:EnableMouse(true)
+    bar:SetScript("OnEnter", function(self)
+        if self.spellId then
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetSpellByID(self.spellId)
+            GameTooltip:Show()
+        end
+    end)
+    bar:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+
     return bar
 end
 
@@ -399,6 +412,7 @@ function CooldownRoster:UpdateDisplay()
             -- Configure and show bars
             for i, entry in ipairs(entries) do
                 local bar = frame.bars[i]
+                bar.spellId = entry.spellId
                 bar.icon:SetTexture(C_Spell.GetSpellTexture(entry.spellId))
                 bar.spellText:SetText(entry.name)
 

@@ -2,6 +2,7 @@
 local PRT = PurplexityRaidTools
 local ReadyCheck = {}
 PRT.ReadyCheck = ReadyCheck
+PRT:RegisterModule("readyCheck", ReadyCheck)
 
 --------------------------------------------------------------------------------
 -- Buff Definitions
@@ -120,13 +121,6 @@ PRT.defaults.readyCheck = {
     skyfury = true,
 }
 
--- Helper to get a readyCheck setting with fallback to default
-local function GetReadyCheckSetting(settings, key)
-    if settings[key] ~= nil then
-        return settings[key]
-    end
-    return PRT.defaults.readyCheck[key]
-end
 
 --------------------------------------------------------------------------------
 -- Raid Scanning
@@ -134,15 +128,16 @@ end
 
 local function GetPlayersByClass(className)
     local players = {}
-    local numMembers = GetNumGroupMembers()
-    if numMembers == 0 then
-        return players
-    end
-
-    for i = 1, numMembers do
-        local name, _, _, _, _, fileName, _, online = GetRaidRosterInfo(i)
-        if name and fileName == className and online then
-            table.insert(players, name)
+    if not IsInRaid() then return players end
+    for unit in PRT:IterateGroup() do
+        if UnitIsConnected(unit) then
+            local _, classToken = UnitClass(unit)
+            if classToken == className then
+                local name = GetUnitName(unit, true)
+                if name then
+                    table.insert(players, name)
+                end
+            end
         end
     end
     return players
@@ -151,19 +146,16 @@ end
 local function GetAllRaidMembers()
     local members = {}
     local skipped = {}
-    local numMembers = GetNumGroupMembers()
-    if numMembers == 0 then
-        return members, skipped
-    end
-
-    for i = 1, numMembers do
-        local name, _, _, _, _, _, _, online = GetRaidRosterInfo(i)
-        if name and online then
-            local unit = "raid" .. i
-            if UnitIsVisible(unit) then
-                table.insert(members, { name = name, unit = unit })
-            else
-                table.insert(skipped, name)
+    if not IsInRaid() then return members, skipped end
+    for unit in PRT:IterateGroup() do
+        if UnitIsConnected(unit) then
+            local name = GetUnitName(unit, true)
+            if name then
+                if UnitIsVisible(unit) then
+                    table.insert(members, { name = name, unit = unit })
+                else
+                    table.insert(skipped, name)
+                end
             end
         end
     end
@@ -172,17 +164,15 @@ end
 
 local function GetHealers()
     local healers = {}
-    local numMembers = GetNumGroupMembers()
-    if numMembers == 0 then
-        return healers
-    end
-
-    for i = 1, numMembers do
-        local name, _, _, _, _, _, _, online = GetRaidRosterInfo(i)
-        if name and online then
-            local role = UnitGroupRolesAssigned("raid" .. i)
+    if not IsInRaid() then return healers end
+    for unit in PRT:IterateGroup() do
+        if UnitIsConnected(unit) then
+            local role = UnitGroupRolesAssigned(unit)
             if role == "HEALER" then
-                table.insert(healers, { name = name, unit = "raid" .. i })
+                local name = GetUnitName(unit, true)
+                if name then
+                    table.insert(healers, { name = name, unit = unit })
+                end
             end
         end
     end
@@ -253,7 +243,7 @@ function ReadyCheck:OnReadyCheck()
         return
     end
 
-    local snarky = GetReadyCheckSetting(settings, "snarkyMessages")
+    local snarky = settings.snarkyMessages
 
     if not UnitIsGroupLeader("player") then
         return
@@ -267,7 +257,7 @@ function ReadyCheck:OnReadyCheck()
     -- Check raid buffs
     local totalRaid = #allMembers + #skippedMembers
     for _, buff in ipairs(RAID_BUFFS) do
-        if GetReadyCheckSetting(settings, buff.key) then
+        if settings[buff.key] then
             local providers = GetPlayersByClass(buff.class)
             if #providers > 0 then
                 local missing = {}
@@ -294,7 +284,7 @@ function ReadyCheck:OnReadyCheck()
     end
 
     -- Check soulstones (special case: only check healers)
-    if GetReadyCheckSetting(settings, "checkSoulstones") then
+    if settings.checkSoulstones then
         local warlocks = GetPlayersByClass("WARLOCK")
         if #warlocks > 0 then
             local healers = GetHealers()
@@ -324,24 +314,10 @@ PRT:RegisterTab("Ready Check", function(parent)
         return PRT:GetSetting("readyCheck")
     end
 
-    local function GetProfile()
-        return PRT.Profiles:GetCurrent()
-    end
-
-    local function EnsureSettingsTable()
-        local profile = GetProfile()
-        if not profile.readyCheck then
-            profile.readyCheck = {}
-            for k, v in pairs(PRT.defaults.readyCheck) do
-                profile.readyCheck[k] = v
-            end
-        end
-        return profile.readyCheck
-    end
 
     -- Master toggle
     local enabledCheckbox = PRT.Components.GetCheckbox(container, "Enable Ready Check Features", function(value)
-        EnsureSettingsTable().enabled = value
+        GetSettings().enabled = value
     end)
     enabledCheckbox:SetPoint("TOPLEFT", 0, yOffset)
     enabledCheckbox:SetValue(GetSettings().enabled)
@@ -354,7 +330,7 @@ PRT:RegisterTab("Ready Check", function(parent)
 
     -- Snarky messages toggle
     local snarkyCheckbox = PRT.Components.GetCheckbox(container, "Use snarky messages", function(value)
-        EnsureSettingsTable().snarkyMessages = value
+        GetSettings().snarkyMessages = value
     end)
     snarkyCheckbox:SetPoint("TOPLEFT", 0, yOffset)
     snarkyCheckbox:SetValue(GetSettings().snarkyMessages)
@@ -367,7 +343,7 @@ PRT:RegisterTab("Ready Check", function(parent)
     local buffCheckboxes = {}
     for _, buff in ipairs(RAID_BUFFS) do
         local checkbox = PRT.Components.GetCheckbox(container, "Check " .. buff.name, function(value)
-            EnsureSettingsTable()[buff.key] = value
+            GetSettings()[buff.key] = value
         end)
         checkbox:SetPoint("TOPLEFT", 0, yOffset)
         checkbox:SetValue(GetSettings()[buff.key])
@@ -377,7 +353,7 @@ PRT:RegisterTab("Ready Check", function(parent)
 
     -- Soulstone checkbox
     local soulstoneCheckbox = PRT.Components.GetCheckbox(container, "Check Soul Stones", function(value)
-        EnsureSettingsTable().checkSoulstones = value
+        GetSettings().checkSoulstones = value
     end)
     soulstoneCheckbox:SetPoint("TOPLEFT", 0, yOffset)
     soulstoneCheckbox:SetValue(GetSettings().checkSoulstones)
@@ -401,21 +377,21 @@ end)
 -- Initialization
 --------------------------------------------------------------------------------
 
-function ReadyCheck:Initialize()
-    local eventFrame = CreateFrame("Frame")
-    eventFrame:RegisterEvent("READY_CHECK")
-    eventFrame:SetScript("OnEvent", function(_, event)
+function ReadyCheck:IsActivatable()
+    return IsInRaid()
+end
+
+function ReadyCheck:OnEnable()
+    self.eventFrame:RegisterEvent("READY_CHECK")
+    self.eventFrame:SetScript("OnEvent", function(_, event)
         if event == "READY_CHECK" then
             ReadyCheck:OnReadyCheck()
         end
     end)
 end
 
-local initFrame = CreateFrame("Frame")
-initFrame:RegisterEvent("ADDON_LOADED")
-initFrame:SetScript("OnEvent", function(_, event, addonName)
-    if event == "ADDON_LOADED" and addonName == "PurplexityRaidTools" then
-        ReadyCheck:Initialize()
-        initFrame:UnregisterEvent("ADDON_LOADED")
-    end
-end)
+function ReadyCheck:OnDisable()
+    self.eventFrame:UnregisterAllEvents()
+    self.eventFrame:SetScript("OnEvent", nil)
+end
+

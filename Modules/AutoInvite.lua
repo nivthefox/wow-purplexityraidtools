@@ -2,6 +2,7 @@
 local PRT = PurplexityRaidTools
 local AutoInvite = {}
 PRT.AutoInvite = AutoInvite
+PRT:RegisterModule("autoInvite", AutoInvite)
 
 --------------------------------------------------------------------------------
 -- Default Settings
@@ -54,23 +55,10 @@ end
 
 local function IsPlayerInGroup(name)
     local lowerShort = ShortName(name)
-    if IsInRaid() then
-        for i = 1, GetNumGroupMembers() do
-            local rosterName = GetRaidRosterInfo(i)
-            if rosterName and ShortName(rosterName) == lowerShort then
-                return true
-            end
-        end
-    elseif IsInGroup() then
-        local playerName = UnitName("player")
-        if playerName and ShortName(playerName) == lowerShort then
+    for unit in PRT:IterateGroup() do
+        local unitName = UnitName(unit)
+        if unitName and ShortName(unitName) == lowerShort then
             return true
-        end
-        for i = 1, 4 do
-            local partyName = UnitName("party" .. i)
-            if partyName and ShortName(partyName) == lowerShort then
-                return true
-            end
         end
     end
     return false
@@ -216,34 +204,50 @@ end
 function AutoInvite:OnGroupRosterUpdate()
     ProcessInviteQueue()
 
-    local settings = PRT:GetSetting("autoInvite")
-    if settings and settings.promoteEnabled and IsInRaid() and UnitIsGroupLeader("player") then
-        local promoteSet = {}
-        for _, name in ipairs(SplitNames(settings.promoteNames)) do
-            promoteSet[ShortName(name)] = true
-        end
-
-        for i = 1, GetNumGroupMembers() do
-            local name = GetRaidRosterInfo(i)
+    -- Build current roster snapshot
+    local currentRoster = {}
+    if IsInRaid() then
+        for unit in PRT:IterateGroup() do
+            local name = UnitName(unit)
             if name then
-                local short = ShortName(name)
-                if promoteSet[short] and not knownMembers[short] then
-                    PromoteToAssistant("raid" .. i)
+                currentRoster[ShortName(name)] = true
+            end
+        end
+    end
+
+    -- Determine new members (in current but not in knownMembers)
+    local newMemberSet = {}
+    local hasNew = false
+    for short in pairs(currentRoster) do
+        if not knownMembers[short] then
+            newMemberSet[short] = true
+            hasNew = true
+        end
+    end
+
+    -- Promote only new members
+    if hasNew then
+        local settings = PRT:GetSetting("autoInvite")
+        if settings and settings.promoteEnabled and IsInRaid() and UnitIsGroupLeader("player") then
+            local promoteSet = {}
+            for _, name in ipairs(SplitNames(settings.promoteNames)) do
+                promoteSet[ShortName(name)] = true
+            end
+
+            for unit in PRT:IterateGroup() do
+                local name = UnitName(unit)
+                if name then
+                    local short = ShortName(name)
+                    if newMemberSet[short] and promoteSet[short] then
+                        PromoteToAssistant(unit)
+                    end
                 end
             end
         end
     end
 
-    -- Rebuild knownMembers from current roster
-    knownMembers = {}
-    if IsInRaid() then
-        for i = 1, GetNumGroupMembers() do
-            local name = GetRaidRosterInfo(i)
-            if name then
-                knownMembers[ShortName(name)] = true
-            end
-        end
-    end
+    -- Update snapshot
+    knownMembers = currentRoster
 end
 
 function AutoInvite:OnGuildRosterUpdate()
@@ -331,24 +335,6 @@ PRT:RegisterTab("Auto-Invite", function(parent)
         return PRT:GetSetting("autoInvite")
     end
 
-    local function GetProfile()
-        return PRT.Profiles:GetCurrent()
-    end
-
-    local function EnsureSettingsTable()
-        local profile = GetProfile()
-        if not profile.autoInvite then
-            profile.autoInvite = {
-                whisperInviteEnabled = PRT.defaults.autoInvite.whisperInviteEnabled,
-                keywords = PRT.defaults.autoInvite.keywords,
-                guildOnly = PRT.defaults.autoInvite.guildOnly,
-                inviteRanks = {},
-                promoteEnabled = PRT.defaults.autoInvite.promoteEnabled,
-                promoteNames = PRT.defaults.autoInvite.promoteNames,
-            }
-        end
-        return profile.autoInvite
-    end
 
     --------------------------------------------------------------------
     -- Section 1: Whisper Invite
@@ -359,7 +345,7 @@ PRT:RegisterTab("Auto-Invite", function(parent)
     yOffset = yOffset - 28
 
     local whisperEnabledCB = PRT.Components.GetCheckbox(scrollChild, "Enable Whisper Invites", function(value)
-        EnsureSettingsTable().whisperInviteEnabled = value
+        GetSettings().whisperInviteEnabled = value
     end)
     whisperEnabledCB:SetPoint("TOPLEFT", 0, yOffset)
     whisperEnabledCB:SetValue(GetSettings().whisperInviteEnabled)
@@ -386,7 +372,7 @@ PRT:RegisterTab("Auto-Invite", function(parent)
 
     keywordsEditBox:SetScript("OnEnterPressed", function(self)
         local text = string.match(self:GetText(), "^%s*(.-)%s*$") or ""
-        EnsureSettingsTable().keywords = text
+        GetSettings().keywords = text
         self:SetText(text)
         self:ClearFocus()
     end)
@@ -397,14 +383,14 @@ PRT:RegisterTab("Auto-Invite", function(parent)
 
     keywordsEditBox:SetScript("OnEditFocusLost", function(self)
         local text = string.match(self:GetText(), "^%s*(.-)%s*$") or ""
-        EnsureSettingsTable().keywords = text
+        GetSettings().keywords = text
         self:SetText(text)
     end)
 
     yOffset = yOffset - ROW_HEIGHT
 
     local guildOnlyCB = PRT.Components.GetCheckbox(scrollChild, "Guild Members Only", function(value)
-        EnsureSettingsTable().guildOnly = value
+        GetSettings().guildOnly = value
     end)
     guildOnlyCB:SetPoint("TOPLEFT", 0, yOffset)
     guildOnlyCB:SetValue(GetSettings().guildOnly)
@@ -449,7 +435,7 @@ PRT:RegisterTab("Auto-Invite", function(parent)
     local promoteHeader = PRT.Components.GetHeader(scrollChild, "Auto-Promote")
 
     local promoteEnabledCB = PRT.Components.GetCheckbox(scrollChild, "Enable Auto-Promote", function(value)
-        EnsureSettingsTable().promoteEnabled = value
+        GetSettings().promoteEnabled = value
     end)
 
     -- Promote names edit box
@@ -470,7 +456,7 @@ PRT:RegisterTab("Auto-Invite", function(parent)
 
     promoteEditBox:SetScript("OnEnterPressed", function(self)
         local text = string.match(self:GetText(), "^%s*(.-)%s*$") or ""
-        EnsureSettingsTable().promoteNames = text
+        GetSettings().promoteNames = text
         self:SetText(text)
         self:ClearFocus()
     end)
@@ -481,7 +467,7 @@ PRT:RegisterTab("Auto-Invite", function(parent)
 
     promoteEditBox:SetScript("OnEditFocusLost", function(self)
         local text = string.match(self:GetText(), "^%s*(.-)%s*$") or ""
-        EnsureSettingsTable().promoteNames = text
+        GetSettings().promoteNames = text
         self:SetText(text)
     end)
 
@@ -510,7 +496,7 @@ PRT:RegisterTab("Auto-Invite", function(parent)
             local storedIndex = rankIdx - 1
 
             local cb = PRT.Components.GetCheckbox(scrollChild, rankName, function(value)
-                EnsureSettingsTable().inviteRanks[storedIndex] = value
+                GetSettings().inviteRanks[storedIndex] = value
             end)
             cb:SetPoint("TOPLEFT", 0, dynY)
             cb:SetValue(settings.inviteRanks[storedIndex] or false)
@@ -552,24 +538,29 @@ end)
 -- Initialization
 --------------------------------------------------------------------------------
 
-function AutoInvite:Initialize()
+function AutoInvite:GetEnabledSetting()
+    local settings = PRT:GetSetting("autoInvite")
+    return settings and (settings.whisperInviteEnabled or settings.promoteEnabled)
+end
+
+function AutoInvite:OnEnable()
     -- Pre-populate knownMembers so existing group members
     -- aren't treated as "new joins" on first roster update
+    knownMembers = {}
     if IsInRaid() then
-        for i = 1, GetNumGroupMembers() do
-            local name = GetRaidRosterInfo(i)
+        for unit in PRT:IterateGroup() do
+            local name = UnitName(unit)
             if name then
                 knownMembers[ShortName(name)] = true
             end
         end
     end
 
-    local eventFrame = CreateFrame("Frame")
-    eventFrame:RegisterEvent("CHAT_MSG_WHISPER")
-    eventFrame:RegisterEvent("CHAT_MSG_BN_WHISPER")
-    eventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
-    eventFrame:RegisterEvent("GUILD_ROSTER_UPDATE")
-    eventFrame:SetScript("OnEvent", function(_, event, ...)
+    self.eventFrame:RegisterEvent("CHAT_MSG_WHISPER")
+    self.eventFrame:RegisterEvent("CHAT_MSG_BN_WHISPER")
+    self.eventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
+    self.eventFrame:RegisterEvent("GUILD_ROSTER_UPDATE")
+    self.eventFrame:SetScript("OnEvent", function(_, event, ...)
         if event == "CHAT_MSG_WHISPER" then
             local message, senderName = ...
             AutoInvite:OnWhisper(message, senderName)
@@ -584,11 +575,8 @@ function AutoInvite:Initialize()
     end)
 end
 
-local initFrame = CreateFrame("Frame")
-initFrame:RegisterEvent("ADDON_LOADED")
-initFrame:SetScript("OnEvent", function(_, event, addonName)
-    if event == "ADDON_LOADED" and addonName == "PurplexityRaidTools" then
-        AutoInvite:Initialize()
-        initFrame:UnregisterEvent("ADDON_LOADED")
-    end
-end)
+function AutoInvite:OnDisable()
+    self.eventFrame:UnregisterAllEvents()
+    self.eventFrame:SetScript("OnEvent", nil)
+end
+

@@ -2,6 +2,7 @@
 local PRT = PurplexityRaidTools
 local DontRelease = {}
 PRT.DontRelease = DontRelease
+PRT:RegisterModule("dontRelease", DontRelease)
 
 --------------------------------------------------------------------------------
 -- Default Settings
@@ -269,34 +270,6 @@ PRT:RegisterTab("Don't Release", function(parent)
         return PRT:GetSetting("dontRelease")
     end
 
-    local function GetProfile()
-        return PRT.Profiles:GetCurrent()
-    end
-
-    local function EnsureSettingsTable()
-        local profile = GetProfile()
-        if not profile.dontRelease then
-            profile.dontRelease = {}
-            for k, v in pairs(PRT.defaults.dontRelease) do
-                if type(v) == "table" then
-                    profile.dontRelease[k] = {}
-                    for k2, v2 in pairs(v) do
-                        if type(v2) == "table" then
-                            profile.dontRelease[k][k2] = {}
-                            for k3, v3 in pairs(v2) do
-                                profile.dontRelease[k][k2][k3] = v3
-                            end
-                        else
-                            profile.dontRelease[k][k2] = v2
-                        end
-                    end
-                else
-                    profile.dontRelease[k] = v
-                end
-            end
-        end
-        return profile.dontRelease
-    end
 
     -- General Section
     local generalHeader = PRT.Components.GetHeader(scrollChild, "General")
@@ -304,14 +277,14 @@ PRT:RegisterTab("Don't Release", function(parent)
     yOffset = yOffset - 28
 
     local enabledCheckbox = PRT.Components.GetCheckbox(scrollChild, "Enable Don't Release", function(value)
-        EnsureSettingsTable().enabled = value
+        GetSettings().enabled = value
     end)
     enabledCheckbox:SetPoint("TOPLEFT", 0, yOffset)
     enabledCheckbox:SetValue(GetSettings().enabled)
     yOffset = yOffset - ROW_HEIGHT
 
     local delaySlider = PRT.Components.GetSliderWithInput(scrollChild, "Release Delay (seconds)", 1, 10, 1, false, function(value)
-        EnsureSettingsTable().delay = value
+        GetSettings().delay = value
     end)
     delaySlider:SetPoint("TOPLEFT", 0, yOffset)
     delaySlider:SetValue(GetSettings().delay)
@@ -340,7 +313,7 @@ PRT:RegisterTab("Don't Release", function(parent)
 
     for i, info in ipairs(contentCheckboxes) do
         local checkbox = PRT.Components.GetCheckbox(scrollChild, info.label, function(value)
-            local settings = EnsureSettingsTable()
+            local settings = GetSettings()
             if #info.path == 2 then
                 settings[info.path[1]][info.path[2]] = value
             else
@@ -370,7 +343,7 @@ PRT:RegisterTab("Don't Release", function(parent)
 
     local randomizeCheckbox
     local requireModifierCheckbox = PRT.Components.GetCheckbox(scrollChild, "Require modifier key to release", function(value)
-        EnsureSettingsTable().requireModifier = value
+        GetSettings().requireModifier = value
         if randomizeCheckbox then
             if value then
                 randomizeCheckbox:SetAlpha(1)
@@ -386,7 +359,7 @@ PRT:RegisterTab("Don't Release", function(parent)
     yOffset = yOffset - ROW_HEIGHT
 
     randomizeCheckbox = PRT.Components.GetCheckbox(scrollChild, "Randomize modifier (Ctrl/Alt/Shift)", function(value)
-        EnsureSettingsTable().randomizeModifier = value
+        GetSettings().randomizeModifier = value
     end)
     randomizeCheckbox:SetPoint("TOPLEFT", 20, yOffset)
     randomizeCheckbox:SetValue(GetSettings().randomizeModifier)
@@ -618,15 +591,3 @@ StaticPopupDialogs["PRT_RENAME_PROFILE"] = {
     hideOnEscape = true,
 }
 
---------------------------------------------------------------------------------
--- Initialization
---------------------------------------------------------------------------------
-
-local initFrame = CreateFrame("Frame")
-initFrame:RegisterEvent("ADDON_LOADED")
-initFrame:SetScript("OnEvent", function(_, event, addonName)
-    if event == "ADDON_LOADED" and addonName == "PurplexityRaidTools" then
-        DontRelease:Initialize()
-        initFrame:UnregisterEvent("ADDON_LOADED")
-    end
-end)

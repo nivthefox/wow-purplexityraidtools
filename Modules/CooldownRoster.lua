@@ -2,6 +2,7 @@
 local PRT = PurplexityRaidTools
 local CooldownRoster = {}
 PRT.CooldownRoster = CooldownRoster
+PRT:RegisterModule("cooldownRoster", CooldownRoster)
 
 --------------------------------------------------------------------------------
 -- Default Settings
@@ -74,7 +75,6 @@ local inspectPending = nil  -- unit currently being inspected
 local inCombat = false
 local rosterCooldowns = {}  -- computed array of {spellId, name, category, playerName, playerClass}
 local inspectTicker = nil
-local eventFrame = nil
 
 -- Display frames
 local categoryFrames = {}   -- keyed by category name
@@ -93,33 +93,6 @@ local CATEGORY_INFO = {
 -- Helpers
 --------------------------------------------------------------------------------
 
-local function GetGroupUnitIterator()
-    if IsInRaid() then
-        local count = GetNumGroupMembers()
-        local i = 0
-        return function()
-            i = i + 1
-            if i <= count then
-                return "raid" .. i
-            end
-        end
-    elseif IsInGroup() then
-        local count = GetNumGroupMembers() - 1
-        local i = 0
-        local sentPlayer = false
-        return function()
-            i = i + 1
-            if i <= count then
-                return "party" .. i
-            elseif not sentPlayer then
-                sentPlayer = true
-                return "player"
-            end
-        end
-    else
-        return function() return nil end
-    end
-end
 
 local function GetPlayerSpecId()
     local specIndex = GetSpecialization()
@@ -202,7 +175,7 @@ function CooldownRoster:ScanRoster()
     local activeGUIDs = {}
     inspectQueue = {}
 
-    for unit in GetGroupUnitIterator() do
+    for unit in PRT:IterateGroup() do
         local guid = UnitGUID(unit)
         if guid then
             activeGUIDs[guid] = true
@@ -229,7 +202,7 @@ end
 function CooldownRoster:RebuildRoster()
     rosterCooldowns = {}
 
-    for unit in GetGroupUnitIterator() do
+    for unit in PRT:IterateGroup() do
         local guid = UnitGUID(unit)
         if guid then
             local _, classToken = UnitClass(unit)
@@ -532,30 +505,6 @@ PRT:RegisterTab("Cooldown Roster", function(parent)
         return PRT:GetSetting("cooldownRoster")
     end
 
-    local function EnsureSettingsTable()
-        local profile = PRT.Profiles:GetCurrent()
-        if not profile.cooldownRoster then
-            profile.cooldownRoster = {}
-            for k, v in pairs(PRT.defaults.cooldownRoster) do
-                if type(v) == "table" then
-                    profile.cooldownRoster[k] = {}
-                    for k2, v2 in pairs(v) do
-                        if type(v2) == "table" then
-                            profile.cooldownRoster[k][k2] = {}
-                            for k3, v3 in pairs(v2) do
-                                profile.cooldownRoster[k][k2][k3] = v3
-                            end
-                        else
-                            profile.cooldownRoster[k][k2] = v2
-                        end
-                    end
-                else
-                    profile.cooldownRoster[k] = v
-                end
-            end
-        end
-        return profile.cooldownRoster
-    end
 
     -- General Section
     local generalHeader = PRT.Components.GetHeader(scrollChild, "General")
@@ -563,7 +512,7 @@ PRT:RegisterTab("Cooldown Roster", function(parent)
     yOffset = yOffset - 28
 
     local enabledCheckbox = PRT.Components.GetCheckbox(scrollChild, "Enable Cooldown Roster", function(value)
-        EnsureSettingsTable().enabled = value
+        GetSettings().enabled = value
         PRT:ApplySettings("cooldownRoster")
     end)
     enabledCheckbox:SetPoint("TOPLEFT", 0, yOffset)
@@ -571,7 +520,7 @@ PRT:RegisterTab("Cooldown Roster", function(parent)
     yOffset = yOffset - ROW_HEIGHT
 
     local lockCheckbox = PRT.Components.GetCheckbox(scrollChild, "Lock frame positions", function(value)
-        EnsureSettingsTable().lockFrames = value
+        GetSettings().lockFrames = value
         CooldownRoster:UpdateDragging()
     end)
     lockCheckbox:SetPoint("TOPLEFT", 0, yOffset)
@@ -594,7 +543,7 @@ PRT:RegisterTab("Cooldown Roster", function(parent)
 
     for _, def in ipairs(catDefs) do
         local checkbox = PRT.Components.GetCheckbox(scrollChild, def.label, function(value)
-            local s = EnsureSettingsTable()
+            local s = GetSettings()
             if not s.categories then s.categories = {} end
             s.categories[def.key] = value
             PRT:ApplySettings("cooldownRoster")
@@ -627,7 +576,7 @@ PRT:RegisterTab("Cooldown Roster", function(parent)
 
     for i, info in ipairs(contentCheckboxes) do
         local checkbox = PRT.Components.GetCheckbox(scrollChild, info.label, function(value)
-            local settings = EnsureSettingsTable()
+            local settings = GetSettings()
             if #info.path == 2 then
                 settings[info.path[1]][info.path[2]] = value
             else
@@ -697,33 +646,34 @@ function CooldownRoster:Initialize()
         self:RestoreFramePosition(categoryKey)
         SetupDragging(categoryFrames[categoryKey], categoryKey)
     end
+end
 
-    -- Register events
-    eventFrame = CreateFrame("Frame")
-    eventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
-    eventFrame:RegisterEvent("INSPECT_READY")
-    eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
-    eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
-    eventFrame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
-    eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
-    eventFrame:SetScript("OnEvent", OnEvent)
+function CooldownRoster:IsActivatable()
+    return IsInGroup() or IsInRaid()
+end
 
-    -- Start the inspection ticker
+function CooldownRoster:OnEnable()
+    self.eventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
+    self.eventFrame:RegisterEvent("INSPECT_READY")
+    self.eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
+    self.eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
+    self.eventFrame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
+    self.eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
+    self.eventFrame:SetScript("OnEvent", OnEvent)
+
     StartInspectTicker()
 
-    -- Initial scan if already in a group
-    if IsInGroup() or IsInRaid() then
-        self:ScanRoster()
-        self:RebuildRoster()
-        self:UpdateVisibility()
+    self:ScanRoster()
+    self:RebuildRoster()
+    self:UpdateVisibility()
+end
+
+function CooldownRoster:OnDisable()
+    self.eventFrame:UnregisterAllEvents()
+    self.eventFrame:SetScript("OnEvent", nil)
+    StopInspectTicker()
+    for _, frame in pairs(categoryFrames) do
+        frame:Hide()
     end
 end
 
-local initFrame = CreateFrame("Frame")
-initFrame:RegisterEvent("ADDON_LOADED")
-initFrame:SetScript("OnEvent", function(_, event, addonName)
-    if event == "ADDON_LOADED" and addonName == "PurplexityRaidTools" then
-        CooldownRoster:Initialize()
-        initFrame:UnregisterEvent("ADDON_LOADED")
-    end
-end)

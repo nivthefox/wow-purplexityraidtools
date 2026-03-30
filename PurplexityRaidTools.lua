@@ -15,6 +15,17 @@ PRT.defaults = {
 -- Registry for apply callbacks (modules register here, config calls them)
 PRT.applyCallbacks = {}
 
+-- Module registry (ordered by TOC load order)
+PRT.modules = {}
+PRT.modulesByName = {}
+
+function PRT:RegisterModule(name, moduleTable)
+    moduleTable.eventFrame = CreateFrame("Frame")
+    moduleTable.active = false
+    table.insert(self.modules, { name = name, module = moduleTable })
+    self.modulesByName[name] = moduleTable
+end
+
 function PRT:RegisterApplyCallback(name, callback)
     self.applyCallbacks[name] = callback
 end
@@ -27,6 +38,55 @@ function PRT:ApplySettings(settingName)
         for _, callback in pairs(self.applyCallbacks) do
             callback()
         end
+    end
+    self:EvaluateAllModules()
+end
+
+--------------------------------------------------------------------------------
+-- Module Lifecycle
+--------------------------------------------------------------------------------
+
+function PRT:EvaluateModule(entry)
+    local name = entry.name
+    local module = entry.module
+
+    -- Modules without OnEnable/OnDisable are "always on" after Initialize
+    if not module.OnEnable and not module.OnDisable then
+        return
+    end
+
+    -- Check enabled setting
+    local enabled
+    if module.GetEnabledSetting then
+        enabled = module:GetEnabledSetting()
+    else
+        local settings = self:GetSetting(name)
+        enabled = settings and (settings.enabled ~= false)
+    end
+
+    -- Check activatable
+    local activatable = enabled
+    if activatable and module.IsActivatable then
+        activatable = module:IsActivatable()
+    end
+
+    -- Transition
+    if activatable and not module.active then
+        module.active = true
+        if module.OnEnable then
+            module:OnEnable()
+        end
+    elseif not activatable and module.active then
+        if module.OnDisable then
+            module:OnDisable()
+        end
+        module.active = false
+    end
+end
+
+function PRT:EvaluateAllModules()
+    for _, entry in ipairs(self.modules) do
+        self:EvaluateModule(entry)
     end
 end
 
@@ -44,6 +104,17 @@ local function DeepCopy(source)
         copy[k] = DeepCopy(v)
     end
     return copy
+end
+
+-- Deep merge defaults into target (missing keys are deep-copied; existing values win)
+local function DeepMerge(defaults, target)
+    for k, v in pairs(defaults) do
+        if target[k] == nil then
+            target[k] = DeepCopy(v)
+        elseif type(v) == "table" and type(target[k]) == "table" then
+            DeepMerge(v, target[k])
+        end
+    end
 end
 
 -- Get the current profile's data table
@@ -76,7 +147,7 @@ function PRT.Profiles:Switch(name)
     local db = PurplexityRaidToolsDB
     if not db.profiles or not db.profiles[name] then return false end
     db.currentProfile = name
-    PRT:ImportDefaultsToProfile()
+    PRT:MergeDefaults()
     PRT:ApplySettings()
     return true
 end
@@ -133,14 +204,10 @@ function PRT:GetSetting(key)
     return self.defaults[key]
 end
 
--- Import defaults into the current profile (non-destructive)
-function PRT:ImportDefaultsToProfile()
+-- Merge defaults into the current profile (recursive, non-destructive)
+function PRT:MergeDefaults()
     local profile = self.Profiles:GetCurrent()
-    for k, v in pairs(self.defaults) do
-        if profile[k] == nil then
-            profile[k] = DeepCopy(v)
-        end
-    end
+    DeepMerge(self.defaults, profile)
 end
 
 -- Initialize saved variables with profile structure
@@ -159,16 +226,30 @@ function PRT:InitializeDB()
     end
 
     -- Import defaults into current profile
-    self:ImportDefaultsToProfile()
+    self:MergeDefaults()
 end
 
--- Event frame for initialization
+-- Event frame for initialization and lifecycle
 local eventFrame = CreateFrame("Frame")
 eventFrame:RegisterEvent("ADDON_LOADED")
 eventFrame:SetScript("OnEvent", function(_, event, addonName)
     if event == "ADDON_LOADED" and addonName == "PurplexityRaidTools" then
         PRT:InitializeDB()
+        for _, entry in ipairs(PRT.modules) do
+            if entry.module.Initialize then
+                entry.module:Initialize()
+            end
+        end
+        -- Register lifecycle events
+        eventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
+        eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
+        eventFrame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
+        -- Initial module evaluation
+        PRT:EvaluateAllModules()
         eventFrame:UnregisterEvent("ADDON_LOADED")
+    elseif event == "GROUP_ROSTER_UPDATE" or event == "PLAYER_ENTERING_WORLD"
+        or event == "ZONE_CHANGED_NEW_AREA" then
+        PRT:EvaluateAllModules()
     end
 end)
 
@@ -244,6 +325,44 @@ function PRT.IsContentTypeEnabled(contentTypes)
     end
 
     return false
+end
+
+--------------------------------------------------------------------------------
+-- Group Iteration
+--------------------------------------------------------------------------------
+
+function PRT:IterateGroup()
+    if IsInRaid() then
+        local count = GetNumGroupMembers()
+        local i = 0
+        return function()
+            i = i + 1
+            if i <= count then
+                return "raid" .. i
+            end
+        end
+    elseif IsInGroup() then
+        local count = GetNumGroupMembers() - 1
+        local i = 0
+        local sentPlayer = false
+        return function()
+            i = i + 1
+            if i <= count then
+                return "party" .. i
+            elseif not sentPlayer then
+                sentPlayer = true
+                return "player"
+            end
+        end
+    else
+        local done = false
+        return function()
+            if not done then
+                done = true
+                return "player"
+            end
+        end
+    end
 end
 
 -- Slash command

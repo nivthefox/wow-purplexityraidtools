@@ -383,6 +383,7 @@ function CooldownRoster:UpdateDragging()
     for categoryKey, frame in pairs(categoryFrames) do
         SetupDragging(frame, categoryKey)
     end
+    self:UpdateVisibility()
 end
 
 function CooldownRoster:UpdateDisplay()
@@ -401,7 +402,8 @@ function CooldownRoster:UpdateDisplay()
             end
         end
 
-        if #entries == 0 or not self:ShouldDisplay() then
+        local unlocked = settings and not settings.lockFrames
+        if not unlocked and (#entries == 0 or not self:ShouldDisplay()) then
             frame:Hide()
         else
             -- Ensure we have enough bars
@@ -459,7 +461,10 @@ function CooldownRoster:ShouldDisplay()
 end
 
 function CooldownRoster:UpdateVisibility()
-    if not self:ShouldDisplay() then
+    local settings = PRT:GetSetting("cooldownRoster")
+    local unlocked = settings and not settings.lockFrames
+
+    if not unlocked and not self:ShouldDisplay() then
         for _, frame in pairs(categoryFrames) do
             frame:Hide()
         end

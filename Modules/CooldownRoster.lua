@@ -39,31 +39,31 @@ PRT.defaults.cooldownRoster = {
 
 local SPELL_DATA = {
     -- Defensive
-    { spellId = 740,    name = "Tranquility",             category = "defensive", class = "DRUID",        specId = 105  },
-    { spellId = 359816, name = "Dream Flight",            category = "defensive", class = "EVOKER",       specId = 1468 },
-    { spellId = 363534, name = "Rewind",                  category = "defensive", class = "EVOKER",       specId = 1468 },
-    { spellId = 108280, name = "Healing Tide Totem",      category = "defensive", class = "SHAMAN",       specId = 264  },
-    { spellId = 98008,  name = "Spirit Link Totem",       category = "defensive", class = "SHAMAN",       specId = 264  },
-    { spellId = 115310, name = "Revival / Restoral",      category = "defensive", class = "MONK",         specId = 270  },
-    { spellId = 31821,  name = "Aura Mastery",            category = "defensive", class = "PALADIN",      specId = 65   },
-    { spellId = 62618,  name = "PW:B / Luminous Barrier", category = "defensive", class = "PRIEST",       specId = 256  },
-    { spellId = 64843,  name = "Divine Hymn",             category = "defensive", class = "PRIEST",       specId = 257  },
-    { spellId = 97462,  name = "Rallying Cry",            category = "defensive", class = "WARRIOR",      specId = nil  },
-    { spellId = 51052,  name = "Anti-Magic Zone",         category = "defensive", class = "DEATHKNIGHT",  specId = nil  },
-    { spellId = 196718, name = "Darkness",                category = "defensive", class = "DEMONHUNTER",  specId = nil  },
+    { spellId = 740,    name = "Tranquility",             category = "defensive", class = "DRUID",        specId = 105,  talentId = 740    },
+    { spellId = 359816, name = "Dream Flight",            category = "defensive", class = "EVOKER",       specId = 1468, talentId = 359816 },
+    { spellId = 363534, name = "Rewind",                  category = "defensive", class = "EVOKER",       specId = 1468, talentId = 363534 },
+    { spellId = 108280, name = "Healing Tide Totem",      category = "defensive", class = "SHAMAN",       specId = 264,  talentId = 108280 },
+    { spellId = 98008,  name = "Spirit Link Totem",       category = "defensive", class = "SHAMAN",       specId = 264,  talentId = 98008  },
+    { spellId = 115310, name = "Revival / Restoral",      category = "defensive", class = "MONK",         specId = 270,  talentId = 115310 },
+    { spellId = 31821,  name = "Aura Mastery",            category = "defensive", class = "PALADIN",      specId = 65,   talentId = 31821  },
+    { spellId = 62618,  name = "PW:B / Luminous Barrier", category = "defensive", class = "PRIEST",       specId = 256,  talentId = 62618  },
+    { spellId = 64843,  name = "Divine Hymn",             category = "defensive", class = "PRIEST",       specId = 257,  talentId = 64843  },
+    { spellId = 97462,  name = "Rallying Cry",            category = "defensive", class = "WARRIOR",      specId = nil,  talentId = 97462  },
+    { spellId = 51052,  name = "Anti-Magic Zone",         category = "defensive", class = "DEATHKNIGHT",  specId = nil,  talentId = 51052  },
+    { spellId = 196718, name = "Darkness",                category = "defensive", class = "DEMONHUNTER",  specId = nil,  talentId = 196718 },
 
     -- External
-    { spellId = 357170, name = "Time Dilation",           category = "external",  class = "EVOKER",       specId = 1468 },
-    { spellId = 33206,  name = "Pain Suppression",        category = "external",  class = "PRIEST",       specId = 256  },
-    { spellId = 102342, name = "Ironbark",                category = "external",  class = "DRUID",        specId = 105  },
-    { spellId = 6940,   name = "Blessing of Sacrifice",   category = "external",  class = "PALADIN",      specId = nil  },
-    { spellId = 47788,  name = "Guardian Spirit",         category = "external",  class = "PRIEST",       specId = 257  },
-    { spellId = 53480,  name = "Roar of Sacrifice",      category = "external",  class = "HUNTER",       specId = nil  },
+    { spellId = 357170, name = "Time Dilation",           category = "external",  class = "EVOKER",       specId = 1468, talentId = 357170 },
+    { spellId = 33206,  name = "Pain Suppression",        category = "external",  class = "PRIEST",       specId = 256,  talentId = 33206  },
+    { spellId = 102342, name = "Ironbark",                category = "external",  class = "DRUID",        specId = 105,  talentId = 102342 },
+    { spellId = 6940,   name = "Blessing of Sacrifice",   category = "external",  class = "PALADIN",      specId = nil,  talentId = 6940   },
+    { spellId = 47788,  name = "Guardian Spirit",         category = "external",  class = "PRIEST",       specId = 257,  talentId = 47788  },
+    { spellId = 53480,  name = "Roar of Sacrifice",      category = "external",  class = "HUNTER",       specId = nil,  talentId = 53480  },
 
     -- Movement
-    { spellId = 106898, name = "Stampeding Roar",         category = "movement",  class = "DRUID",        specId = nil  },
-    { spellId = 192077, name = "Wind Rush Totem",         category = "movement",  class = "SHAMAN",       specId = nil  },
-    { spellId = 374968, name = "Time Spiral",             category = "movement",  class = "EVOKER",       specId = nil  },
+    { spellId = 106898, name = "Stampeding Roar",         category = "movement",  class = "DRUID",        specId = nil,  talentId = 106898 },
+    { spellId = 192077, name = "Wind Rush Totem",         category = "movement",  class = "SHAMAN",       specId = nil,  talentId = 192077 },
+    { spellId = 374968, name = "Time Spiral",             category = "movement",  class = "EVOKER",       specId = nil,  talentId = 374968 },
 }
 
 --------------------------------------------------------------------------------
@@ -71,8 +71,10 @@ local SPELL_DATA = {
 --------------------------------------------------------------------------------
 
 local specCache = {}        -- GUID -> specId
-local inspectQueue = {}     -- array of {unit, guid}
+local talentCache = {}      -- GUID -> table of active talent spell IDs (set: spellId -> true)
+local priorityQueue = {}    -- array of GUIDs needing immediate inspection (new joins)
 local inspectPending = nil  -- unit currently being inspected
+local rotationIndex = 0     -- current position in the round-robin rotation
 local inCombat = false
 local rosterCooldowns = {}  -- computed array of {spellId, name, category, playerName, playerClass}
 local inspectTicker = nil
@@ -108,27 +110,63 @@ end
 -- Inspection Queue
 --------------------------------------------------------------------------------
 
+--- Find the unit token for a GUID by scanning the current group.
+local function UnitForGUID(guid)
+    for unit in PRT:IterateGroup() do
+        if UnitGUID(unit) == guid then
+            return unit
+        end
+    end
+    return nil
+end
+
+--- Fire off an inspect request for the given unit and set a 2-second timeout.
+local function BeginInspect(unit)
+    inspectPending = unit
+    NotifyInspect(unit)
+    C_Timer.After(2, function()
+        if inspectPending == unit then
+            inspectPending = nil
+        end
+    end)
+end
+
+--- Build a snapshot of inspectable units (everyone except the player).
+local function GetRotationUnits()
+    local units = {}
+    for unit in PRT:IterateGroup() do
+        if not UnitIsUnit(unit, "player") then
+            table.insert(units, unit)
+        end
+    end
+    return units
+end
+
 local function ProcessNextInspect()
     if inCombat or inspectPending then
         return
     end
 
-    while #inspectQueue > 0 do
-        local entry = table.remove(inspectQueue, 1)
-        local unit, guid = entry.unit, entry.guid
-
-        -- Verify the unit still exists and matches the GUID we queued
-        if UnitExists(unit) and UnitGUID(unit) == guid and not specCache[guid] then
-            inspectPending = unit
-            NotifyInspect(unit)
-            -- Timeout: if INSPECT_READY doesn't fire in 2s, clear pending
-            C_Timer.After(2, function()
-                if inspectPending == unit then
-                    inspectPending = nil
-                end
-            end)
+    -- Priority queue: new joins with no cache entry go first.
+    while #priorityQueue > 0 do
+        local guid = table.remove(priorityQueue, 1)
+        local unit = UnitForGUID(guid)
+        if unit and not specCache[guid] then
+            BeginInspect(unit)
             return
         end
+    end
+
+    -- Background rotation: inspect the next person round-robin.
+    local units = GetRotationUnits()
+    if #units == 0 then
+        return
+    end
+
+    rotationIndex = rotationIndex % #units + 1
+    local unit = units[rotationIndex]
+    if UnitExists(unit) then
+        BeginInspect(unit)
     end
 end
 
@@ -146,26 +184,123 @@ local function StopInspectTicker()
     end
 end
 
-local function OnInspectReady(unit)
+--- Walk a trait config and return a set of active talent spell IDs
+--- (spellId -> true). Returns nil if the API data is unavailable.
+local function ReadTalentsFromConfig(configId)
+    local config = C_Traits.GetConfigInfo(configId)
+    if not config or not config.treeIDs then
+        return nil
+    end
+
+    local treeID = config.treeIDs[1]
+    if not treeID then
+        return nil
+    end
+
+    local nodes = C_Traits.GetTreeNodes(treeID)
+    if not nodes then
+        return nil
+    end
+
+    local talents = {}
+    for i = 1, #nodes do
+        local nodeID = nodes[i]
+        local node = C_Traits.GetNodeInfo(configId, nodeID)
+        if node and node.ID ~= 0 and node.activeEntry then
+            -- Skip hero talent subtree selection nodes.
+            if not (Enum.TraitNodeType and Enum.TraitNodeType.SubTreeSelection
+                    and node.type == Enum.TraitNodeType.SubTreeSelection) then
+                if node.currentRank and node.currentRank > 0
+                        and (not node.subTreeID or node.subTreeActive) then
+                    local entryID = node.activeEntry.entryID
+                    local entry = C_Traits.GetEntryInfo(configId, entryID)
+                    if entry and entry.definitionID then
+                        local defInfo = C_Traits.GetDefinitionInfo(entry.definitionID)
+                        if defInfo and defInfo.spellID then
+                            talents[defInfo.spellID] = true
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    return talents
+end
+
+--- Read the local player's active talents.
+local function ReadPlayerTalents()
+    if not C_ClassTalents or not C_ClassTalents.GetActiveConfigID then
+        return nil
+    end
+    local configId = C_ClassTalents.GetActiveConfigID()
+    if not configId then
+        return nil
+    end
+    return ReadTalentsFromConfig(configId)
+end
+
+--- Read the inspected player's active talents via C_Traits and return a set of
+--- spell IDs (spellId -> true). Returns nil if the API data is unavailable.
+local function ReadInspectTalents()
+    return ReadTalentsFromConfig(Constants.TraitConsts.INSPECT_TRAIT_CONFIG_ID)
+end
+
+local function OnInspectReady(eventGUID)
     if not inspectPending then
         return
     end
 
-    local guid = UnitGUID(inspectPending)
-    if not guid then
-        inspectPending = nil
+    -- Verify the event GUID matches the unit we actually requested. Another
+    -- addon may have triggered an inspect for a different target.
+    local pendingGUID = UnitGUID(inspectPending)
+    if not pendingGUID or eventGUID ~= pendingGUID then
         return
     end
 
     local specId = GetInspectSpecialization(inspectPending)
-    if specId and specId > 0 then
-        specCache[guid] = specId
-    end
-    -- If specId is 0 or nil, the player will get re-queued on next roster scan
-
+    local talents = ReadInspectTalents()
     inspectPending = nil
-    CooldownRoster:RebuildRoster()
-    CooldownRoster:UpdateDisplay()
+
+    local changed = false
+
+    if specId and specId > 0 then
+        if specCache[pendingGUID] ~= specId then
+            specCache[pendingGUID] = specId
+            changed = true
+        end
+    end
+
+    if talents then
+        local oldTalents = talentCache[pendingGUID]
+        -- Compare talent sets: rebuild if the new set differs from the cached one.
+        local talentsChanged = not oldTalents
+        if not talentsChanged then
+            for spellId in pairs(talents) do
+                if not oldTalents[spellId] then
+                    talentsChanged = true
+                    break
+                end
+            end
+        end
+        if not talentsChanged then
+            for spellId in pairs(oldTalents) do
+                if not talents[spellId] then
+                    talentsChanged = true
+                    break
+                end
+            end
+        end
+        if talentsChanged then
+            talentCache[pendingGUID] = talents
+            changed = true
+        end
+    end
+
+    if changed then
+        CooldownRoster:RebuildRoster()
+        CooldownRoster:UpdateDisplay()
+    end
 end
 
 --------------------------------------------------------------------------------
@@ -174,7 +309,6 @@ end
 
 function CooldownRoster:ScanRoster()
     local activeGUIDs = {}
-    inspectQueue = {}
 
     for unit in PRT:IterateGroup() do
         local guid = UnitGUID(unit)
@@ -186,8 +320,13 @@ function CooldownRoster:ScanRoster()
                 if specId then
                     specCache[guid] = specId
                 end
+                local talents = ReadPlayerTalents()
+                if talents then
+                    talentCache[guid] = talents
+                end
             elseif not specCache[guid] then
-                table.insert(inspectQueue, { unit = unit, guid = guid })
+                -- New join with no cache entry: push to priority queue.
+                table.insert(priorityQueue, guid)
             end
         end
     end
@@ -196,6 +335,11 @@ function CooldownRoster:ScanRoster()
     for guid in pairs(specCache) do
         if not activeGUIDs[guid] then
             specCache[guid] = nil
+        end
+    end
+    for guid in pairs(talentCache) do
+        if not activeGUIDs[guid] then
+            talentCache[guid] = nil
         end
     end
 end
@@ -210,16 +354,28 @@ function CooldownRoster:RebuildRoster()
             local playerName = UnitName(unit)
             local cachedSpec = specCache[guid]
 
+            local talents = talentCache[guid]
+
             for _, spell in ipairs(SPELL_DATA) do
                 if spell.class == classToken then
                     if spell.specId == nil or spell.specId == cachedSpec then
-                        table.insert(rosterCooldowns, {
-                            spellId = spell.spellId,
-                            name = spell.name,
-                            category = spell.category,
-                            playerName = playerName,
-                            playerClass = classToken,
-                        })
+                        -- When a spell has a talentId, check the player's cached
+                        -- talents. If talent data is unavailable, fall back to
+                        -- showing based on class + spec only.
+                        local show = true
+                        if spell.talentId and talents then
+                            show = talents[spell.talentId] or false
+                        end
+
+                        if show then
+                            table.insert(rosterCooldowns, {
+                                spellId = spell.spellId,
+                                name = spell.name,
+                                category = spell.category,
+                                playerName = playerName,
+                                playerClass = classToken,
+                            })
+                        end
                     end
                 end
             end
@@ -242,6 +398,7 @@ end
 
 local BAR_HEIGHT = 20
 local BAR_WIDTH = 200
+local MIN_BAR_WIDTH = 120
 local ICON_SIZE = 18
 local BAR_SPACING = 2
 local HEADER_HEIGHT = 20
@@ -249,7 +406,8 @@ local BACKDROP_PADDING = 4
 
 local function CreateBar(parent)
     local bar = CreateFrame("Frame", nil, parent)
-    bar:SetSize(BAR_WIDTH, BAR_HEIGHT)
+    local barWidth = parent:GetWidth() - BACKDROP_PADDING * 2
+    bar:SetSize(barWidth, BAR_HEIGHT)
 
     local icon = bar:CreateTexture(nil, "ARTWORK")
     icon:SetSize(ICON_SIZE, ICON_SIZE)
@@ -264,6 +422,7 @@ local function CreateBar(parent)
 
     local playerText = bar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     playerText:SetPoint("LEFT", spellText, "RIGHT", 4, 0)
+    playerText:SetPoint("RIGHT", bar, "RIGHT", -2, 0)
     playerText:SetJustifyH("LEFT")
     bar.playerText = playerText
 
@@ -305,23 +464,57 @@ local function CreateCategoryFrame(categoryKey)
     header:SetText(info.label)
     frame.header = header
 
+    -- Resize handle on the right edge
+    local resizeHandle = CreateFrame("Frame", nil, frame)
+    resizeHandle:SetWidth(6)
+    resizeHandle:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
+    resizeHandle:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
+    resizeHandle:EnableMouse(true)
+    resizeHandle:SetFrameLevel(frame:GetFrameLevel() + 1)
+
+    local handleTex = resizeHandle:CreateTexture(nil, "OVERLAY")
+    handleTex:SetAllPoints()
+    handleTex:SetColorTexture(1, 1, 1, 0.3)
+    resizeHandle.texture = handleTex
+
+    resizeHandle:SetScript("OnEnter", function(self)
+        self.texture:SetColorTexture(1, 1, 1, 0.6)
+    end)
+    resizeHandle:SetScript("OnLeave", function(self)
+        self.texture:SetColorTexture(1, 1, 1, 0.3)
+    end)
+
+    resizeHandle:Hide()
+    frame.resizeHandle = resizeHandle
+
     frame.bars = {}
     frame.categoryKey = categoryKey
 
     return frame
 end
 
+local function UpdateBarWidths(frame)
+    local barWidth = frame:GetWidth() - BACKDROP_PADDING * 2
+    for _, bar in ipairs(frame.bars) do
+        bar:SetWidth(barWidth)
+    end
+end
+
 local function SetupDragging(frame, categoryKey)
     local settings = PRT:GetSetting("cooldownRoster")
     local locked = settings and settings.lockFrames
+    local unlocked = not locked
 
-    frame:SetMovable(not locked)
-    frame:EnableMouse(not locked)
+    frame:SetMovable(unlocked)
+    frame:SetResizable(unlocked)
+    frame:EnableMouse(unlocked)
 
-    if locked then
-        frame:RegisterForDrag()
-    else
+    if unlocked then
         frame:RegisterForDrag("LeftButton")
+        frame.resizeHandle:Show()
+    else
+        frame:RegisterForDrag()
+        frame.resizeHandle:Hide()
     end
 
     frame:SetScript("OnDragStart", function(self)
@@ -332,6 +525,26 @@ local function SetupDragging(frame, categoryKey)
     frame:SetScript("OnDragStop", function(self)
         self:StopMovingOrSizing()
         CooldownRoster:SaveFramePosition(categoryKey)
+    end)
+
+    frame.resizeHandle:SetScript("OnMouseDown", function(_, button)
+        if button ~= "LeftButton" or not frame:IsResizable() then return end
+        frame:StartSizing("RIGHT")
+    end)
+
+    frame.resizeHandle:SetScript("OnMouseUp", function()
+        frame:StopMovingOrSizing()
+        UpdateBarWidths(frame)
+        CooldownRoster:SaveFramePosition(categoryKey)
+    end)
+
+    frame:SetScript("OnSizeChanged", function(self)
+        -- Clamp to minimum width
+        local minWidth = MIN_BAR_WIDTH + BACKDROP_PADDING * 2
+        if self:GetWidth() < minWidth then
+            self:SetWidth(minWidth)
+        end
+        UpdateBarWidths(self)
     end)
 end
 
@@ -347,11 +560,16 @@ function CooldownRoster:SaveFramePosition(categoryKey)
         profile.cooldownRoster.positions = {}
     end
 
-    local point, _, _, x, y = frame:GetPoint()
+    -- Normalize to TOPLEFT so frames always grow downward on resize
+    local scale = frame:GetEffectiveScale() / UIParent:GetEffectiveScale()
+    local x = frame:GetLeft() * scale
+    local y = (frame:GetTop() - UIParent:GetTop()) * scale
+
     profile.cooldownRoster.positions[categoryKey] = {
-        point = point,
+        point = "TOPLEFT",
         x = x,
         y = y,
+        width = frame:GetWidth() - BACKDROP_PADDING * 2,
     }
 end
 
@@ -366,16 +584,18 @@ function CooldownRoster:RestoreFramePosition(categoryKey)
 
     if positions and positions[categoryKey] then
         local pos = positions[categoryKey]
-        frame:SetPoint(pos.point or "CENTER", UIParent, pos.point or "CENTER", pos.x or 0, pos.y or 0)
+        frame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", pos.x or 0, pos.y or 0)
+        local savedWidth = pos.width or BAR_WIDTH
+        frame:SetWidth(savedWidth + BACKDROP_PADDING * 2)
     else
-        -- Default positions: stacked vertically on right side
+        -- Default positions: stacked vertically on right side, anchored TOPLEFT
         local defaults = {
-            defensive = { "RIGHT", -200, 100 },
-            external  = { "RIGHT", -200, 0 },
-            movement  = { "RIGHT", -200, -100 },
+            defensive = { -410, -200 },
+            external  = { -410, -350 },
+            movement  = { -410, -500 },
         }
         local def = defaults[categoryKey]
-        frame:SetPoint(def[1], UIParent, def[1], def[2], def[3])
+        frame:SetPoint("TOPLEFT", UIParent, "TOPRIGHT", def[1], def[2])
     end
 end
 
@@ -435,9 +655,10 @@ function CooldownRoster:UpdateDisplay()
                 frame.bars[i]:Hide()
             end
 
-            -- Resize frame to fit content
+            -- Resize frame height to fit content, preserving current width
             local contentHeight = HEADER_HEIGHT + #entries * (BAR_HEIGHT + BAR_SPACING) + BACKDROP_PADDING * 2
-            frame:SetSize(BAR_WIDTH + BACKDROP_PADDING * 2, contentHeight)
+            frame:SetHeight(contentHeight)
+            UpdateBarWidths(frame)
             frame:Show()
         end
     end

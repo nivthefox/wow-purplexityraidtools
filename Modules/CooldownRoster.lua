@@ -39,12 +39,12 @@ PRT.defaults.cooldownRoster = {
 
 local SPELL_DATA = {
     -- Defensive
-    { spellId = 740,    name = "Tranquility",             category = "defensive", class = "DRUID",        specId = 105,  talentId = 740    },
+    { spellId = 740,    name = "Tranquility",             category = "defensive", class = "DRUID",        specId = 105  },
     { spellId = 359816, name = "Dream Flight",            category = "defensive", class = "EVOKER",       specId = 1468, talentId = 359816 },
     { spellId = 363534, name = "Rewind",                  category = "defensive", class = "EVOKER",       specId = 1468, talentId = 363534 },
-    { spellId = 108280, name = "Healing Tide Totem",      category = "defensive", class = "SHAMAN",       specId = 264,  talentId = 108280 },
+    { spellId = 108280, name = "Healing Tide Totem",      category = "defensive", class = "SHAMAN",       specId = 264  },
     { spellId = 98008,  name = "Spirit Link Totem",       category = "defensive", class = "SHAMAN",       specId = 264,  talentId = 98008  },
-    { spellId = 115310, name = "Revival / Restoral",      category = "defensive", class = "MONK",         specId = 270,  talentId = 115310 },
+    { spellId = 115310, name = "Revival / Restoral",      category = "defensive", class = "MONK",         specId = 270  },
     { spellId = 31821,  name = "Aura Mastery",            category = "defensive", class = "PALADIN",      specId = 65,   talentId = 31821  },
     { spellId = 62618,  name = "PW:B / Luminous Barrier", category = "defensive", class = "PRIEST",       specId = 256,  talentId = 62618  },
     { spellId = 64843,  name = "Divine Hymn",             category = "defensive", class = "PRIEST",       specId = 257,  talentId = 64843  },
@@ -55,7 +55,7 @@ local SPELL_DATA = {
     -- External
     { spellId = 357170, name = "Time Dilation",           category = "external",  class = "EVOKER",       specId = 1468, talentId = 357170 },
     { spellId = 33206,  name = "Pain Suppression",        category = "external",  class = "PRIEST",       specId = 256,  talentId = 33206  },
-    { spellId = 102342, name = "Ironbark",                category = "external",  class = "DRUID",        specId = 105,  talentId = 102342 },
+    { spellId = 102342, name = "Ironbark",                category = "external",  class = "DRUID",        specId = 105  },
     { spellId = 6940,   name = "Blessing of Sacrifice",   category = "external",  class = "PALADIN",      specId = nil,  talentId = 6940   },
     { spellId = 47788,  name = "Guardian Spirit",         category = "external",  class = "PRIEST",       specId = 257,  talentId = 47788  },
     { spellId = 53480,  name = "Roar of Sacrifice",      category = "external",  class = "HUNTER",       specId = nil,  talentId = 53480  },

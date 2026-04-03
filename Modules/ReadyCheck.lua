@@ -96,6 +96,7 @@ local RAID_BUFFS = {
 }
 
 local SOULSTONE_SPELL_ID = 20707
+local SOULSTONE_BUFF_NAME = "Soulstone"
 local SOULSTONE_MESSAGES = {
     "Why have you not soulstoned a healer? What am I even paying you for?",
     "Soulstone a healer. It's the closest you'll get to being useful after you die.",
@@ -179,29 +180,22 @@ local function GetHealers()
     return healers
 end
 
-local function HasBuff(unit, spellId)
-    local found = false
-    AuraUtil.ForEachAura(unit, "HELPFUL", nil, function(auraData)
-        if auraData.spellId == spellId then
-            found = true
-            return true -- stop iteration
-        end
-    end, true) -- usePackedAura = true
-    return found
+local function HasBuff(unit, buffName)
+    return C_UnitAuras.GetAuraDataBySpellName(unit, buffName, "HELPFUL") ~= nil
 end
 
-local function AnyoneHasBuff(members, spellId)
+local function AnyoneHasBuff(members, buffName)
     for _, member in ipairs(members) do
-        if HasBuff(member.unit, spellId) then
+        if HasBuff(member.unit, buffName) then
             return true
         end
     end
     return false
 end
 
-local function EveryoneHasBuff(members, spellId)
+local function EveryoneHasBuff(members, buffName)
     for _, member in ipairs(members) do
-        if not HasBuff(member.unit, spellId) then
+        if not HasBuff(member.unit, buffName) then
             return false
         end
     end
@@ -254,6 +248,11 @@ function ReadyCheck:OnReadyCheck()
         return
     end
 
+    -- If auras are hidden (e.g. Plunderstorm), skip buff checks entirely to avoid false positives
+    if C_Secrets and C_Secrets.ShouldAurasBeSecret and C_Secrets.ShouldAurasBeSecret() then
+        return
+    end
+
     -- Check raid buffs
     local totalRaid = #allMembers + #skippedMembers
     for _, buff in ipairs(RAID_BUFFS) do
@@ -262,7 +261,7 @@ function ReadyCheck:OnReadyCheck()
             if #providers > 0 then
                 local missing = {}
                 for _, member in ipairs(allMembers) do
-                    if not HasBuff(member.unit, buff.spellId) then
+                    if not HasBuff(member.unit, buff.name) then
                         table.insert(missing, member.name)
                     end
                 end
@@ -288,7 +287,7 @@ function ReadyCheck:OnReadyCheck()
         local warlocks = GetPlayersByClass("WARLOCK")
         if #warlocks > 0 then
             local healers = GetHealers()
-            if #healers > 0 and not AnyoneHasBuff(healers, SOULSTONE_SPELL_ID) then
+            if #healers > 0 and not AnyoneHasBuff(healers, SOULSTONE_BUFF_NAME) then
                 local messages = snarky and SOULSTONE_MESSAGES
                     or { "It looks like no healer has a Soulstone. Please cast it on one, just in case." }
                 NotifyPlayers(warlocks, messages)

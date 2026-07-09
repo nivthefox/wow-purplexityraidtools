@@ -416,7 +416,6 @@ local function CreateBar(parent)
 
     local spellText = bar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     spellText:SetPoint("LEFT", icon, "RIGHT", 4, 0)
-    spellText:SetWidth(90)
     spellText:SetJustifyH("LEFT")
     bar.spellText = spellText
 
@@ -495,8 +494,11 @@ end
 
 local function UpdateBarWidths(frame)
     local barWidth = frame:GetWidth() - BACKDROP_PADDING * 2
+    local textAreaWidth = barWidth - ICON_SIZE - 10
+    local spellTextWidth = math.floor(textAreaWidth * 0.45)
     for _, bar in ipairs(frame.bars) do
         bar:SetWidth(barWidth)
+        bar.spellText:SetWidth(spellTextWidth)
     end
 end
 
@@ -507,6 +509,7 @@ local function SetupDragging(frame, categoryKey)
 
     frame:SetMovable(unlocked)
     frame:SetResizable(unlocked)
+    frame:SetResizeBounds(MIN_BAR_WIDTH + BACKDROP_PADDING * 2, BAR_HEIGHT + BACKDROP_PADDING * 2)
     frame:EnableMouse(unlocked)
 
     if unlocked then

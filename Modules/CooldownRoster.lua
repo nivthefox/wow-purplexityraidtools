@@ -495,7 +495,7 @@ end
 local function UpdateBarWidths(frame)
     local barWidth = frame:GetWidth() - BACKDROP_PADDING * 2
     local textAreaWidth = barWidth - ICON_SIZE - 10
-    local spellTextWidth = math.floor(textAreaWidth * 0.45)
+    local spellTextWidth = math.floor(textAreaWidth * 0.65)
     for _, bar in ipairs(frame.bars) do
         bar:SetWidth(barWidth)
         bar.spellText:SetWidth(spellTextWidth)

@@ -4,18 +4,23 @@ All notable changes to PurplexityRaidTools will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [1.0.0-alpha-3] - 2026-07-18
 
 ### Added
 
 - **Notes** module for timed boss note reminders:
-  - Paste an NSRT-style note (one encounter per note) and PRT parses it into a live assignment sheet.
+  - Paste an NSRT-style note (one encounter per note) into the note editor and PRT parses it into a live assignment sheet.
+  - Notes are managed as a named list with New/Edit/Delete; invalid notes are rejected at save with a clear error.
   - Static note frame with per-reminder countdowns, class-colored names, raid-target icons, and configurable fonts, colors, and hide behavior.
   - Timed popups in four styles (Icon, Bar, Text, Circle) with individually movable anchors, stacking, and scale.
   - Audio alerts, TTS callouts, and spoken countdowns per reminder.
   - Reminders filter to your role, spec, class, group, or name via note tags.
   - Phase-aware timing that tracks BigWigs and DBM stage callbacks.
-  - Raid leaders and assistants can broadcast the active note to the raid or clear it with one click; sending is blocked during combat.
+  - Send broadcasts the selected note to the raid and activates it for everyone (raid leader or assistant only); Clear deactivates it raid-wide. Solo, Send activates the note for yourself for validation. Sending is blocked during combat.
+
+### Changed
+
+- Config window widened from 500px to 750px to fit the growing tab row.
 
 ## [1.0.0-alpha-2] - 2026-04-03
 

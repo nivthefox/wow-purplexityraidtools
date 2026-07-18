@@ -3,7 +3,7 @@
 
 local PRT = PurplexityRaidTools
 
-local FRAME_WIDTH = 500
+local FRAME_WIDTH = 750
 local FRAME_HEIGHT = 675
 local ROW_HEIGHT = 32
 local SECTION_SPACING = 20

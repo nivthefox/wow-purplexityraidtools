@@ -5,9 +5,25 @@
 ## Version: 1.0.0-alpha-2
 ## SavedVariables: PurplexityRaidToolsDB
 
+Libs/LibStub/LibStub.lua
+Libs/CallbackHandler-1.0/CallbackHandler-1.0.lua
+Libs/AceComm-3.0/ChatThrottleLib.lua
+Libs/AceComm-3.0/AceComm-3.0.lua
+Libs/LibSerialize/LibSerialize.lua
+Libs/LibDeflate/LibDeflate.lua
+Libs/LibSharedMedia-3.0/LibSharedMedia-3.0.lua
+
 PurplexityRaidTools.lua
 ConfigFrame.lua
+Comms.lua
 Modules/DontRelease.lua
 Modules/ReadyCheck.lua
 Modules/AutoInvite.lua
 Modules/CooldownRoster.lua
+Modules/Notes/NotesParser.lua
+Modules/Notes/NotesTags.lua
+Modules/Notes/NotesTimer.lua
+Modules/Notes/NotesFrame.lua
+Modules/Notes/NotesPopups.lua
+Modules/Notes/Notes.lua
+Modules/Notes/NotesConfig.lua

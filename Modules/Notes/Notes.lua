@@ -157,6 +157,7 @@ local encounterPhase = 1
 local phaseStart = nil
 local bossModHooked = false
 local warnedNoBossMod = false
+local testRunning = false
 
 -- difficultyID -> capitalized note-vocabulary difficulty string. The lowercase
 -- content-type strings from GetCurrentContentType must NEVER be used here.
@@ -346,6 +347,10 @@ local function OnEncounterStart(encounterID, difficultyID)
         return
     end
 
+    if testRunning then
+        Notes:TestStop()
+    end
+
     if not (type(BigWigsLoader) == "table" or type(DBM) == "table") then
         if not warnedNoBossMod then
             warnedNoBossMod = true
@@ -377,6 +382,76 @@ local function OnEncounterEnd()
     local settings = PRT:GetSetting("notes")
     local hideMode = settings and settings.display and settings.display.hideMode
     PRT.NotesFrame:OnEncounterEnd(hideMode)
+end
+
+--------------------------------------------------------------------------------
+-- Test mode
+--
+-- Starts the active note's timer without an encounter event, bypassing
+-- encounterID matching and content-type gates. The note frame shows, popups
+-- fire, and the ticker runs exactly as in a real encounter. TestStop tears
+-- everything down.
+--------------------------------------------------------------------------------
+
+function Notes:TestStart()
+    if testRunning then
+        return false
+    end
+    if not activeNote then
+        return false
+    end
+
+    testRunning = true
+    encounterPhase = 1
+    phaseStart = GetTime()
+
+    PRT.NotesTags.MarkRelevance(activeNote, BuildPlayerCtx())
+    PRT.NotesFrame:SetNote(activeNote)
+    PRT.NotesFrame:Show()
+    PRT.NotesTimer:Start(activeNote, timerCallbacks, phaseStart)
+
+    local maxTime = 0
+    for _, bucket in pairs(activeNote.reminders) do
+        for _, reminder in ipairs(bucket) do
+            if reminder.time > maxTime then
+                maxTime = reminder.time
+            end
+        end
+    end
+
+    StopTicker()
+    local self_ = self
+    ticker = C_Timer.NewTicker(1, function()
+        local now = GetTime()
+        PRT.NotesTimer:Tick(now)
+        PRT.NotesFrame:TickUpdate(now, phaseStart, encounterPhase)
+
+        if now - phaseStart >= maxTime then
+            self_:TestStop()
+        end
+    end)
+
+    return true
+end
+
+function Notes:TestStop()
+    if not testRunning then
+        return
+    end
+    testRunning = false
+
+    StopTicker()
+    PRT.NotesTimer:Stop()
+    PRT.NotesPopups:DismissAll()
+    PRT.NotesFrame:OnEncounterEnd("Immediately")
+
+    if self.onTestStopped then
+        self.onTestStopped()
+    end
+end
+
+function Notes:IsTestRunning()
+    return testRunning
 end
 
 --------------------------------------------------------------------------------
@@ -543,6 +618,7 @@ function Notes:OnDisable()
     self.eventFrame:UnregisterAllEvents()
     self.eventFrame:SetScript("OnEvent", nil)
 
+    testRunning = false
     StopTicker()
     PRT.NotesTimer:Stop()
     PRT.NotesPopups:DismissAll()

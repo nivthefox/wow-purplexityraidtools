@@ -575,12 +575,44 @@ end
 --------------------------------------------------------------------------------
 
 local LSM
+local lsmSoundCache
 
 local function GetLSM()
     if LSM == nil then
         LSM = LibStub and LibStub("LibSharedMedia-3.0", true) or false
     end
     return LSM or nil
+end
+
+local function BuildSoundCache(lsm)
+    lsmSoundCache = {}
+    for _, key in ipairs(lsm:List("sound")) do
+        local clean = key:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):match("^[%s|]*(.-)[%s|]*$")
+        lsmSoundCache[clean:lower()] = key
+    end
+end
+
+local function ResolveLSMSound(name)
+    local lsm = GetLSM()
+    if not lsm then return nil end
+
+    local path = lsm:Fetch("sound", name, true)
+    if path and path ~= 1 and path ~= "" then
+        return path
+    end
+
+    if not lsmSoundCache then
+        BuildSoundCache(lsm)
+    end
+    local lsmKey = lsmSoundCache[name:lower()]
+    if lsmKey then
+        path = lsm:Fetch("sound", lsmKey, true)
+        if path and path ~= 1 and path ~= "" then
+            return path
+        end
+    end
+
+    return nil
 end
 
 function NotesPopups:PlayAudio(reminder)
@@ -590,22 +622,16 @@ function NotesPopups:PlayAudio(reminder)
     if reminder.sound and reminder.sound ~= "" then
         local soundsOn = not p or p.soundsEnabled ~= false
         if soundsOn then
-            local lsm = GetLSM()
-            if lsm then
-                local path = lsm:Fetch("sound", reminder.sound, true)
-                if path and path ~= 1 and path ~= "" then
-                    if PlaySoundFile(path, "Master") then
-                        return
-                    end
+            local path = ResolveLSMSound(reminder.sound)
+            if path then
+                if PlaySoundFile(path, "Master") then
+                    return
                 end
             end
-            -- Fall back to treating the value as a direct file path. If that also
-            -- fails, fall through to TTS below.
             if PlaySoundFile(reminder.sound, "Master") then
                 return
             end
         else
-            -- Sounds disabled but a sound was requested: do not speak it as TTS.
             return
         end
     end
@@ -631,31 +657,16 @@ function NotesPopups:PlayAudio(reminder)
             local voices = C_VoiceChat.GetTtsVoices()
             if voices and voices[1] then voiceID = voices[1].voiceID end
         end
-        C_VoiceChat.SpeakText(
-            voiceID,
-            spoken,
-            Enum.VoiceTtsDestination and Enum.VoiceTtsDestination.LocalPlayback or 1,
-            0, 100
-        )
+        C_VoiceChat.SpeakText(voiceID, spoken, 0, 100)
     end
 end
 
 -- Fires even when the Enable TTS toggle is off; countdowns are independent of it.
+local COUNTDOWN_SOUND = "Interface\\AddOns\\BigWigs\\Media\\Sounds\\Amy\\%d.ogg"
+
 function NotesPopups:AnnounceCountdown(n)
-    if not n then return end
-    if C_VoiceChat and C_VoiceChat.SpeakText then
-        local voiceID = 0
-        if C_VoiceChat.GetTtsVoices then
-            local voices = C_VoiceChat.GetTtsVoices()
-            if voices and voices[1] then voiceID = voices[1].voiceID end
-        end
-        C_VoiceChat.SpeakText(
-            voiceID,
-            tostring(n),
-            Enum.VoiceTtsDestination and Enum.VoiceTtsDestination.LocalPlayback or 1,
-            0, 100
-        )
-    end
+    if not n or n < 1 or n > 10 then return end
+    PlaySoundFile(COUNTDOWN_SOUND:format(n), "Master")
 end
 
 --------------------------------------------------------------------------------

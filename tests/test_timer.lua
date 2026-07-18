@@ -315,9 +315,9 @@ tests["countdown with decimal event time announces at correct crossings"] = func
     local rec = makeRecorder()
     NotesTimer:Start(makeSection({ r }), rec.callbacks, 0)
 
-    NotesTimer:Tick(87.5)  -- remaining 3.0: 3 not < 3, nothing
-    assertEquals(#rec.countdown, 0)
-    NotesTimer:Tick(88)    -- remaining 2.5: crosses 3
+    NotesTimer:Tick(87.5)  -- remaining 3.0: announces 3
+    assertEquals(#rec.countdown, 1)
+    NotesTimer:Tick(88)    -- remaining 2.5: between 3 and 2, nothing new
     NotesTimer:Tick(89)    -- remaining 1.5: crosses 2
     NotesTimer:Tick(90)    -- remaining 0.5: crosses 1
     assertTableEquals(countdownNumbers(rec), { 3, 2, 1 })

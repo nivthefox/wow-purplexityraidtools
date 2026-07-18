@@ -27,3 +27,4 @@ Modules/Notes/NotesFrame.lua
 Modules/Notes/NotesPopups.lua
 Modules/Notes/Notes.lua
 Modules/Notes/NotesConfig.lua
+Modules/Profiles.lua

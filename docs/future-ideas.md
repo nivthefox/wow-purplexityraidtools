@@ -2,14 +2,6 @@
 
 Ideas explicitly deferred out of shipped specs. Nothing here is committed work.
 
-## Lean Release Zips (noted 2026-07-18)
-
-The release workflow zips the entire checkout, so `tests/` and `docs/` ship in
-the release asset. Add exclusions to the `zip` step in
-`.github/workflows/release.yml` (alongside the existing `.git`/`.github` ones)
-so release zips carry only runtime files: the `.toc`, root Lua, `Libs/`,
-`Modules/`, and `CHANGELOG.md`.
-
 ## Note Annotations (deferred from Notes v1, 2026-07-17)
 
 Allow a user to annotate a line in the active note with their own additional

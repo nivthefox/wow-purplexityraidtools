@@ -4,6 +4,26 @@ All notable changes to PurplexityRaidTools will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+
+- **Test Note** button in the Notes config tab that runs the active note's full timer without requiring a boss encounter, for validating notes on combat dummies or anywhere else.
+  - Toggle button (Test Note / Stop Test) centered alongside the existing Test Popups button.
+  - Auto-stops after the last reminder in the note fires.
+  - A real encounter starting will supersede a running test.
+
+### Changed
+
+- Countdown audio now uses BigWigs Amy voice pack sound files instead of WoW's TTS engine.
+- Notes frame countdown display uses ceiling instead of floor, so the displayed time stays in sync with popup timers and countdown audio.
+- Sound resolution now matches NSRT behavior with case-insensitive LibSharedMedia lookups and color-code stripping.
+
+### Fixed
+
+- Countdown audio timing synced with visual display: sound N now fires when remaining time reaches N seconds, not one second late.
+- TTS callouts (`tts:` field) now actually speak instead of producing silent clicks, caused by the `C_VoiceChat.SpeakText` API signature change in Patch 12.0.0 that removed the destination parameter.
+
 ## [1.0.0-alpha-3] - 2026-07-18
 
 ### Added

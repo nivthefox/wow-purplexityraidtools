@@ -2,12 +2,6 @@
 
 Ideas explicitly deferred out of shipped specs. Nothing here is committed work.
 
-## Profiles Tab (noted 2026-07-18)
-
-Profiles should be their own tab in the config window instead of their current
-home (the header dropdown). Gives profile management real estate: create,
-copy, delete, rename, and per-character assignment in one place.
-
 ## Lean Release Zips (noted 2026-07-18)
 
 The release workflow zips the entire checkout, so `tests/` and `docs/` ship in

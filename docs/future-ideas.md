@@ -28,6 +28,10 @@ Open design questions to resolve before speccing:
 - **Scope.** Per-note or per-encounter-per-note? Do annotations survive note
   deletion/rename?
 
+Noted use case (2026-07-17): annotations are the intended lever for *silencing*
+line-level audio too—e.g. suppress a `countdown:` on a specific line. Notes v1
+deliberately has no global countdown-mute; this is the plan for that gap.
+
 ## Shared Nicknames (deferred from Notes v1, 2026-07-17)
 
 A **leader-owned, shared** nickname list: the raid leader maintains a
@@ -64,3 +68,44 @@ Open design questions to resolve before speccing:
   the winner—the RL's language, the player's identity.
 - **NSRT note interop.** Notes authored with NSRT nicknames should still tag
   correctly if the RL's shared list defines the same nicknames.
+
+## Per-Type Popup Scale (deferred from Notes v1, 2026-07-18)
+
+Each popup display type (Icon, Bar, Text, Circle) gets its own scale instead of
+the single shared `popups.scale`. Surfaced during in-game testing: the four
+types have very different footprints, so one global multiplier can't make a
+big Bar and a small Icon both sit right.
+
+Open design questions to resolve before speccing:
+
+- **Settings shape.** `popups.scale` becomes `popups.scalesByType = {Icon=1,
+  ...}`? Migration for existing profiles that carry the single value.
+- **UI.** Four sliders in the popup section, or a per-mover drag handle /
+  scroll-to-scale while unlocked (less config clutter, more discoverable).
+- **Global multiplier.** Keep the global scale as a master on top of the
+  per-type values, or replace it outright.
+
+## Auto-Load Note on Encounter Start (deferred from Notes v1, 2026-07-17)
+
+When an encounter starts and a saved (but not active) note matches its
+EncounterID and difficulty, automatically activate that note. Today the raid
+leader selects the note manually or broadcasts it; auto-load closes the "we
+pulled and I forgot to switch notes" gap.
+
+Notes v1's spec §1 explicitly declares "PRT never picks a note by detecting the
+boss." If this ships, that statement (and §3.2 Activate) gets revised.
+
+Open design questions to resolve before speccing:
+
+- **Conflict resolution.** Multiple saved notes match the same encounter ID and
+  difficulty (e.g. "Sszorak week 1" and "Sszorak week 2")—which wins? Most
+  recently saved? Most recently active? Refuse and stay on the current note?
+- **Broadcast priority.** A broadcast-received note should presumably beat
+  auto-load; the RL's explicit push is authoritative over local guessing.
+- **Timing.** ENCOUNTER_START is late—the note frame would pop mid-pull-in.
+  Is that acceptable, or should matching happen earlier (target-of-boss,
+  zone/journal detection)? Earlier is fuzzier; later is jarring.
+- **Opt-in.** A setting, or always-on? Auto-switching the active note is
+  surprising behavior for a raider who curated their selection.
+- **Deactivation.** Does the auto-loaded note stay active after the encounter,
+  or revert to the previously active note?

@@ -247,7 +247,8 @@
 <ul>
   <li>An in-game note <em>editor</em>. Notes are authored externally and pasted in.</li>
   <li>A personal note system. All notes are shared raid-wide; there is no per-player note slot.</li>
-  <li>An auto-load system. The raid leader manually selects which note is active.</li>
+  <li>An auto-selection system. PRT never picks a note by detecting the boss; the active note
+      is set by the raid leader—manually or via broadcast.</li>
 </ul>
 
 <div class="mermaid">
@@ -279,9 +280,13 @@ flowchart TD
 
 <h3>2.1 Metadata Line</h3>
 <p>
-  The first line of a note (or any line containing <code>EncounterID:</code>) establishes
-  context for the timed lines that follow it. A single note string may contain multiple
-  metadata lines, each starting a new encounter section.
+  The line containing <code>EncounterID:</code> establishes the encounter context for the
+  note's timed lines. <strong>A note contains exactly one metadata line</strong>—a note is
+  one encounter's plan. A note containing more than one line with <code>EncounterID:</code>
+  is <strong>invalid</strong>: it is rejected and not saved—with an error message on save,
+  silently on broadcast receive (see <a href="#storage">Note Storage &amp; Selection</a>).
+  A note with <em>no</em> metadata line is valid but inert—its lines are all freeform and it
+  never applies to any encounter.
 </p>
 
 <pre>EncounterID:3176;Name:Sszorak - Mythic;Difficulty:Mythic</pre>
@@ -290,14 +295,15 @@ flowchart TD
   <tr><th>Field</th><th>Required</th><th>Description</th></tr>
   <tr><td><code>EncounterID</code></td><td>Yes</td><td>WoW encounter ID (integer). Used to match the note to a live encounter.</td></tr>
   <tr><td><code>Name</code></td><td>No</td><td>Human-readable encounter name. For display only.</td></tr>
-  <tr><td><code>Difficulty</code></td><td>No</td><td>"Normal", "Heroic", or "Mythic". When present, the section's reminders only activate on that difficulty; when absent, the section matches any difficulty. One note may hold separate Heroic and Mythic sections for the same boss.</td></tr>
+  <tr><td><code>Difficulty</code></td><td>No</td><td>"Normal", "Heroic", or "Mythic". When present, the note's reminders only activate on that difficulty; when absent, the note matches any difficulty. Separate Heroic and Mythic plans for the same boss are separate notes.</td></tr>
 </table>
 
 <h3>2.2 Timed Reminder Line</h3>
 <p>
   A line is recognized as a timed reminder when it contains <strong>all three</strong> of:
   <code>time:</code>, <code>tag:</code>, and at least one of <code>text:</code> or <code>spellid:</code>.
-  It must also fall under a metadata line that established an <code>EncounterID</code>.
+  It must also appear after the note's metadata line; a timed line before the metadata line
+  is treated as freeform text.
 </p>
 
 <pre>time:30;tag:Playername1 Playername2;spellid:98008;text:Use Spirit Link;ph:1;dur:8;DisplayType:Icon</pre>
@@ -410,8 +416,13 @@ time:3;tag:everyone;text:Soak Orbs;ph:2.5;dur:5;DisplayType:Text</pre>
 <h3>3.2 Behaviors</h3>
 
 <ul>
-  <li><strong>Save:</strong> When a user pastes text and provides a name, the note is saved under that name.
-      If a note with that name already exists, it is overwritten (with a confirmation prompt).</li>
+  <li><strong>Save:</strong> When a user pastes text and provides a name, the note is validated and
+      saved under that name. If a note with that name already exists, it is overwritten (with a
+      confirmation prompt).</li>
+  <li><strong>Validation:</strong> A note containing more than one metadata line (more than one line
+      with <code>EncounterID:</code>) is invalid. Saving is rejected: the note is not stored, the
+      previous content (if any) is untouched, and the user sees the error
+      "A note may only contain one encounter. Use a separate note per encounter."</li>
   <li><strong>Delete:</strong> A named note can be deleted. If the deleted note was active, <code>activeNote</code> becomes nil.</li>
   <li><strong>Rename:</strong> A named note can be renamed. If it was the active note, <code>activeNote</code> updates to match.</li>
   <li><strong>Activate:</strong> Selecting a note from the dropdown sets it as <code>activeNote</code>
@@ -419,7 +430,13 @@ time:3;tag:everyone;text:Soak Orbs;ph:2.5;dur:5;DisplayType:Text</pre>
   <li><strong>Receive:</strong> When a note is received via broadcast, it is stored as a named note
       (using the note name from the broadcast payload, or "Received Note" as fallback) and automatically activated.
       If a stored note already has that name, the received note overwrites it silently—no confirmation prompt.
-      The broadcaster's copy is authoritative.</li>
+      The broadcaster's copy is authoritative. A received note that fails validation (multiple metadata
+      lines) is rejected <em>silently</em>: not stored, not activated, no message. PRT itself refuses to
+      save such a note, so a valid PRT sender can never broadcast one; this case only arises from
+      hand-crafted or out-of-version payloads. On successful receive, the static note frame
+      is <strong>shown immediately</strong>—equivalent to pressing the Show/Hide button—so the
+      raid sees the plan the moment it arrives. The receiver can press Hide to dismiss it, and
+      it hides per their "Hide" preference at encounter end as usual.</li>
 </ul>
 
 <div class="callout">
@@ -442,13 +459,17 @@ time:3;tag:everyone;text:Soak Orbs;ph:2.5;dur:5;DisplayType:Text</pre>
 <h3>4.2 Parse Process</h3>
 <p>The parser walks the note string line by line and produces a structured representation:</p>
 
-<pre>FOREACH line IN note.text split by newline:
+<pre>VALIDATE: count lines containing "EncounterID:"
+    IF count > 1: the note is invalid (see 3.2 Validation); do not parse
+
+FOREACH line IN note.text split by newline:
     IF line contains "EncounterID:":
         Extract encounterID, name, difficulty
-        Set currentEncounterID = encounterID
+        Set the note's encounter context
         Continue
 
-    IF line contains "time:" AND "tag:" AND ("text:" OR "spellid:"):
+    IF encounter context is set
+       AND line contains "time:" AND "tag:" AND ("text:" OR "spellid:"):
         Extract all recognized fields via pattern matching
         Build a Reminder object:
             reminder.time        = parsed time (number, seconds)
@@ -464,26 +485,25 @@ time:3;tag:everyone;text:Soak Orbs;ph:2.5;dur:5;DisplayType:Text</pre>
             reminder.sound       = parsed sound or nil
             reminder.bossSpell   = parsed bossSpell or nil
             reminder.colors      = parsed colors or nil
-        Store reminder under currentEncounterID and reminder.phase
+        Store reminder under reminder.phase
         Continue
 
     ELSE:
-        Treat as freeform text; store under currentEncounterID for note frame display</pre>
+        Treat as freeform text; store for note frame display</pre>
 
 <h3>4.3 Parse Output</h3>
 <p>
-  The parse result is a table keyed by encounter ID. Each encounter entry contains:
+  The parse result describes the note's single encounter:
 </p>
 <ul>
-  <li>Metadata (name, difficulty).</li>
+  <li>The encounter ID, and metadata (name, difficulty—difficulty may be absent, meaning
+      the note matches any difficulty).</li>
   <li>A table of reminders keyed by phase number, sorted by time within each phase.</li>
   <li>A list of freeform text lines.</li>
 </ul>
 <p>
-  Encounter sections are keyed by the combination of encounter ID and difficulty.
-  A section with no <code>Difficulty</code> field is stored under a wildcard difficulty.
-  At encounter start, the engine selects the section matching the live encounter's ID and
-  difficulty; if none matches exactly, it falls back to the wildcard section for that ID.
+  At encounter start, the active note applies when its encounter ID matches the live
+  encounter and its difficulty either matches the live difficulty or is absent.
 </p>
 
 
@@ -597,10 +617,11 @@ stateDiagram-v2
 <p>When <code>ENCOUNTER_START</code> fires:</p>
 <ol>
   <li>Record the encounter ID, difficulty, and start time.</li>
-  <li>Select the active note's section matching this encounter ID and difficulty (exact difficulty match first, then the wildcard section for that ID). If no section matches, do nothing.</li>
+  <li>Check whether the active note applies: its encounter ID matches, and its difficulty either matches or is absent (see 4.3). If it does not apply, do nothing.</li>
   <li>Set the current phase to 1 and record phase 1's start time as the encounter start time.</li>
   <li>Start a per-second ticker that drives timer updates and display refreshes.</li>
-  <li>Build the static note frame content for this encounter.</li>
+  <li>Build the static note frame content for this encounter and show the frame,
+      regardless of whether it was previously hidden (see 7.2).</li>
 </ol>
 
 <h3>6.3 Phase Tracking</h3>
@@ -688,15 +709,27 @@ stateDiagram-v2
 
 <h3>7.2 Visibility</h3>
 <ul>
-  <li>The note frame appears when an encounter starts (and the active note has reminders for that encounter).</li>
+  <li>The note frame appears when an encounter starts and the active note applies to that encounter.
+      This is unconditional: it shows even if the frame was previously hidden—by the "Hide" setting
+      at the last encounter's end or by the user pressing Hide. A hide is never sticky across pulls.</li>
+  <li>The note frame appears when a broadcast note is received—equivalent to pressing Show
+      (see <a href="#storage">Note Storage &amp; Selection</a>).</li>
+  <li>There is no setting that suppresses the note frame while the module is active—the only
+      gates are the module toggle and the content type settings (below), both of which govern
+      the whole module, not the frame alone. A user who never wants the frame disables the
+      Notes module.</li>
+  <li>Re-parsing the active note (e.g. editing the paste box) refreshes the frame's content if
+      the frame is shown. It never changes the frame's visibility—showing and hiding happen only
+      through the triggers in this list.</li>
   <li>When the encounter ends, the note frame behaves according to the user's "Hide" setting:
       "Immediately" (default), "Fade" (linger 5 seconds, then fade out), or "Never"
       (the frame stays visible until the active note changes or the user hides it manually).</li>
-  <li>The <strong>Show/Hide button</strong> in the config UI toggles the note frame on demand outside an
-      encounter, so a raid leader can validate formatting and layout before a pull. In this preview
-      state, the frame renders the entire active note—every encounter section and freeform line—with
-      static times (there is no live encounter to count from). The same button is the manual dismissal
-      for the "Never" hide mode.</li>
+  <li>The <strong>Show/Hide button</strong> in the config UI toggles the note frame on demand outside
+      an encounter. There is no separate preview mode: the frame renders exactly as it always does,
+      under the same settings ("Show only my assignments", "Hide expired reminders", fonts, colors).
+      With no encounter running, no reference times are known, so every reminder renders per the
+      "reference not yet known" rule in 7.1—static times, no countdowns. The same button is the
+      manual dismissal for the "Never" hide mode.</li>
   <li>The note frame is only shown during content types the user has enabled (using PRT's existing content type system).</li>
 </ul>
 
@@ -845,9 +878,13 @@ WHEN the event time arrives (countdown reaches zero):
   reading "Requires raid leader or assistant."
 </p>
 <p>
-  Broadcasting is additionally disabled while the local player is in combat—the Send and
-  Clear buttons disable, with a tooltip reading "Cannot send during combat." This is a
-  product decision, not a technical limit: mid-pull note swaps are not supported.
+  Broadcasting during combat is <strong>not allowed, ever</strong>. The Send and Clear buttons
+  disable while the local player is in combat, with a tooltip reading "Cannot send during
+  combat"—and the restriction is enforced in the send path itself, not merely the button state:
+  a send invoked while in combat is refused, so no code path (present or future) can broadcast
+  mid-combat. This is a product decision, not a technical limit: mid-pull note swaps are not
+  supported. Consequently, receivers never handle a note arriving mid-combat from a compliant
+  sender, and show-on-receive (see 3.2) needs no combat special-casing.
 </p>
 
 <h3>10.2.2 Broadcast Behavior</h3>
@@ -861,8 +898,11 @@ WHEN the event time arrives (countdown reaches zero):
 WHEN a raid member receives a complete note:
     IF sender is raid leader or assistant:
         Decompress and deserialize the payload
+        IF the note fails validation (multiple metadata lines):
+            Discard silently and STOP (see 3.2 Receive)
         Store as a named note (using the note name from the payload)
         Activate it (set as activeNote, trigger parse)
+        Show the static note frame (equivalent to pressing Show)
         Display a chat notification: "Received note: [NoteName] from [Sender]"
     ELSE:
         Ignore the message</pre>
@@ -898,7 +938,9 @@ WHEN a raid member receives a complete note:
   <li><strong>Rename button:</strong> Renames the currently selected note.</li>
   <li><strong>Paste box:</strong> A large multiline text area showing the active note's raw text.
       Editable—pasting new content overwrites the note and triggers a re-parse.
-      This is the primary input mechanism.</li>
+      This is the primary input mechanism. A re-parse refreshes the note frame's content if the
+      frame is currently shown; it never changes the frame's visibility (see
+      <a href="#display-note-frame">Static Note Frame</a>).</li>
   <li><strong>Send button:</strong> Broadcasts the active note to the raid. Always visible;
       enabled only when the player is raid leader or assistant AND a note is active AND the
       player is out of combat. When disabled due to permissions, the tooltip reads
@@ -911,10 +953,6 @@ WHEN a raid member receives a complete note:
 <h3>11.2 Display Settings Section</h3>
 <table>
   <tr><th>Setting</th><th>Type</th><th>Description</th></tr>
-  <tr>
-    <td>Show note frame</td><td>Checkbox</td>
-    <td>Default on. Whether to display the static note frame during encounters.</td>
-  </tr>
   <tr>
     <td>Show only my assignments</td><td>Checkbox</td>
     <td>Default on. When on, the note frame shows only tag-matched reminders. When off, it shows every reminder—the raid leader's full-sheet view.</td>
@@ -929,7 +967,7 @@ WHEN a raid member receives a complete note:
   </tr>
   <tr>
     <td>Show/Hide</td><td>Button</td>
-    <td>Toggles the note frame outside an encounter for formatting validation (see <a href="#display-note-frame">Static Note Frame</a>). Also the manual dismissal for the "Never" hide mode.</td>
+    <td>Toggles the note frame outside an encounter. The frame renders normally with no reference times—not a separate preview mode (see <a href="#display-note-frame">Static Note Frame</a>). Also the manual dismissal for the "Never" hide mode.</td>
   </tr>
   <tr>
     <td>Countdown color</td><td>Color picker</td>
@@ -1018,7 +1056,10 @@ WHEN a raid member receives a complete note:
   </tr>
   <tr>
     <td><code>IsActivatable()</code></td>
-    <td>Returns true when the player is in a group.</td>
+    <td><strong>Not implemented.</strong> PRT treats an absent hook as always-activatable
+        (the AutoInvite precedent), which is the intent: the module works solo—note management,
+        the Show/Hide button, and the paste box do not require a group. Group-dependent
+        behaviors (broadcast, encounter activation) gate themselves.</td>
   </tr>
   <tr>
     <td><code>OnEnable()</code></td>

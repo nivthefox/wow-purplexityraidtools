@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>PRT Notes — In-Game Test Plan</title>
+<style>
+  :root {
+    --bg: #1e1e2e;
+    --surface: #282840;
+    --surface2: #313150;
+    --border: #444466;
+    --text: #e0e0f0;
+    --text-muted: #9999bb;
+    --accent: #b48ead;
+    --accent2: #88c0d0;
+    --green: #a3be8c;
+    --yellow: #ebcb8b;
+    --red: #bf616a;
+    --orange: #d08770;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.7;
+    padding: 2rem 1rem;
+    max-width: 960px;
+    margin: 0 auto;
+  }
+
+  h1 {
+    font-size: 2rem;
+    color: var(--accent);
+    border-bottom: 2px solid var(--accent);
+    padding-bottom: 0.5rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .subtitle {
+    color: var(--text-muted);
+    font-style: italic;
+    margin-bottom: 2rem;
+  }
+
+  h2 {
+    font-size: 1.4rem;
+    color: var(--accent2);
+    margin-top: 2.5rem;
+    margin-bottom: 0.75rem;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 0.3rem;
+  }
+
+  p { margin-bottom: 0.75rem; }
+
+  code {
+    background: var(--surface2);
+    color: var(--green);
+    padding: 0.15rem 0.4rem;
+    border-radius: 3px;
+    font-family: 'Cascadia Code', 'Consolas', monospace;
+    font-size: 0.9em;
+  }
+
+  pre {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1rem;
+    overflow-x: auto;
+    margin: 0.5rem 0 1rem 0;
+    font-family: 'Cascadia Code', 'Consolas', monospace;
+    font-size: 0.88em;
+    line-height: 1.5;
+    color: var(--green);
+    white-space: pre-wrap;
+  }
+
+  .callout {
+    border-left: 4px solid var(--accent);
+    background: var(--surface);
+    padding: 0.75rem 1rem;
+    border-radius: 0 6px 6px 0;
+    margin-bottom: 1rem;
+  }
+
+  .callout.warn { border-left-color: var(--orange); }
+
+  .step {
+    display: flex;
+    gap: 0.75rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.6rem 0.85rem;
+    margin-bottom: 0.5rem;
+    align-items: flex-start;
+  }
+
+  .step:has(input:checked) {
+    opacity: 0.55;
+    border-color: var(--green);
+  }
+
+  .step input[type=checkbox] {
+    margin-top: 0.35rem;
+    width: 1.05rem;
+    height: 1.05rem;
+    accent-color: var(--green);
+    flex-shrink: 0;
+    cursor: pointer;
+  }
+
+  .step .num {
+    color: var(--accent2);
+    font-weight: 700;
+    min-width: 2.1rem;
+    flex-shrink: 0;
+    padding-top: 0.05rem;
+  }
+
+  .step .body { flex: 1; }
+
+  .expect { color: var(--yellow); }
+</style>
+</head>
+<body>
+
+<h1>PRT Notes — In-Game Test Plan</h1>
+<p class="subtitle">rev 4 (list + modal UI) · branch feature/notes · headless suite: 243 passed, 0 failed</p>
+
+<div class="callout">
+<strong>How this works.</strong> Everything is done through the UI; the only slash command is <code>/reload</code>. Note text goes into the <strong>Edit modal</strong> (the tab itself never shows note text). <strong>Send is how a note becomes active</strong> — solo, Send sends to yourself. Show/Hide previews the <em>selected</em> note without activating anything. Internals unreachable from the UI (parser edges, gate ordering, invalid-payload rejection, tick math, solo-send wiring) are pinned by the 243-test automated suite.
+</div>
+
+<div class="callout">
+<strong>Sample notes</strong> — paste into the modal's text field as directed.<br><br>
+<strong>Note A</strong> (valid; replace <code>Playername</code> with your character):
+<pre>EncounterID:3176;Name:Sszorak;Difficulty:Mythic
+-- Phase 1 Healing CDs
+time:30;tag:everyone;spellid:98008;text:Spirit Link;ph:1;dur:8;DisplayType:Icon
+time:60;tag:Playername;spellid:62618;text:Barrier;ph:1
+-- Phase 2
+time:5;tag:everyone;text:{star} Spread {rt6} Now;ph:2
+time:3;tag:melee;text:Soak Orbs;ph:2.5</pre>
+<strong>Note B</strong> (invalid — two encounters):
+<pre>EncounterID:1;Name:One
+time:10;tag:everyone;text:First
+EncounterID:2;Name:Two
+time:10;tag:everyone;text:Second</pre>
+For section E, make a copy of Note A with the <code>EncounterID</code>/<code>Difficulty</code> of a boss you can pull (follower/normal dungeon works solo; ID from an NSRT note, Wowhead, or your boss mod) and enable the matching content type.
+</div>
+
+<h2>A · Note Management <span style="color:var(--text-muted);font-size:0.8em;">(solo)</span></h2>
+
+<div class="step"><input type="checkbox"><span class="num">1</span><div class="body"><code>/reload</code> — <span class="expect">no errors. All five tabs fit the frame. The Notes tab shows a note LIST and six buttons (New, Edit, Delete, Send, Clear, Show/Hide) — NO text area anywhere on the tab, and no "Show note frame" checkbox.</span></div></div>
+<div class="step"><input type="checkbox"><span class="num">2</span><div class="body">With zero saved notes — <span class="expect">list is empty; New is enabled; Edit/Delete/Send are disabled (tooltip "No note selected.").</span></div></div>
+<div class="step"><input type="checkbox"><span class="num">3</span><div class="body">Click New — <span class="expect">a modal opens with an empty name field (focused) and an empty text area.</span> Click Save with the name empty — <span class="expect">"Name is required." in the modal; it stays open.</span></div></div>
+<div class="step"><input type="checkbox"><span class="num">4</span><div class="body">Click anywhere in the modal's empty text area, including well below where text would be — <span class="expect">it focuses and becomes editable.</span></div></div>
+<div class="step"><input type="checkbox"><span class="num">5</span><div class="body">Name it "Test1", paste <strong>Note A</strong>, Save — <span class="expect">modal closes; "Test1" appears in the list, selected (highlighted).</span> <code>/reload</code> — <span class="expect">still there.</span></div></div>
+<div class="step"><input type="checkbox"><span class="num">6</span><div class="body">Create a second note whose name sorts BEFORE "Test1" (e.g. "Alpha") — <span class="expect">the list re-sorts alphabetically.</span></div></div>
+<div class="step"><input type="checkbox"><span class="num">7</span><div class="body">Select Test1, Edit — <span class="expect">modal opens loaded with its name and text.</span> Replace the text with <strong>Note B</strong>, Save — <span class="expect">"A note may only contain one encounter. Use a separate note per encounter." in the modal; stays open; your text intact. Cancel — the stored note still has Note A (Edit again to confirm).</span></div></div>
+<div class="step"><input type="checkbox"><span class="num">8</span><div class="body">Edit Test1, change the name to "Alpha" (taken), Save — <span class="expect">"A note with that name already exists."; stays open.</span> Change to "Renamed", Save — <span class="expect">list updates, selection follows the new name.</span></div></div>
+<div class="step"><input type="checkbox"><span class="num">9</span><div class="body">Select a note, Delete — <span class="expect">confirmation popup naming it; Yes removes it from the list; selection clears and Edit/Delete/Send disable again.</span></div></div>
+
+<h2>B · Preview, Activation &amp; the Note Frame <span style="color:var(--text-muted);font-size:0.8em;">(solo, Note A saved)</span></h2>
+
+<div class="step"><input type="checkbox"><span class="num">10</span><div class="body">Select the Note A note, click Show/Hide — <span class="expect">the note frame shows it: one accent "Sszorak" header, rows in note order, spell icons, static times, your name class-colored on the Barrier row, <code>{star}</code>/<code>{rt6}</code> as raid-target icons, freeform lines as plain rows. The list shows NO "(active)" marker — preview does not activate.</span></div></div>
+<div class="step"><input type="checkbox"><span class="num">11</span><div class="body">Click Show/Hide again — <span class="expect">frame hides.</span> Clear the selection... or with nothing selected, Show/Hide — <span class="expect">plain toggle (bare positionable frame if no note was ever pushed).</span></div></div>
+<div class="step"><input type="checkbox"><span class="num">12</span><div class="body"><strong>Solo Send = activate.</strong> Select the note, click Send — <span class="expect">its row turns accent-colored with "(active)", and the note frame SHOWS it (send-to-self).</span></div></div>
+<div class="step"><input type="checkbox"><span class="num">13</span><div class="body">Edit the ACTIVE note, change a reminder's text, Save — <span class="expect">the shown frame updates its content (because it's active).</span> Edit a NON-active note and Save — <span class="expect">the frame does not change.</span></div></div>
+<div class="step"><input type="checkbox"><span class="num">14</span><div class="body"><strong>Solo Clear.</strong> Click Clear — <span class="expect">the "(active)" marker disappears and the frame hides.</span></div></div>
+<div class="step"><input type="checkbox"><span class="num">15</span><div class="body">Enter combat at a dummy — <span class="expect">Send and Clear disable, tooltip "Cannot send during combat." Leave combat — they re-enable without reopening the tab.</span></div></div>
+<div class="step"><input type="checkbox"><span class="num">16</span><div class="body">Untick Locked — <span class="expect">drag hint + resize grip on the frame.</span> Drag/resize (text re-wraps); <code>/reload</code> — <span class="expect">position/size persist.</span> Re-tick — <span class="expect">fixed.</span></div></div>
+<div class="step"><input type="checkbox"><span class="num">17</span><div class="body">With the frame shown, change Font Face/Size/Outline, Countdown Color, Background Color/Opacity — <span class="expect">frame updates immediately on each change.</span></div></div>
+<div class="step"><input type="checkbox"><span class="num">18</span><div class="body">Toggle "Show only my assignments" — <span class="expect">on: rows whose tag doesn't match you disappear (e.g. <code>tag:melee</code> if you're ranged); off: all rows.</span></div></div>
+<div class="step"><input type="checkbox"><span class="num">19</span><div class="body">Long note (or small frame) — <span class="expect">scrollbar engages.</span></div></div>
+
+<h2>C · Popups <span style="color:var(--text-muted);font-size:0.8em;">(solo)</span></h2>
+
+<div class="step"><input type="checkbox"><span class="num">20</span><div class="body">Click Test Popups — <span class="expect">four popups (Icon w/ swipe, Bar draining, Text "(N)", Circle sweep), 8→0, ~0.5s fade, no errors.</span></div></div>
+<div class="step"><input type="checkbox"><span class="num">21</span><div class="body"><strong>Spam it</strong> during the 8s window — <span class="expect">no errors, no duplicates, no restarts, no FPS/memory creep. Intended: spammable, not restartable.</span></div></div>
+<div class="step"><input type="checkbox"><span class="num">22</span><div class="body">Untick Locked — <span class="expect">four labeled popup movers.</span> Drag each; <code>/reload</code> + untick — <span class="expect">persist.</span> Re-tick — <span class="expect">hide.</span> Test — <span class="expect">popups at mover positions.</span></div></div>
+<div class="step"><input type="checkbox"><span class="num">23</span><div class="body">Scale 1.5 — <span class="expect">Test popups ~50% larger.</span> Grow Direction persists across <code>/reload</code> (visual stacking check happens live in E).</div></div>
+<div class="step"><input type="checkbox"><span class="num">24</span><div class="body">Toggle Enable Popups / Enable TTS / Enable Sounds — <span class="expect">each persists across <code>/reload</code> (live effects in E).</span></div></div>
+
+<h2>D · Broadcast <span style="color:var(--text-muted);font-size:0.8em;">(two clients)</span></h2>
+
+<div class="step"><input type="checkbox"><span class="num">25</span><div class="body">In a group as non-leader/non-assistant — <span class="expect">Send/Clear disabled, tooltip "Requires raid leader or assistant." (Note: solo they are ENABLED — that's by design now.)</span></div></div>
+<div class="step"><input type="checkbox"><span class="num">26</span><div class="body">As leader, select a note, Send — <span class="expect">BOTH clients activate it: receiver saves it, prints "Received note: &lt;name&gt; from &lt;you&gt;", and both frames SHOW. Your own list shows "(active)" (you receive your own broadcast).</span></div></div>
+<div class="step"><input type="checkbox"><span class="num">27</span><div class="body">As leader, Clear — <span class="expect">both clients deactivate and both frames hide.</span></div></div>
+
+<h2>E · Live Encounter <span style="color:var(--text-muted);font-size:0.8em;">(real boss; note activated via Send)</span></h2>
+
+<div class="step"><input type="checkbox"><span class="num">28</span><div class="body">Select your real-boss note, Send (solo = to yourself), pull — <span class="expect">the frame appears automatically at pull (even if you hid it) and countdowns tick.</span></div></div>
+<div class="step"><input type="checkbox"><span class="num">29</span><div class="body">Watch a countdown cross 10s — <span class="expect">white above 10s, countdown color (default green) at ≤10s; at 0:00 the row disappears (Hide Expired on) or dims grey (off).</span></div></div>
+<div class="step"><input type="checkbox"><span class="num">30</span><div class="body">Each reminder — <span class="expect">popup in its style with its lead time, counts down, fades; sound/TTS per toggles; a countdown reminder speaks "3, 2, 1" even with Enable TTS OFF (by design).</span></div></div>
+<div class="step"><input type="checkbox"><span class="num">31</span><div class="body">Phases (BigWigs or DBM) — <span class="expect">phase-2 reminders start at the stage change; unfired phase-1 reminders vanish, their popups dismiss.</span> Neither loaded — <span class="expect">one-time chat warning at pull, not repeated.</span></div></div>
+<div class="step"><input type="checkbox"><span class="num">32</span><div class="body"><strong>Difficulty matching.</strong> Note's <code>Difficulty:</code> set to one you're NOT running — <span class="expect">nothing at pull.</span> No <code>Difficulty:</code> field — <span class="expect">applies on any.</span></div></div>
+<div class="step"><input type="checkbox"><span class="num">33</span><div class="body">Disable the matching content type, pull — <span class="expect">nothing.</span> Re-enable, pull — <span class="expect">shows.</span></div></div>
+<div class="step"><input type="checkbox"><span class="num">34</span><div class="body">Encounter end per Hide mode — <span class="expect">"Immediately" vanishes; "Fade" lingers ~5s then fades; "Never" stays until Show/Hide or a note change.</span></div></div>
+<div class="step"><input type="checkbox"><span class="num">35</span><div class="body">Hide the frame between pulls, pull again — <span class="expect">it reappears. Hide is never sticky across pulls.</span></div></div>
+<div class="step"><input type="checkbox"><span class="num">36</span><div class="body">Swap spec between pulls — <span class="expect">"Show only my assignments" rows follow the new spec (<code>tag:melee</code> line appears/disappears).</span></div></div>
+<div class="step"><input type="checkbox"><span class="num">37</span><div class="body">Group session: Send between pulls — <span class="expect">every member's frame shows the new note at once; the next pull runs it.</span></div></div>
+
+<div class="callout warn">
+<strong>Reporting.</strong> Checkboxes reset on refresh — track failures separately. For each: step number, action, result, Lua error text if any. Covered by automation, absent here on purpose: parser edges, tag matching, timer math, comms round-trips, gate ordering, silent invalid-payload rejection, solo send/clear wiring, combat ban at the send path.
+</div>
+
+</body>
+</html>

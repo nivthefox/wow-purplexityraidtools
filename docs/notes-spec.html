@@ -1,0 +1,1090 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>PRT Notes — Design Specification</title>
+<style>
+  :root {
+    --bg: #1e1e2e;
+    --surface: #282840;
+    --surface2: #313150;
+    --border: #444466;
+    --text: #e0e0f0;
+    --text-muted: #9999bb;
+    --accent: #b48ead;
+    --accent2: #88c0d0;
+    --green: #a3be8c;
+    --yellow: #ebcb8b;
+    --red: #bf616a;
+    --orange: #d08770;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.7;
+    padding: 2rem 1rem;
+    max-width: 960px;
+    margin: 0 auto;
+  }
+
+  h1 {
+    font-size: 2rem;
+    color: var(--accent);
+    border-bottom: 2px solid var(--accent);
+    padding-bottom: 0.5rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .subtitle {
+    color: var(--text-muted);
+    font-style: italic;
+    margin-bottom: 2rem;
+  }
+
+  h2 {
+    font-size: 1.4rem;
+    color: var(--accent2);
+    margin-top: 2.5rem;
+    margin-bottom: 0.75rem;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 0.3rem;
+  }
+
+  h3 {
+    font-size: 1.15rem;
+    color: var(--yellow);
+    margin-top: 1.5rem;
+    margin-bottom: 0.5rem;
+  }
+
+  p { margin-bottom: 0.75rem; }
+
+  ul, ol {
+    margin-left: 1.5rem;
+    margin-bottom: 0.75rem;
+  }
+
+  li { margin-bottom: 0.35rem; }
+
+  code {
+    background: var(--surface2);
+    color: var(--green);
+    padding: 0.15rem 0.4rem;
+    border-radius: 3px;
+    font-family: 'Cascadia Code', 'Consolas', monospace;
+    font-size: 0.9em;
+  }
+
+  pre {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1rem;
+    overflow-x: auto;
+    margin-bottom: 1rem;
+    font-family: 'Cascadia Code', 'Consolas', monospace;
+    font-size: 0.88em;
+    line-height: 1.5;
+    color: var(--green);
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 1rem;
+  }
+
+  th {
+    background: var(--surface2);
+    color: var(--accent2);
+    text-align: left;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border);
+    font-weight: 600;
+  }
+
+  td {
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border);
+    vertical-align: top;
+  }
+
+  tr:nth-child(even) td { background: var(--surface); }
+
+  .callout {
+    border-left: 4px solid var(--accent);
+    background: var(--surface);
+    padding: 0.75rem 1rem;
+    margin-bottom: 1rem;
+    border-radius: 0 6px 6px 0;
+  }
+
+  .callout.warning {
+    border-left-color: var(--orange);
+  }
+
+  .callout.decision {
+    border-left-color: var(--yellow);
+  }
+
+  .callout strong {
+    color: var(--accent);
+  }
+
+  .callout.warning strong { color: var(--orange); }
+  .callout.decision strong { color: var(--yellow); }
+
+  .tag { color: var(--accent); }
+  .field { color: var(--accent2); }
+  .value { color: var(--green); }
+
+  .toc {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1rem 1.5rem;
+    margin-bottom: 2rem;
+  }
+  .toc h3 { margin-top: 0; color: var(--text-muted); }
+  .toc ol { margin-bottom: 0; }
+  .toc a { color: var(--accent2); text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+
+  .status {
+    display: inline-block;
+    padding: 0.15rem 0.5rem;
+    border-radius: 3px;
+    font-size: 0.85em;
+    font-weight: 600;
+  }
+  .status.draft { background: var(--yellow); color: var(--bg); }
+  .status.final { background: var(--green); color: var(--bg); }
+
+  .mermaid {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1.5rem;
+    margin: 1rem 0;
+    text-align: center;
+  }
+</style>
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'dark',
+    themeVariables: {
+      darkMode: true,
+      background: '#282840',
+      primaryColor: '#3b4252',
+      primaryTextColor: '#e0e0f0',
+      primaryBorderColor: '#88c0d0',
+      lineColor: '#88c0d0',
+      secondaryColor: '#434c5e',
+      tertiaryColor: '#2e3440',
+      fontFamily: 'Segoe UI, Tahoma, Geneva, Verdana, sans-serif',
+      fontSize: '14px',
+      nodeBorder: '#88c0d0',
+      clusterBkg: '#313150',
+      clusterBorder: '#444466',
+      edgeLabelBackground: '#282840',
+    }
+  });
+</script>
+</head>
+<body>
+
+<h1>PRT Notes</h1>
+<p class="subtitle">
+  Design Specification &nbsp;·&nbsp; <span class="status final">FINAL</span>
+  &nbsp;·&nbsp; 2026-07-17
+</p>
+
+<nav class="toc">
+  <h3>Contents</h3>
+  <ol>
+    <li><a href="#overview">Overview</a></li>
+    <li><a href="#note-format">Note Format</a></li>
+    <li><a href="#storage">Note Storage &amp; Selection</a></li>
+    <li><a href="#parsing">Parsing</a></li>
+    <li><a href="#tag-matching">Tag Matching</a></li>
+    <li><a href="#timer-engine">Timer Engine</a></li>
+    <li><a href="#display-note-frame">Display: Static Note Frame</a></li>
+    <li><a href="#display-popups">Display: Active Reminder Popups</a></li>
+    <li><a href="#display-effects">Display: Ancillary Effects</a></li>
+    <li><a href="#communication">Communication</a></li>
+    <li><a href="#config-ui">Configuration UI</a></li>
+    <li><a href="#module-integration">Module Integration</a></li>
+    <li><a href="#dependencies">Dependencies</a></li>
+  </ol>
+</nav>
+
+<!-- ───────────────────── 1. OVERVIEW ───────────────────── -->
+<h2 id="overview">1. Overview</h2>
+
+<p>
+  PRT Notes lets a raid leader share time-based assignment reminders with the raid.
+  During an encounter, each player sees only the reminders relevant to them—displayed as
+  a static assignment sheet and as timed popups (icons, bars, text, or rings) that fire at
+  the right moment.
+</p>
+
+<h3>What This Feature Is</h3>
+<ul>
+  <li>A <strong>consumer</strong> of externally-authored notes in NSRT's line-based format.</li>
+  <li>A <strong>timer engine</strong> that fires reminders at the right time based on encounter phase
+      and elapsed time.</li>
+  <li>A <strong>display system</strong> with four popup styles and a persistent assignment sheet.</li>
+  <li>A <strong>communication layer</strong> so the raid leader can broadcast notes to the raid.</li>
+</ul>
+
+<h3>What This Feature Is Not</h3>
+<ul>
+  <li>An in-game note <em>editor</em>. Notes are authored externally and pasted in.</li>
+  <li>A personal note system. All notes are shared raid-wide; there is no per-player note slot.</li>
+  <li>An auto-load system. The raid leader manually selects which note is active.</li>
+</ul>
+
+<div class="mermaid">
+flowchart TD
+    A["External Tool"] -->|paste| S["Storage<br/>(profile)"]
+    B["Raid Broadcast"] -->|receive| S
+    RL["Raid Leader"] -->|broadcast| S
+    S -->|activate| P["Parser"]
+    P -->|structured reminders| TM["Tag Matcher"]
+    P -->|structured reminders| TE["Timer Engine"]
+    P -->|structured reminders| NF["Note Frame<br/>(static display)"]
+    TM -->|filtered| AP["Active Popups<br/>(Icon / Bar / Text / Circle)"]
+    TE -->|fire| AP
+    AP --> TTS["TTS"]
+    AP --> SND["Sound"]
+</div>
+
+
+<!-- ───────────────────── 2. NOTE FORMAT ───────────────────── -->
+<h2 id="note-format">2. Note Format</h2>
+
+<p>
+  PRT adopts NSRT's line-based format. A note is a multiline plain-text string.
+  Each line is either a <strong>metadata line</strong>, a <strong>timed reminder line</strong>,
+  or <strong>freeform text</strong>. Fields within a line are semicolon-delimited
+  <code>key:value</code> pairs. Unrecognized fields are parsed and ignored without error,
+  so notes authored with fields PRT does not support remain loadable.
+</p>
+
+<h3>2.1 Metadata Line</h3>
+<p>
+  The first line of a note (or any line containing <code>EncounterID:</code>) establishes
+  context for the timed lines that follow it. A single note string may contain multiple
+  metadata lines, each starting a new encounter section.
+</p>
+
+<pre>EncounterID:3176;Name:Sszorak - Mythic;Difficulty:Mythic</pre>
+
+<table>
+  <tr><th>Field</th><th>Required</th><th>Description</th></tr>
+  <tr><td><code>EncounterID</code></td><td>Yes</td><td>WoW encounter ID (integer). Used to match the note to a live encounter.</td></tr>
+  <tr><td><code>Name</code></td><td>No</td><td>Human-readable encounter name. For display only.</td></tr>
+  <tr><td><code>Difficulty</code></td><td>No</td><td>"Normal", "Heroic", or "Mythic". When present, the section's reminders only activate on that difficulty; when absent, the section matches any difficulty. One note may hold separate Heroic and Mythic sections for the same boss.</td></tr>
+</table>
+
+<h3>2.2 Timed Reminder Line</h3>
+<p>
+  A line is recognized as a timed reminder when it contains <strong>all three</strong> of:
+  <code>time:</code>, <code>tag:</code>, and at least one of <code>text:</code> or <code>spellid:</code>.
+  It must also fall under a metadata line that established an <code>EncounterID</code>.
+</p>
+
+<pre>time:30;tag:Playername1 Playername2;spellid:98008;text:Use Spirit Link;ph:1;dur:8;DisplayType:Icon</pre>
+
+<table>
+  <tr><th>Field</th><th>Required</th><th>Default</th><th>Description</th></tr>
+  <tr>
+    <td><code>time</code></td><td>Yes</td><td>—</td>
+    <td>Seconds into the current phase at which the <em>event happens</em>. The popup appears <code>dur</code> seconds before this moment and counts down to it. Decimal values are accepted.</td>
+  </tr>
+  <tr>
+    <td><code>tag</code></td><td>Yes</td><td>—</td>
+    <td>Space-separated list of targets. Determines who sees this reminder. See <a href="#tag-matching">Tag Matching</a>.</td>
+  </tr>
+  <tr>
+    <td><code>text</code></td><td>Conditional</td><td>—</td>
+    <td>Display text. Required if <code>spellid</code> is absent. Supports raid marker tokens (<code>{star}</code>, <code>{circle}</code>, <code>{rt1}</code>–<code>{rt8}</code>).</td>
+  </tr>
+  <tr>
+    <td><code>spellid</code></td><td>Conditional</td><td>—</td>
+    <td>Spell ID for icon display. Required if <code>text</code> is absent.</td>
+  </tr>
+  <tr>
+    <td><code>ph</code></td><td>No</td><td><code>1</code></td>
+    <td>Phase number. The timer counts from the start of this phase. Decimal values (e.g. <code>2.5</code> for an intermission) are accepted, matching NSRT.</td>
+  </tr>
+  <tr>
+    <td><code>dur</code></td><td>No</td><td><code>5</code></td>
+    <td>Display lead time in seconds. The popup appears this many seconds before the event and disappears when the event occurs. This matches NSRT's behavior exactly.</td>
+  </tr>
+  <tr>
+    <td><code>DisplayType</code></td><td>No</td><td>Icon if <code>spellid</code> present, else Text</td>
+    <td>One of: <code>Text</code>, <code>Bar</code>, <code>Icon</code>, <code>Circle</code>.</td>
+  </tr>
+  <tr>
+    <td><code>bossSpell</code></td><td>No</td><td>—</td>
+    <td>Boss spell ID. Used for icon display on the static note frame (distinct from the player's <code>spellid</code>).</td>
+  </tr>
+  <tr>
+    <td><code>colors</code></td><td>No</td><td>—</td>
+    <td>Space/colon-separated RGBA values. Interpretation depends on <code>DisplayType</code>.</td>
+  </tr>
+  <tr>
+    <td><code>TTS</code></td><td>No</td><td>—</td>
+    <td>Text-to-speech string, or <code>"true"</code> (uses <code>text</code> field) / <code>"false"</code>.</td>
+  </tr>
+  <tr>
+    <td><code>TTSTimer</code></td><td>No</td><td><code>dur</code>, else <code>0</code></td>
+    <td>Seconds <em>before</em> the event to trigger sound/TTS. Defaults to <code>dur</code> when <code>dur</code> is set (so the alert fires at popup appearance), otherwise <code>0</code>. Matches NSRT.</td>
+  </tr>
+  <tr>
+    <td><code>countdown</code></td><td>No</td><td>—</td>
+    <td>If present, announce a numeric countdown starting at this many seconds before the event.</td>
+  </tr>
+  <tr>
+    <td><code>sound</code></td><td>No</td><td>—</td>
+    <td>Sound to play. A LibSharedMedia sound name or a file path.</td>
+  </tr>
+  <tr>
+    <td><code>glowunit</code></td><td>No</td><td>—</td>
+    <td>Accepted for NSRT note compatibility; PRT parses and ignores this field. It produces no effect.</td>
+  </tr>
+</table>
+
+<h3>2.3 Freeform Lines</h3>
+<p>
+  Any line that does not match a metadata pattern or a timed reminder pattern is treated as
+  freeform text. Freeform lines are displayed in the static note frame but do not generate
+  timed popups.
+</p>
+
+<h3>2.4 Example: Complete Note</h3>
+<pre>EncounterID:3176;Name:Sszorak;Difficulty:Mythic
+-- Phase 1 Healing CDs
+time:30;tag:Healername1 Healername2;spellid:98008;text:Spirit Link;ph:1;dur:8;DisplayType:Icon
+time:60;tag:Healername3;spellid:62618;text:Barrier;ph:1;dur:8;DisplayType:Icon
+time:90;tag:Healername4;spellid:102342;text:Ironbark on Tank;ph:1;dur:8;DisplayType:Icon
+-- Phase 1 Dodge
+time:45;tag:everyone;text:Dodge Breath;ph:1;dur:5;DisplayType:Bar;bossSpell:456789
+-- Phase 2
+time:5;tag:everyone;text:Spread Now;ph:2;dur:5;DisplayType:Text;sound:RaidWarning
+-- Intermission
+time:3;tag:everyone;text:Soak Orbs;ph:2.5;dur:5;DisplayType:Text</pre>
+
+
+<!-- ───────────────────── 3. STORAGE ───────────────────── -->
+<h2 id="storage">3. Note Storage &amp; Selection</h2>
+
+<h3>3.1 Data Model</h3>
+<p>
+  Notes are stored in the user's profile under the <code>notes</code> settings key.
+  The structure holds a collection of named notes and tracks which note is currently active.
+</p>
+
+<pre>profile.notes = {
+    enabled = true,
+    activeNote = "Sszorak Mythic",       -- name of the currently selected note, or nil
+    savedNotes = {
+        ["Sszorak Mythic"] = {
+            text = "EncounterID:3176;...",  -- the raw multiline note string
+        },
+        ["Anub'arash Mythic"] = {
+            text = "EncounterID:3009;...",
+        },
+    },
+    display = { ... },                    -- display preferences (see Config UI)
+    positions = { ... },                  -- frame positions (see Module Integration)
+}</pre>
+
+<h3>3.2 Behaviors</h3>
+
+<ul>
+  <li><strong>Save:</strong> When a user pastes text and provides a name, the note is saved under that name.
+      If a note with that name already exists, it is overwritten (with a confirmation prompt).</li>
+  <li><strong>Delete:</strong> A named note can be deleted. If the deleted note was active, <code>activeNote</code> becomes nil.</li>
+  <li><strong>Rename:</strong> A named note can be renamed. If it was the active note, <code>activeNote</code> updates to match.</li>
+  <li><strong>Activate:</strong> Selecting a note from the dropdown sets it as <code>activeNote</code>
+      and triggers parsing. Only one note is active at a time.</li>
+  <li><strong>Receive:</strong> When a note is received via broadcast, it is stored as a named note
+      (using the note name from the broadcast payload, or "Received Note" as fallback) and automatically activated.
+      If a stored note already has that name, the received note overwrites it silently—no confirmation prompt.
+      The broadcaster's copy is authoritative.</li>
+</ul>
+
+<div class="callout">
+  <strong>Note:</strong> Notes live inside the profile, so switching PRT profiles switches notes too.
+  This is consistent with how all other PRT settings behave.
+</div>
+
+
+<!-- ───────────────────── 4. PARSING ───────────────────── -->
+<h2 id="parsing">4. Parsing</h2>
+
+<h3>4.1 Parse Trigger</h3>
+<p>Parsing occurs when:</p>
+<ul>
+  <li>A note is activated (selected from dropdown).</li>
+  <li>A note is received via broadcast.</li>
+  <li>A note's raw text is updated (re-pasted).</li>
+</ul>
+
+<h3>4.2 Parse Process</h3>
+<p>The parser walks the note string line by line and produces a structured representation:</p>
+
+<pre>FOREACH line IN note.text split by newline:
+    IF line contains "EncounterID:":
+        Extract encounterID, name, difficulty
+        Set currentEncounterID = encounterID
+        Continue
+
+    IF line contains "time:" AND "tag:" AND ("text:" OR "spellid:"):
+        Extract all recognized fields via pattern matching
+        Build a Reminder object:
+            reminder.time        = parsed time (number, seconds)
+            reminder.tag         = parsed tag string (raw, evaluated later)
+            reminder.text        = parsed text or nil
+            reminder.spellID     = parsed spell ID or nil
+            reminder.phase       = parsed ph or 1
+            reminder.duration    = parsed dur or 5
+            reminder.displayType = parsed DisplayType or (spellID ? "Icon" : "Text")
+            reminder.tts         = parsed TTS or nil
+            reminder.ttsTimer    = parsed TTSTimer, or dur when dur was given, else 0
+            reminder.countdown   = parsed countdown or nil
+            reminder.sound       = parsed sound or nil
+            reminder.bossSpell   = parsed bossSpell or nil
+            reminder.colors      = parsed colors or nil
+        Store reminder under currentEncounterID and reminder.phase
+        Continue
+
+    ELSE:
+        Treat as freeform text; store under currentEncounterID for note frame display</pre>
+
+<h3>4.3 Parse Output</h3>
+<p>
+  The parse result is a table keyed by encounter ID. Each encounter entry contains:
+</p>
+<ul>
+  <li>Metadata (name, difficulty).</li>
+  <li>A table of reminders keyed by phase number, sorted by time within each phase.</li>
+  <li>A list of freeform text lines.</li>
+</ul>
+<p>
+  Encounter sections are keyed by the combination of encounter ID and difficulty.
+  A section with no <code>Difficulty</code> field is stored under a wildcard difficulty.
+  At encounter start, the engine selects the section matching the live encounter's ID and
+  difficulty; if none matches exactly, it falls back to the wildcard section for that ID.
+</p>
+
+
+<!-- ───────────────────── 5. TAG MATCHING ───────────────────── -->
+<h2 id="tag-matching">5. Tag Matching</h2>
+
+<p>
+  A reminder's <code>tag:</code> field is a space-separated list of identifiers.
+  A reminder is <strong>relevant to the local player</strong> if <em>any</em> identifier
+  in the tag matches the player. Matching is case-insensitive.
+</p>
+
+<table>
+  <tr><th>Identifier Type</th><th>Example</th><th>Matches When</th></tr>
+  <tr>
+    <td>Player name</td>
+    <td><code>Healername1</code></td>
+    <td>The local player's name matches (case-insensitive).</td>
+  </tr>
+  <tr>
+    <td>Role</td>
+    <td><code>tank</code>, <code>healer</code>, <code>damager</code></td>
+    <td>The local player's assigned role matches.</td>
+  </tr>
+  <tr>
+    <td>Class (numeric ID)</td>
+    <td><code>2</code> (Paladin)</td>
+    <td>The local player's class ID matches. Numeric identifiers 1–13 are class IDs.</td>
+  </tr>
+  <tr>
+    <td>Spec (numeric ID)</td>
+    <td><code>65</code> (Holy Paladin)</td>
+    <td>The local player's specialization ID matches. Numeric identifiers of 62 or higher are spec IDs. (Class IDs and spec IDs occupy disjoint ranges; numeric values 14–61 match nothing.)</td>
+  </tr>
+  <tr>
+    <td>Group</td>
+    <td><code>group1</code>–<code>group8</code></td>
+    <td>The local player is in the specified raid subgroup.</td>
+  </tr>
+  <tr>
+    <td>Position</td>
+    <td><code>melee</code>, <code>ranged</code></td>
+    <td>The local player's role/spec is classified as melee or ranged.</td>
+  </tr>
+  <tr>
+    <td>Everyone</td>
+    <td><code>everyone</code></td>
+    <td>Always matches.</td>
+  </tr>
+</table>
+
+<h3>5.1 When Tag Matching Runs</h3>
+<p>
+  Tag matching is evaluated <strong>once at parse time</strong> and again on
+  <code>GROUP_ROSTER_UPDATE</code> (in case the player's group/role changed mid-raid) and
+  <code>PLAYER_SPECIALIZATION_CHANGED</code> (spec-ID and melee/ranged tags depend on the current spec).
+  The result is a filtered list of reminders that are relevant to the local player.
+</p>
+<p>
+  NSRT's nickname matching is not supported. PRT has no nickname system;
+  only actual character names match.
+</p>
+
+
+<!-- ───────────────────── 6. TIMER ENGINE ───────────────────── -->
+<h2 id="timer-engine">6. Timer Engine</h2>
+
+<p>
+  The timer engine is responsible for firing reminders at the correct moment during an encounter.
+  It activates on <code>ENCOUNTER_START</code> and deactivates on <code>ENCOUNTER_END</code>.
+</p>
+
+<h3>6.1 Time References</h3>
+<p>Every reminder's <code>time:</code> is relative to a <strong>reference point</strong>.
+   Which reference point depends on the reminder's configuration:</p>
+
+<table>
+  <tr><th>Configuration</th><th>Reference Point</th></tr>
+  <tr>
+    <td><code>ph:1</code> (or no <code>ph:</code>)</td>
+    <td>Encounter start (phase 1 is synonymous with encounter start).</td>
+  </tr>
+  <tr>
+    <td><code>ph:N</code> (N &gt; 1, decimals allowed)</td>
+    <td>The moment phase N begins, as reported by a boss mod stage callback (see 6.3).</td>
+  </tr>
+</table>
+
+<div class="mermaid">
+stateDiagram-v2
+    [*] --> Idle
+    Idle --> Active : ENCOUNTER_START
+    Active --> Idle : ENCOUNTER_END
+
+    state Active {
+        [*] --> Running
+        state Running {
+            PhaseTracker : Phase Tracker<br/>(BigWigs / DBM stage callbacks)
+            PerSecTicker : Per-Second Ticker<br/>(update times, check fires)
+        }
+        Running --> Scheduler
+        state Scheduler {
+            state check <<choice>>
+            check --> Fire : reference known<br/>AND elapsed >= time<br/>AND not yet fired
+            check --> Skip : otherwise
+        }
+    }
+</div>
+
+<h3>6.2 Encounter Start</h3>
+<p>When <code>ENCOUNTER_START</code> fires:</p>
+<ol>
+  <li>Record the encounter ID, difficulty, and start time.</li>
+  <li>Select the active note's section matching this encounter ID and difficulty (exact difficulty match first, then the wildcard section for that ID). If no section matches, do nothing.</li>
+  <li>Set the current phase to 1 and record phase 1's start time as the encounter start time.</li>
+  <li>Start a per-second ticker that drives timer updates and display refreshes.</li>
+  <li>Build the static note frame content for this encounter.</li>
+</ol>
+
+<h3>6.3 Phase Tracking</h3>
+<p>
+  Phase changes come from boss mod stage callbacks. PRT listens for both
+  BigWigs (<code>BigWigs_SetStage</code>) and DBM (<code>DBM_SetStage</code>).
+  These callbacks remain fully functional post-Midnight: the boss mods build their staging
+  on Blizzard's encounter timeline API and report stage numbers as plain Lua numbers.
+  Fractional stages (e.g. <code>2.5</code> for intermissions) are reported by the boss mods
+  using the same convention NSRT's notes use, so decimal <code>ph:</code> values map directly.
+</p>
+<p>When a stage callback is received:</p>
+<ol>
+  <li>Discard the callback if any of its arguments is a secret value (following MRT's guard for boss mod callbacks).</li>
+  <li>Ignore it if the reported stage equals the current phase—when both BigWigs and DBM are installed, whichever reports a transition first wins and the duplicate is dropped.</li>
+  <li>Record the new phase number and its start time.</li>
+  <li>Cancel all unfired reminders from earlier phases and dismiss their popups, matching NSRT: a phase-1 reminder that has not yet fired when phase 2 begins simply never fires.</li>
+</ol>
+
+<div class="callout warning">
+  <strong>Dependency:</strong> Phase tracking requires BigWigs or DBM to be installed and to
+  have staging support for the encounter. If neither addon is present, only phase 1 reminders
+  fire, and the module logs a warning once at activation.
+</div>
+
+<h3>6.4 Per-Second Tick</h3>
+<p>Every second while active, the timer engine:</p>
+<ol>
+  <li>Calculates elapsed time from encounter start.</li>
+  <li>For each unfired reminder whose tag matches the local player:
+    <ul>
+      <li>Determines the reference time (the reminder's phase start).</li>
+      <li>If the reference time is not yet known (the phase hasn't started), skip.</li>
+      <li>Calculates <code>remainingTime = reminder.time - (now - referenceTime)</code>—the seconds until the <em>event</em>.</li>
+      <li>If <code>remainingTime &lt;= reminder.duration</code> and the popup hasn't been shown: show the popup, counting down from <code>remainingTime</code> to zero. This matches NSRT: the popup leads the event by <code>dur</code> seconds and expires when the event occurs.</li>
+      <li>If <code>remainingTime &lt;= reminder.ttsTimer</code> and the audio alert hasn't triggered: fire it once. Sound (<code>sound:</code>) plays if set; TTS fires only when no sound is set (see <a href="#display-effects">Ancillary Effects</a>). Both share this single timer, matching NSRT.</li>
+      <li>If <code>countdown</code> is set: announce each whole-second number as <code>remainingTime</code> <em>crosses</em> it within the countdown range, announcing each number at most once. (Times may be decimal, so the announcement fires on crossing the threshold, not only when <code>remainingTime</code> is exactly whole.)</li>
+    </ul>
+  </li>
+  <li>Updates the static note frame's countdown displays.</li>
+  <li>Updates active popup timers (time remaining until each popup's event).</li>
+  <li>Removes expired popups (those whose event time has passed).</li>
+</ol>
+
+<h3>6.5 Encounter End</h3>
+<p>When <code>ENCOUNTER_END</code> fires:</p>
+<ol>
+  <li>Stop the per-second ticker.</li>
+  <li>Dismiss all active popups.</li>
+  <li>Handle the static note frame according to the user's "Hide" setting: hide immediately, linger 5 seconds then fade, or ("Never") leave it visible until the active note changes or the user hides it manually.</li>
+</ol>
+
+
+<!-- ───────────────────── 7. STATIC NOTE FRAME ───────────────────── -->
+<h2 id="display-note-frame">7. Display: Static Note Frame</h2>
+
+<p>
+  The static note frame is a persistent, movable, resizable frame that shows the reminder
+  list for the active encounter. It acts as a living assignment sheet—times count down in
+  real time, and past entries are dimmed, or hidden entirely when the "Hide expired reminders"
+  setting is on.
+</p>
+<p>
+  The frame's contents are governed by the "Show only my assignments" setting (default: on).
+  When on, only tag-matched reminders appear—each raider sees their own sheet. When off,
+  every reminder appears—the view a raid leader uses to review the full plan.
+</p>
+
+<h3>7.1 Content</h3>
+<p>Each reminder line is rendered as a single row containing:</p>
+<ul>
+  <li>The countdown time in <code>M:SS</code> format, color-coded:
+    <ul>
+      <li>&gt; 10 seconds remaining: the frame's normal text color (white/grey).</li>
+      <li>1–10 seconds remaining: the user-configurable countdown color (default green).</li>
+      <li>Expired: dimmed grey (or hidden, per the "Hide expired reminders" setting).</li>
+      <li>Reference not yet known (the phase hasn't begun): static time in the normal text color, no countdown.</li>
+    </ul>
+  </li>
+  <li>Spell icon (from <code>spellid:</code> or <code>bossSpell:</code>), if present.</li>
+  <li>Reminder text, with <strong>all</strong> player names rendered in their class color, at all times.</li>
+</ul>
+
+<p>Freeform text lines are rendered as-is, without timers.</p>
+
+<h3>7.2 Visibility</h3>
+<ul>
+  <li>The note frame appears when an encounter starts (and the active note has reminders for that encounter).</li>
+  <li>When the encounter ends, the note frame behaves according to the user's "Hide" setting:
+      "Immediately" (default), "Fade" (linger 5 seconds, then fade out), or "Never"
+      (the frame stays visible until the active note changes or the user hides it manually).</li>
+  <li>The <strong>Show/Hide button</strong> in the config UI toggles the note frame on demand outside an
+      encounter, so a raid leader can validate formatting and layout before a pull. In this preview
+      state, the frame renders the entire active note—every encounter section and freeform line—with
+      static times (there is no live encounter to count from). The same button is the manual dismissal
+      for the "Never" hide mode.</li>
+  <li>The note frame is only shown during content types the user has enabled (using PRT's existing content type system).</li>
+</ul>
+
+<h3>7.3 Frame Properties</h3>
+<ul>
+  <li>Movable and resizable (position and size saved to the profile, following CooldownRoster's pattern).</li>
+  <li>Lockable (prevents accidental dragging, following CooldownRoster's pattern). Locked by default.</li>
+  <li>Scrollable if content exceeds frame height.</li>
+  <li>Configurable font face, size, and outline; configurable background color and opacity.</li>
+</ul>
+
+
+<!-- ───────────────────── 8. ACTIVE POPUPS ───────────────────── -->
+<h2 id="display-popups">8. Display: Active Reminder Popups</h2>
+
+<p>
+  A reminder's popup appears <code>dur</code> seconds before its event, counts down to zero
+  at the moment of the event, then fades out. Multiple popups stack vertically.
+  The "Enable popups" master toggle (see <a href="#config-ui">Configuration UI</a>) disables
+  the entire popup system; when off, no popup of any type ever appears, regardless of note content.
+</p>
+
+<h3>8.1 Display Types</h3>
+
+<table>
+  <tr><th>Type</th><th>Visual</th><th>Best For</th></tr>
+  <tr>
+    <td><code>Icon</code></td>
+    <td>Square spell icon with a cooldown swipe animation, text label beside it, and a timer.</td>
+    <td>Player ability assignments ("Use Aura Mastery").</td>
+  </tr>
+  <tr>
+    <td><code>Bar</code></td>
+    <td>Horizontal status bar with spell icon, text label, and timer. Bar drains over the countdown, emptying at the event.</td>
+    <td>Duration-based events ("Dodge Breath for 8 seconds").</td>
+  </tr>
+  <tr>
+    <td><code>Text</code></td>
+    <td>Plain text with an optional countdown in parentheses.</td>
+    <td>Simple callouts ("Spread Now").</td>
+  </tr>
+  <tr>
+    <td><code>Circle</code></td>
+    <td>Circular ring with a cooldown-style sweep, text label in center, timer.</td>
+    <td>Rotational cooldowns, alternative visual preference.</td>
+  </tr>
+</table>
+
+<h3>8.2 Popup Arrangement</h3>
+<ul>
+  <li>Each display type has its own anchor point (mover frame), independently positionable.</li>
+  <li>Multiple simultaneous popups of the same type stack in a configurable direction (up or down).</li>
+  <li>Stacked popups are sorted by expiration time (soonest-to-expire on top).</li>
+  <li>Mover frame positions are saved to the profile.</li>
+</ul>
+
+<h3>8.3 Popup Lifecycle</h3>
+<pre>WHEN remainingTime until the event <= dur:
+    Create popup frame for the reminder's DisplayType
+    Set icon from spellid (if present)
+    Set text from text field
+    Set countdown to remainingTime (counts down to the event)
+    Apply colors from colors field (if present)
+    Start cooldown/swipe animation over the countdown
+    Arrange all active popups of this type
+    (Sound/TTS is NOT triggered here; it fires on the shared
+     TTSTimer timer—see 6.4 and 9.2.1)
+
+EVERY FRAME (OnUpdate):
+    Update countdown display
+    Update swipe/bar progress
+
+WHEN the event time arrives (countdown reaches zero):
+    Fade out popup (0.5 second fade)
+    Release the frame
+    Re-arrange remaining popups</pre>
+
+
+<!-- ───────────────────── 9. ANCILLARY EFFECTS ───────────────────── -->
+<h2 id="display-effects">9. Display: Ancillary Effects</h2>
+
+<h3>9.1 Text-to-Speech</h3>
+<p>
+  If <code>TTS</code> is present and not <code>"false"</code>, the addon speaks the TTS string
+  (or the reminder's <code>text</code> if TTS is <code>"true"</code>) using WoW's built-in
+  <code>C_VoiceChat.SpeakText</code>.
+</p>
+
+<h3>9.2 Sound</h3>
+<p>
+  If <code>sound</code> is present, the addon plays the named sound via LibSharedMedia
+  (or as a direct file path).
+</p>
+
+<h3>9.2.1 Audio Alert Timing</h3>
+<p>
+  Sound and TTS share a single timer and are mutually exclusive, matching NSRT: the alert fires
+  once, <code>TTSTimer</code> seconds before the event. If <code>sound</code> is set, the sound
+  plays and TTS is skipped; TTS fires only when no sound is set (or the sound fails to resolve).
+  Because <code>TTSTimer</code> defaults to <code>dur</code>, the common case is an alert at the
+  moment the popup appears; an explicit <code>TTSTimer</code> moves it. Both <code>dur</code> and
+  <code>TTSTimer</code> are clamped to the reminder's <code>time</code>.
+</p>
+
+<h3>9.3 Countdown</h3>
+<p>
+  If <code>countdown</code> is present, the addon announces decreasing numbers
+  (via TTS) starting at <code>countdown</code> seconds before the event.
+  For example, <code>countdown:3</code> announces "3", "2", "1".
+  Countdown announcements are independent of the "Enable TTS" toggle: they play even when
+  TTS is disabled.
+</p>
+
+<h3>9.4 Unit Frame Glow</h3>
+<p>
+  PRT does not implement unit frame glow. The <code>glowunit</code> field is parsed for
+  format compatibility and discarded. It produces no visual effect, no error, and no warning.
+</p>
+
+
+<!-- ───────────────────── 10. COMMUNICATION ───────────────────── -->
+<h2 id="communication">10. Communication</h2>
+
+<p>
+  PRT has no existing communication infrastructure. This feature introduces addon messaging
+  for the first time.
+</p>
+
+<h3>10.1 Import / Export</h3>
+<ul>
+  <li><strong>Import:</strong> The user pastes a raw NSRT-format note string into the config UI's text box.
+      The raw string <em>is</em> the import format—no encoding, no compression.</li>
+  <li><strong>Export:</strong> The user copies the raw note string from the text box. Same format as import.</li>
+</ul>
+
+<h3>10.2 Broadcast</h3>
+<p>
+  The raid leader (or assistant) can broadcast the active note to the raid.
+  All raid members running PRT receive it, store it, and activate it.
+</p>
+
+<h3>10.2.1 Who Can Broadcast</h3>
+<p>
+  Only players who are the raid leader or have raid assistant can broadcast.
+  For all other players, the "Send" button is visible but disabled, with a tooltip
+  reading "Requires raid leader or assistant."
+</p>
+<p>
+  Broadcasting is additionally disabled while the local player is in combat—the Send and
+  Clear buttons disable, with a tooltip reading "Cannot send during combat." This is a
+  product decision, not a technical limit: mid-pull note swaps are not supported.
+</p>
+
+<h3>10.2.2 Broadcast Behavior</h3>
+<pre>WHEN raid leader clicks "Send":
+    Serialize the active note's raw text string (LibSerialize)
+    Compress the serialized payload (LibDeflate)
+    Send to the RAID channel via AceComm, which chunks to fit
+        WoW's addon message size limit
+    Include the note name in the message payload
+
+WHEN a raid member receives a complete note:
+    IF sender is raid leader or assistant:
+        Decompress and deserialize the payload
+        Store as a named note (using the note name from the payload)
+        Activate it (set as activeNote, trigger parse)
+        Display a chat notification: "Received note: [NoteName] from [Sender]"
+    ELSE:
+        Ignore the message</pre>
+
+<h3>10.2.3 Clear</h3>
+<p>
+  The raid leader can broadcast a "clear" message that deactivates the current note
+  on all raid members. This does not delete stored notes—it only sets <code>activeNote</code> to nil.
+  Receivers apply the same sender check as note broadcasts: clear messages from anyone who is
+  not the raid leader or an assistant are ignored.
+</p>
+
+<div class="callout">
+  <strong>New infrastructure:</strong> The communication layer (serialize, compress, send/receive,
+  leader-check) is new to PRT. It is built as a shared utility so future features can reuse it,
+  not baked into the Notes module.
+</div>
+
+
+<!-- ───────────────────── 11. CONFIG UI ───────────────────── -->
+<h2 id="config-ui">11. Configuration UI</h2>
+
+<p>
+  Notes registers a tab in PRT's config frame. The tab is organized into sections.
+</p>
+
+<h3>11.1 Note Management Section</h3>
+<ul>
+  <li><strong>Note selector dropdown:</strong> Lists all saved note names plus a <code>(none)</code> entry.
+      Selecting a name activates that note; selecting <code>(none)</code> deactivates the current note locally.</li>
+  <li><strong>New Note button:</strong> Prompts for a name, then creates an empty note and opens it for pasting.</li>
+  <li><strong>Delete button:</strong> Deletes the currently selected note (with confirmation).</li>
+  <li><strong>Rename button:</strong> Renames the currently selected note.</li>
+  <li><strong>Paste box:</strong> A large multiline text area showing the active note's raw text.
+      Editable—pasting new content overwrites the note and triggers a re-parse.
+      This is the primary input mechanism.</li>
+  <li><strong>Send button:</strong> Broadcasts the active note to the raid. Always visible;
+      enabled only when the player is raid leader or assistant AND a note is active AND the
+      player is out of combat. When disabled due to permissions, the tooltip reads
+      "Requires raid leader or assistant"; when disabled due to combat, "Cannot send during combat."</li>
+  <li><strong>Clear button:</strong> Broadcasts the clear message (see <a href="#communication">Communication</a>),
+      deactivating the current note raid-wide. Gated identically to Send: always visible, enabled only for the
+      raid leader or an assistant while out of combat, with the same tooltips when disabled.</li>
+</ul>
+
+<h3>11.2 Display Settings Section</h3>
+<table>
+  <tr><th>Setting</th><th>Type</th><th>Description</th></tr>
+  <tr>
+    <td>Show note frame</td><td>Checkbox</td>
+    <td>Default on. Whether to display the static note frame during encounters.</td>
+  </tr>
+  <tr>
+    <td>Show only my assignments</td><td>Checkbox</td>
+    <td>Default on. When on, the note frame shows only tag-matched reminders. When off, it shows every reminder—the raid leader's full-sheet view.</td>
+  </tr>
+  <tr>
+    <td>Hide expired reminders</td><td>Checkbox</td>
+    <td>Default on. When on, expired lines in the note frame are hidden; when off, they are dimmed.</td>
+  </tr>
+  <tr>
+    <td>Hide</td><td>Dropdown</td>
+    <td>What the note frame does when the encounter ends: "Immediately" (default), "Fade" (linger 5 seconds, then fade out), or "Never" (stays visible until the active note changes or the user hides it with the Show/Hide button).</td>
+  </tr>
+  <tr>
+    <td>Show/Hide</td><td>Button</td>
+    <td>Toggles the note frame outside an encounter for formatting validation (see <a href="#display-note-frame">Static Note Frame</a>). Also the manual dismissal for the "Never" hide mode.</td>
+  </tr>
+  <tr>
+    <td>Countdown color</td><td>Color picker</td>
+    <td>The color the countdown timer turns when 1–10 seconds remain. Default green.</td>
+  </tr>
+  <tr>
+    <td>Font Face</td><td>Dropdown</td>
+    <td>Font for the static note frame, from the LibSharedMedia font list.</td>
+  </tr>
+  <tr>
+    <td>Font Size</td><td>Slider</td>
+    <td>Font size for the static note frame.</td>
+  </tr>
+  <tr>
+    <td>Font Outline</td><td>Dropdown</td>
+    <td>None, Outline, Thick Outline, or Monochrome (matching NivUI's standard set).</td>
+  </tr>
+  <tr>
+    <td>Background Color</td><td>Color picker</td>
+    <td>Background color for the static note frame.</td>
+  </tr>
+  <tr>
+    <td>Background Opacity</td><td>Slider</td>
+    <td>Background opacity for the static note frame.</td>
+  </tr>
+  <tr>
+    <td>Locked</td><td>Checkbox</td>
+    <td>Default on. Prevents dragging/resizing the note frame and popup movers.</td>
+  </tr>
+  <tr>
+    <td>Content types</td><td>Checkboxes</td>
+    <td>Enable/disable per content type (using PRT's standard content type pattern).</td>
+  </tr>
+</table>
+
+<h3>11.3 Popup Settings Section</h3>
+<table>
+  <tr><th>Setting</th><th>Type</th><th>Description</th></tr>
+  <tr>
+    <td>Enable popups</td><td>Checkbox</td>
+    <td>Master toggle for active reminder popups.</td>
+  </tr>
+  <tr>
+    <td>Popup scale</td><td>Slider</td>
+    <td>Scale factor for all popup display types.</td>
+  </tr>
+  <tr>
+    <td>Grow direction</td><td>Dropdown</td>
+    <td>Up or Down—direction that multiple simultaneous popups stack.</td>
+  </tr>
+  <tr>
+    <td>Enable TTS</td><td>Checkbox</td>
+    <td>Master toggle for text-to-speech. When off, <code>TTS</code> fields in notes are ignored.
+        <code>countdown:</code> announcements are independent of this toggle and always play.</td>
+  </tr>
+  <tr>
+    <td>Enable sounds</td><td>Checkbox</td>
+    <td>Master toggle for reminder sounds. When off, sound fields in notes are ignored.</td>
+  </tr>
+  <tr>
+    <td>Test button</td><td>Button</td>
+    <td>Fires one sample reminder popup of each of the four display types so the user can see positioning and appearance.</td>
+  </tr>
+</table>
+
+
+<!-- ───────────────────── 12. MODULE INTEGRATION ───────────────────── -->
+<h2 id="module-integration">12. Module Integration</h2>
+
+<h3>12.1 Module Registration</h3>
+<p>
+  Notes follows PRT's standard module pattern:
+</p>
+<ul>
+  <li>Registers via <code>PRT:RegisterModule("notes", NotesModule)</code>.</li>
+  <li>Declares defaults via <code>PRT.defaults.notes</code>.</li>
+  <li>Registers a config tab via <code>PRT:RegisterTab("Notes", ...)</code>.</li>
+</ul>
+
+<h3>12.2 Lifecycle</h3>
+<table>
+  <tr><th>Hook</th><th>Behavior</th></tr>
+  <tr>
+    <td><code>Initialize()</code></td>
+    <td>Create display frames (note frame, popup mover frames). Set up the communication channel.</td>
+  </tr>
+  <tr>
+    <td><code>IsActivatable()</code></td>
+    <td>Returns true when the player is in a group.</td>
+  </tr>
+  <tr>
+    <td><code>OnEnable()</code></td>
+    <td>Register for <code>ENCOUNTER_START</code>, <code>ENCOUNTER_END</code>,
+        <code>GROUP_ROSTER_UPDATE</code>, <code>PLAYER_SPECIALIZATION_CHANGED</code>,
+        and the BigWigs/DBM stage callbacks.
+        Parse the active note. Begin listening for broadcast messages.</td>
+  </tr>
+  <tr>
+    <td><code>OnDisable()</code></td>
+    <td>Unregister events. Stop the timer engine. Dismiss popups. Hide frames.</td>
+  </tr>
+</table>
+
+<h3>12.3 Content Types</h3>
+<p>
+  Notes uses PRT's existing content type system. The module's <code>contentTypes</code>
+  defaults enable Raid (all difficulties) and disable other content types,
+  since timed boss notes are a raid-centric feature.
+</p>
+
+<h3>12.4 Position Persistence</h3>
+<p>
+  Frame positions (note frame + each popup type's mover) are stored under
+  <code>profile.notes.positions</code>, following CooldownRoster's pattern.
+</p>
+
+
+<!-- ───────────────────── 13. DEPENDENCIES ───────────────────── -->
+<h2 id="dependencies">13. Dependencies</h2>
+
+<h3>13.1 Embedded Libraries</h3>
+<p>
+  PRT embeds the following libraries (with their prerequisites, such as LibStub and
+  CallbackHandler), following standard WoW addon bundling practice. Users install nothing extra.
+</p>
+
+<table>
+  <tr><th>Library</th><th>Purpose</th></tr>
+  <tr>
+    <td>AceComm-3.0</td>
+    <td>Addon message transport, including chunking to fit WoW's message size limit.</td>
+  </tr>
+  <tr>
+    <td>LibSerialize</td>
+    <td>Payload serialization for broadcast.</td>
+  </tr>
+  <tr>
+    <td>LibDeflate</td>
+    <td>Payload compression and addon-channel encoding for broadcast.</td>
+  </tr>
+  <tr>
+    <td>LibSharedMedia-3.0</td>
+    <td>Sound playback by name for the <code>sound:</code> field; font list for the Font Face setting.</td>
+  </tr>
+</table>
+
+<h3>13.2 External Addons</h3>
+<table>
+  <tr><th>Addon</th><th>Purpose</th><th>Behavior When Absent</th></tr>
+  <tr>
+    <td>BigWigs <em>or</em> DBM</td>
+    <td>Stage callbacks (<code>BigWigs_SetStage</code> / <code>DBM_SetStage</code>) for phase tracking. Confirmed functional post-Midnight.</td>
+    <td>Only phase 1 reminders fire. A warning is logged once at module activation.</td>
+  </tr>
+</table>
+
+</body>
+</html>

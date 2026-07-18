@@ -109,3 +109,81 @@ Open design questions to resolve before speccing:
   surprising behavior for a raider who curated their selection.
 - **Deactivation.** Does the auto-loaded note stay active after the encounter,
   or revert to the previously active note?
+
+## Addon Detection (deferred, 2026-07-18)
+
+A way for the raid leader (or any user) to see which raid members do **not**
+have PRT installed. Useful for enforcing addon requirements or diagnosing why
+someone isn't seeing notes/popups.
+
+Open design questions to resolve before speccing:
+
+- **Mechanism.** Silent version handshake on group join (comms-layer ping/pong)?
+  Or piggyback on an existing broadcast and track who responds?
+- **Display.** Inline in the roster? A separate "addon status" tooltip or panel?
+- **Staleness.** How long before a missing response counts as "not installed" vs.
+  "still loading"? Timeout threshold and re-check cadence.
+- **Privacy.** Is broadcasting your addon version (and implicitly your presence)
+  acceptable, or should it be opt-in?
+
+## Cooldown Roster ↔ Notes Integration (deferred, 2026-07-18)
+
+Tie the Cooldown Roster and Notes together so that when a note line says a
+player's ability is active, CDR reflects it—and when that ability *should* be
+on cooldown afterward, CDR shows the cooldown state too.
+
+This turns Notes from a display-only timeline into something that feeds live
+roster state, closing the gap between "the plan says use Spirit Link now" and
+"is Spirit Link actually available?"
+
+Open design questions to resolve before speccing:
+
+- **Data flow.** Notes → CDR (note activation sets "ability in use" on CDR), or
+  bidirectional (CDR cooldown expiry updates note line styling)?
+- **Ability identity.** How does a note line's text ("SLT" / "Spirit Link") map
+  to CDR's spell-ID–based tracking? Relies on shared nicknames / spell aliases?
+- **Timing accuracy.** Note countdown timers are best-effort; real cooldowns are
+  server-authoritative. How much drift is acceptable before the CDR state
+  disagrees with the note's implication?
+- **Multiple assignments.** A note line might assign the same ability to different
+  players at different times. CDR needs to track per-player, per-cast, not just
+  per-spell.
+
+## Ready Check Snark (deferred, 2026-07-18)
+
+Enhance the Ready Check module with whisper-based nudges:
+
+1. **Dead players** get a VERY snarky whisper reminding them to release their
+   spirit. They are, after all, lying on the floor while 19 other people wait.
+2. **Players not at full health** get a mildly snarky whisper reminding them
+   that there is, in fact, a Recuperate button in the game.
+
+Open design questions to resolve before speccing:
+
+- **Trigger.** On ready check initiation, on ready check completion, or both?
+- **Throttle.** Whisper once per ready check, or suppress repeats within some
+  window so the same dead player doesn't get spammed across back-to-back checks?
+- **Message pool.** Static messages or a rotating pool of snarky lines? If
+  rotating, who writes them? (The answer is obviously Niv.)
+- **Opt-out.** Can the recipient suppress these, or is suffering the point?
+- **Permissions.** Only the ready check initiator sends whispers, or does every
+  PRT user independently whisper? (The latter would be chaotic and hilarious,
+  but probably wrong.)
+
+## Per-Character Profiles (deferred, 2026-07-18)
+
+Profiles should be swappable per-character rather than a single global "active
+profile." A healer alt and a DPS main likely want completely different note
+display settings, popup positions, and CDR configurations—forcing a manual
+profile swap on every character switch is friction that adds up.
+
+Open design questions to resolve before speccing:
+
+- **Binding model.** Character name? Character GUID? Class? Spec? "Last profile
+  used on this character" (implicit) vs. explicit assignment in a UI?
+- **Default behavior.** What happens on a character with no binding—fall back to
+  the current global active profile, or prompt?
+- **Migration.** Existing users have one active profile. First login per alt
+  after this ships needs a smooth path, not a "no profile selected" blank state.
+- **Spec-swap.** Some players swap specs on the same character (heal vs. DPS on
+  the same druid). Should the binding be per-spec, or is per-character enough?

@@ -21,6 +21,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 
 - Config window widened from 500px to 750px to fit the growing tab row.
+- **Profiles** extracted into their own config tab with dedicated create, copy, delete, and rename UI.
+
+### Fixed
+
+- Popup movers no longer appear on reload when no popups are active.
 
 ## [1.0.0-alpha-2] - 2026-04-03
 

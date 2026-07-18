@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.0.0-alpha-4] - 2026-07-18
+
 ### Added
 
 - **Test Note** button in the Notes config tab that runs the active note's full timer without requiring a boss encounter, for validating notes on combat dummies or anywhere else.

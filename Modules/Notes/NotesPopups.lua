@@ -298,6 +298,21 @@ local CONSTRUCTORS = {
 -- Pooling
 --------------------------------------------------------------------------------
 
+local function HasActivePopups(displayType)
+    local active = activeByType[displayType]
+    return active and #active > 0
+end
+
+local function EnsureMoverVisibility(displayType)
+    local mover = movers[displayType]
+    if not mover then return end
+    if not IsLocked() or HasActivePopups(displayType) then
+        mover:Show()
+    else
+        mover:Hide()
+    end
+end
+
 local function AcquirePopup(displayType)
     local pool = pools[displayType]
     local f = table.remove(pool.free)
@@ -307,6 +322,7 @@ local function AcquirePopup(displayType)
     end
     f:SetParent(movers[displayType])
     f:SetAlpha(1)
+    movers[displayType]:Show()
     f:Show()
     return f
 end
@@ -335,6 +351,7 @@ local function ReleasePopup(f)
 
     table.insert(pools[displayType].free, f)
     NotesPopups:Arrange(displayType)
+    EnsureMoverVisibility(displayType)
 end
 
 --------------------------------------------------------------------------------
@@ -740,7 +757,7 @@ function NotesPopups:SetLocked(locked)
                 mover:SetBackdropBorderColor(0.5, 0.5, 0.8, 0.9)
                 mover.label:Show()
             end
-            mover:Show()
+            EnsureMoverVisibility(displayType)
         end
     end
 end

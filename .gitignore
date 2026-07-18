@@ -13,7 +13,5 @@ Thumbs.db
 *.luac
 
 # Claude
-.claude/*
-!.claude/skills/
 CLAUDE.md
 purplexityraidtools.iml

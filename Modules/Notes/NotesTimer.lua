@@ -54,7 +54,7 @@ local function fireCountdowns(self, reminder, s, remaining)
         upper = countdown
     end
     for n = upper, 1, -1 do
-        if n <= s.lastRemaining and n > remaining then
+        if n < s.lastRemaining and n >= remaining then
             self.callbacks.onCountdown(reminder, n)
         end
     end

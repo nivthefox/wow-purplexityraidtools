@@ -140,8 +140,9 @@ local function FormatTime(seconds)
     if not seconds or seconds < 0 then
         seconds = 0
     end
-    local m = math.floor(seconds / 60)
-    local s = math.floor(seconds % 60)
+    local total = math.ceil(seconds)
+    local m = math.floor(total / 60)
+    local s = total % 60
     return string.format("%d:%02d", m, s)
 end
 

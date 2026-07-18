@@ -687,11 +687,50 @@ PRT:RegisterTab("Notes", function(parent)
     testButtonRow:SetPoint("TOPLEFT", 20, yOffset)
     testButtonRow:SetSize(childWidth - 48, 24)
 
-    local testButton = CreateFrame("Button", nil, testButtonRow, "UIPanelButtonTemplate")
-    testButton:SetSize(120, 22)
-    testButton:SetPoint("LEFT", 0, 0)
-    testButton:SetText("Test Popups")
-    testButton:SetScript("OnClick", function()
+    local TEST_BUTTON_WIDTH = 120
+    local TEST_BUTTON_GAP = 8
+    local totalTestWidth = TEST_BUTTON_WIDTH * 2 + TEST_BUTTON_GAP
+    local testLeftOffset = (childWidth - 48 - totalTestWidth) / 2
+
+    local testNoteButton = CreateFrame("Button", nil, testButtonRow, "UIPanelButtonTemplate")
+    testNoteButton:SetSize(TEST_BUTTON_WIDTH, 22)
+    testNoteButton:SetPoint("LEFT", testLeftOffset, 0)
+    testNoteButton:SetText("Test Note")
+
+    local function RefreshTestNoteButton()
+        if PRT.Notes:IsTestRunning() then
+            testNoteButton:SetText("Stop Test")
+            testNoteButton:Enable()
+        else
+            testNoteButton:SetText("Test Note")
+            local activeName = CurrentActiveName()
+            if activeName then
+                testNoteButton:Enable()
+                testNoteButton.disabledReason = nil
+            else
+                testNoteButton:Disable()
+                testNoteButton.disabledReason = "No active note."
+            end
+        end
+    end
+
+    testNoteButton:SetScript("OnClick", function()
+        if PRT.Notes:IsTestRunning() then
+            PRT.Notes:TestStop()
+        else
+            PRT.Notes:TestStart()
+        end
+        RefreshTestNoteButton()
+    end)
+    HookTooltip(testNoteButton)
+
+    PRT.Notes.onTestStopped = RefreshTestNoteButton
+
+    local testPopupsButton = CreateFrame("Button", nil, testButtonRow, "UIPanelButtonTemplate")
+    testPopupsButton:SetSize(TEST_BUTTON_WIDTH, 22)
+    testPopupsButton:SetPoint("LEFT", testNoteButton, "RIGHT", TEST_BUTTON_GAP, 0)
+    testPopupsButton:SetText("Test Popups")
+    testPopupsButton:SetScript("OnClick", function()
         PRT.NotesPopups:Test()
     end)
     yOffset = yOffset - 32
@@ -725,6 +764,8 @@ PRT:RegisterTab("Notes", function(parent)
         for _, info in ipairs(CONTENT_CHECKBOXES) do
             info.widget:SetValue(ReadPath(settings, info.path))
         end
+
+        RefreshTestNoteButton()
 
         popupsCheckbox:SetValue(settings.popups.enabled)
         popupScaleSlider:SetValue(settings.popups.scale)

@@ -17,7 +17,7 @@ jobs:
           path: PurplexityRaidTools
 
       - name: Create zip
-        run: zip -r PurplexityRaidTools-${{ github.event.release.tag_name }}.zip PurplexityRaidTools -x "PurplexityRaidTools/.git/*" -x "PurplexityRaidTools/.github/*" -x "PurplexityRaidTools/tests/*" -x "PurplexityRaidTools/docs/*"
+        run: zip -r PurplexityRaidTools-${{ github.event.release.tag_name }}.zip PurplexityRaidTools -x "PurplexityRaidTools/.git/*" -x "PurplexityRaidTools/.github/*" -x "PurplexityRaidTools/.claude/*" -x "PurplexityRaidTools/CLAUDE.md" -x "PurplexityRaidTools/tests/*" -x "PurplexityRaidTools/docs/*"
 
       - name: Upload release asset
         uses: softprops/action-gh-release@v2

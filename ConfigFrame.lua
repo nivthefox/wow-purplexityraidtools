@@ -180,12 +180,6 @@ function Components.GetSliderWithInput(parent, labelText, min, max, step, isDeci
         updatingFromSlider = false
     end
 
-    holder:SetScript("OnMouseWheel", function(_, delta)
-        if holder.Slider.Slider:IsEnabled() then
-            holder.Slider:SetValue(holder.Slider.Slider:GetValue() + delta * step)
-        end
-    end)
-
     holder.EditBox = editBox
 
     return holder

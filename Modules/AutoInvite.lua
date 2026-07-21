@@ -314,224 +314,188 @@ end
 --------------------------------------------------------------------------------
 
 PRT:RegisterTab("Auto-Invite", function(parent)
-    local container = CreateFrame("Frame", nil, parent)
-    container:SetPoint("TOPLEFT", 8, -60)
-    container:SetPoint("BOTTOMRIGHT", -8, 8)
-    container:Hide()
-
-    local scrollFrame = CreateFrame("ScrollFrame", nil, container, "UIPanelScrollFrameTemplate")
-    scrollFrame:SetPoint("TOPLEFT", 0, 0)
-    scrollFrame:SetPoint("BOTTOMRIGHT", -26, 0)
-
-    local scrollChild = CreateFrame("Frame", nil, scrollFrame)
-    scrollChild:SetWidth(container:GetWidth() - 40)
-    scrollChild:SetHeight(900)
-    scrollFrame:SetScrollChild(scrollChild)
-
-    local yOffset = 0
     local ROW_HEIGHT = 32
 
     local function GetSettings()
         return PRT:GetSetting("autoInvite")
     end
 
-
     --------------------------------------------------------------------
-    -- Section 1: Whisper Invite
-    --------------------------------------------------------------------
-
-    local whisperHeader = PRT.Components.GetHeader(scrollChild, "Whisper Invite")
-    whisperHeader:SetPoint("TOPLEFT", 0, yOffset)
-    yOffset = yOffset - 28
-
-    local whisperEnabledCB = PRT.Components.GetCheckbox(scrollChild, "Enable Whisper Invites", function(value)
-        GetSettings().whisperInviteEnabled = value
-    end)
-    whisperEnabledCB:SetPoint("TOPLEFT", 0, yOffset)
-    whisperEnabledCB:SetValue(GetSettings().whisperInviteEnabled)
-    yOffset = yOffset - ROW_HEIGHT
-
-    -- Keywords edit box
-    local keywordsRow = CreateFrame("Frame", nil, scrollChild)
-    keywordsRow:SetHeight(ROW_HEIGHT)
-    keywordsRow:SetPoint("TOPLEFT", 0, yOffset)
-    keywordsRow:SetPoint("RIGHT", scrollChild, "RIGHT", 0, 0)
-
-    local keywordsLabel = keywordsRow:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    keywordsLabel:SetPoint("LEFT", 20, 0)
-    keywordsLabel:SetPoint("RIGHT", keywordsRow, "CENTER", -30, 0)
-    keywordsLabel:SetJustifyH("RIGHT")
-    keywordsLabel:SetText("Keywords")
-
-    local keywordsEditBox = CreateFrame("EditBox", nil, keywordsRow, "InputBoxTemplate")
-    keywordsEditBox:SetHeight(20)
-    keywordsEditBox:SetPoint("LEFT", keywordsRow, "CENTER", -15, 0)
-    keywordsEditBox:SetPoint("RIGHT", keywordsRow, "RIGHT", -20, 0)
-    keywordsEditBox:SetAutoFocus(false)
-    keywordsEditBox:SetText(GetSettings().keywords)
-
-    keywordsEditBox:SetScript("OnEnterPressed", function(self)
-        local text = string.match(self:GetText(), "^%s*(.-)%s*$") or ""
-        GetSettings().keywords = text
-        self:SetText(text)
-        self:ClearFocus()
-    end)
-
-    keywordsEditBox:SetScript("OnEscapePressed", function(self)
-        self:ClearFocus()
-    end)
-
-    keywordsEditBox:SetScript("OnEditFocusLost", function(self)
-        local text = string.match(self:GetText(), "^%s*(.-)%s*$") or ""
-        GetSettings().keywords = text
-        self:SetText(text)
-    end)
-
-    yOffset = yOffset - ROW_HEIGHT
-
-    local guildOnlyCB = PRT.Components.GetCheckbox(scrollChild, "Guild Members Only", function(value)
-        GetSettings().guildOnly = value
-    end)
-    guildOnlyCB:SetPoint("TOPLEFT", 0, yOffset)
-    guildOnlyCB:SetValue(GetSettings().guildOnly)
-    yOffset = yOffset - ROW_HEIGHT
-
-    --------------------------------------------------------------------
-    -- Section 2: Guild Invite
+    -- Sub-tab: Whispers
     --------------------------------------------------------------------
 
-    yOffset = yOffset - 10
+    local function SetupWhispers(panel)
+        local yOffset = -10
 
-    local guildHeader = PRT.Components.GetHeader(scrollChild, "Guild Invite")
-    guildHeader:SetPoint("TOPLEFT", 0, yOffset)
-    yOffset = yOffset - 28
+        local whisperEnabledCB = PRT.Components.GetCheckbox(panel, "Enable Whisper Invites", function(value)
+            GetSettings().whisperInviteEnabled = value
+        end)
+        whisperEnabledCB:SetPoint("TOPLEFT", 0, yOffset)
+        yOffset = yOffset - ROW_HEIGHT
 
-    local infoLabel = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontDisable")
-    infoLabel:SetPoint("TOPLEFT", 20, yOffset)
-    infoLabel:SetPoint("RIGHT", scrollChild, "RIGHT", -20, 0)
-    infoLabel:SetJustifyH("LEFT")
-    infoLabel:SetText("Select ranks below, then press the button to invite all online members of those ranks.")
-    yOffset = yOffset - 20
+        -- Keywords edit box
+        local keywordsRow = CreateFrame("Frame", nil, panel)
+        keywordsRow:SetHeight(ROW_HEIGHT)
+        keywordsRow:SetPoint("TOPLEFT", 0, yOffset)
+        keywordsRow:SetPoint("RIGHT", panel, "RIGHT", 0, 0)
 
-    -- Save where dynamic rank content begins
-    local rankStartY = yOffset
+        local keywordsLabel = keywordsRow:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        keywordsLabel:SetPoint("LEFT", 20, 0)
+        keywordsLabel:SetPoint("RIGHT", keywordsRow, "CENTER", -30, 0)
+        keywordsLabel:SetJustifyH("RIGHT")
+        keywordsLabel:SetText("Keywords")
 
-    -- Track dynamic rank checkboxes for cleanup
-    local rankCheckboxes = {}
+        local keywordsEditBox = CreateFrame("EditBox", nil, keywordsRow, "InputBoxTemplate")
+        keywordsEditBox:SetHeight(20)
+        keywordsEditBox:SetPoint("LEFT", keywordsRow, "CENTER", -15, 0)
+        keywordsEditBox:SetPoint("RIGHT", keywordsRow, "RIGHT", -20, 0)
+        keywordsEditBox:SetAutoFocus(false)
 
-    -- Elements positioned dynamically after ranks
-    local inviteButton = CreateFrame("Button", nil, scrollChild, "UIPanelButtonTemplate")
-    inviteButton:SetSize(140, 22)
-    inviteButton:SetText("Invite by Rank")
+        keywordsEditBox:SetScript("OnEnterPressed", function(self)
+            local text = string.match(self:GetText(), "^%s*(.-)%s*$") or ""
+            GetSettings().keywords = text
+            self:SetText(text)
+            self:ClearFocus()
+        end)
 
-    inviteButton:SetScript("OnClick", function()
-        AutoInvite:InviteByRank()
-    end)
+        keywordsEditBox:SetScript("OnEscapePressed", function(self)
+            self:ClearFocus()
+        end)
 
-    --------------------------------------------------------------------
-    -- Section 3: Auto-Promote
-    --------------------------------------------------------------------
+        keywordsEditBox:SetScript("OnEditFocusLost", function(self)
+            local text = string.match(self:GetText(), "^%s*(.-)%s*$") or ""
+            GetSettings().keywords = text
+            self:SetText(text)
+        end)
 
-    local promoteHeader = PRT.Components.GetHeader(scrollChild, "Auto-Promote")
+        yOffset = yOffset - ROW_HEIGHT
 
-    local promoteEnabledCB = PRT.Components.GetCheckbox(scrollChild, "Enable Auto-Promote", function(value)
-        GetSettings().promoteEnabled = value
-    end)
+        local guildOnlyCB = PRT.Components.GetCheckbox(panel, "Guild Members Only", function(value)
+            GetSettings().guildOnly = value
+        end)
+        guildOnlyCB:SetPoint("TOPLEFT", 0, yOffset)
 
-    -- Promote names edit box
-    local promoteRow = CreateFrame("Frame", nil, scrollChild)
-    promoteRow:SetHeight(ROW_HEIGHT)
-
-    local promoteLabel = promoteRow:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    promoteLabel:SetPoint("LEFT", 20, 0)
-    promoteLabel:SetPoint("RIGHT", promoteRow, "CENTER", -30, 0)
-    promoteLabel:SetJustifyH("RIGHT")
-    promoteLabel:SetText("Player Names")
-
-    local promoteEditBox = CreateFrame("EditBox", nil, promoteRow, "InputBoxTemplate")
-    promoteEditBox:SetHeight(20)
-    promoteEditBox:SetPoint("LEFT", promoteRow, "CENTER", -15, 0)
-    promoteEditBox:SetPoint("RIGHT", promoteRow, "RIGHT", -20, 0)
-    promoteEditBox:SetAutoFocus(false)
-
-    promoteEditBox:SetScript("OnEnterPressed", function(self)
-        local text = string.match(self:GetText(), "^%s*(.-)%s*$") or ""
-        GetSettings().promoteNames = text
-        self:SetText(text)
-        self:ClearFocus()
-    end)
-
-    promoteEditBox:SetScript("OnEscapePressed", function(self)
-        self:ClearFocus()
-    end)
-
-    promoteEditBox:SetScript("OnEditFocusLost", function(self)
-        local text = string.match(self:GetText(), "^%s*(.-)%s*$") or ""
-        GetSettings().promoteNames = text
-        self:SetText(text)
-    end)
+        panel:SetScript("OnShow", function()
+            local settings = GetSettings()
+            whisperEnabledCB:SetValue(settings.whisperInviteEnabled)
+            keywordsEditBox:SetText(settings.keywords)
+            guildOnlyCB:SetValue(settings.guildOnly)
+        end)
+    end
 
     --------------------------------------------------------------------
-    -- Dynamic Layout (refreshed on show)
+    -- Sub-tab: Guild
     --------------------------------------------------------------------
 
-    container:SetScript("OnShow", function()
-        -- Refresh whisper invite widgets from saved settings
-        local settings = GetSettings()
-        whisperEnabledCB:SetValue(settings.whisperInviteEnabled)
-        keywordsEditBox:SetText(settings.keywords)
-        guildOnlyCB:SetValue(settings.guildOnly)
+    local function SetupGuild(panel)
+        local infoLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontDisable")
+        infoLabel:SetPoint("TOPLEFT", 20, -10)
+        infoLabel:SetPoint("RIGHT", panel, "RIGHT", -20, 0)
+        infoLabel:SetJustifyH("LEFT")
+        infoLabel:SetText("Select ranks below, then press the button to invite all online members of those ranks.")
 
-        -- Hide old rank checkboxes
-        for _, cb in ipairs(rankCheckboxes) do
-            cb:Hide()
-        end
-        rankCheckboxes = {}
+        -- Track dynamic rank checkboxes for cleanup
+        local rankCheckboxes = {}
 
-        local dynY = rankStartY
-        local numRanks = GuildControlGetNumRanks()
+        local inviteButton = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+        inviteButton:SetSize(140, 22)
+        inviteButton:SetText("Invite by Rank")
 
-        for rankIdx = 1, numRanks do
-            local rankName = GuildControlGetRankName(rankIdx)
-            local storedIndex = rankIdx - 1
+        inviteButton:SetScript("OnClick", function()
+            AutoInvite:InviteByRank()
+        end)
 
-            local cb = PRT.Components.GetCheckbox(scrollChild, rankName, function(value)
-                GetSettings().inviteRanks[storedIndex] = value
-            end)
-            cb:SetPoint("TOPLEFT", 0, dynY)
-            cb:SetValue(settings.inviteRanks[storedIndex] or false)
-            table.insert(rankCheckboxes, cb)
-            dynY = dynY - ROW_HEIGHT
-        end
+        panel:SetScript("OnShow", function()
+            local settings = GetSettings()
 
-        -- Position invite button below ranks
-        inviteButton:ClearAllPoints()
-        inviteButton:SetPoint("TOPLEFT", 20, dynY - 4)
-        dynY = dynY - 32
+            -- Hide old rank checkboxes
+            for _, cb in ipairs(rankCheckboxes) do
+                cb:Hide()
+            end
+            rankCheckboxes = {}
 
-        -- Position promote section
-        dynY = dynY - 10
+            local dynY = -34
+            local numRanks = GuildControlGetNumRanks()
 
-        promoteHeader:ClearAllPoints()
-        promoteHeader:SetPoint("TOPLEFT", 10, dynY)
-        promoteHeader:SetPoint("RIGHT", scrollChild, "RIGHT", -10, 0)
-        dynY = dynY - 28
+            for rankIdx = 1, numRanks do
+                local rankName = GuildControlGetRankName(rankIdx)
+                local storedIndex = rankIdx - 1
 
-        promoteEnabledCB:ClearAllPoints()
-        promoteEnabledCB:SetPoint("TOPLEFT", 0, dynY)
-        promoteEnabledCB:SetValue(settings.promoteEnabled)
-        dynY = dynY - ROW_HEIGHT
+                local cb = PRT.Components.GetCheckbox(panel, rankName, function(value)
+                    GetSettings().inviteRanks[storedIndex] = value
+                end)
+                cb:SetPoint("TOPLEFT", 0, dynY)
+                cb:SetValue(settings.inviteRanks[storedIndex] or false)
+                table.insert(rankCheckboxes, cb)
+                dynY = dynY - ROW_HEIGHT
+            end
 
-        promoteRow:ClearAllPoints()
-        promoteRow:SetPoint("TOPLEFT", 0, dynY)
-        promoteRow:SetPoint("RIGHT", scrollChild, "RIGHT", 0, 0)
-        promoteEditBox:SetText(settings.promoteNames)
-        dynY = dynY - ROW_HEIGHT
+            -- Position invite button below ranks
+            inviteButton:ClearAllPoints()
+            inviteButton:SetPoint("TOPLEFT", 20, dynY - 4)
+        end)
+    end
 
-        scrollChild:SetHeight(math.abs(dynY) + 20)
-    end)
+    --------------------------------------------------------------------
+    -- Sub-tab: Auto Promote
+    --------------------------------------------------------------------
 
-    return container
+    local function SetupAutoPromote(panel)
+        local yOffset = -10
+
+        local promoteEnabledCB = PRT.Components.GetCheckbox(panel, "Enable Auto-Promote", function(value)
+            GetSettings().promoteEnabled = value
+        end)
+        promoteEnabledCB:SetPoint("TOPLEFT", 0, yOffset)
+        yOffset = yOffset - ROW_HEIGHT
+
+        -- Promote names edit box
+        local promoteRow = CreateFrame("Frame", nil, panel)
+        promoteRow:SetHeight(ROW_HEIGHT)
+        promoteRow:SetPoint("TOPLEFT", 0, yOffset)
+        promoteRow:SetPoint("RIGHT", panel, "RIGHT", 0, 0)
+
+        local promoteLabel = promoteRow:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        promoteLabel:SetPoint("LEFT", 20, 0)
+        promoteLabel:SetPoint("RIGHT", promoteRow, "CENTER", -30, 0)
+        promoteLabel:SetJustifyH("RIGHT")
+        promoteLabel:SetText("Player Names")
+
+        local promoteEditBox = CreateFrame("EditBox", nil, promoteRow, "InputBoxTemplate")
+        promoteEditBox:SetHeight(20)
+        promoteEditBox:SetPoint("LEFT", promoteRow, "CENTER", -15, 0)
+        promoteEditBox:SetPoint("RIGHT", promoteRow, "RIGHT", -20, 0)
+        promoteEditBox:SetAutoFocus(false)
+
+        promoteEditBox:SetScript("OnEnterPressed", function(self)
+            local text = string.match(self:GetText(), "^%s*(.-)%s*$") or ""
+            GetSettings().promoteNames = text
+            self:SetText(text)
+            self:ClearFocus()
+        end)
+
+        promoteEditBox:SetScript("OnEscapePressed", function(self)
+            self:ClearFocus()
+        end)
+
+        promoteEditBox:SetScript("OnEditFocusLost", function(self)
+            local text = string.match(self:GetText(), "^%s*(.-)%s*$") or ""
+            GetSettings().promoteNames = text
+            self:SetText(text)
+        end)
+
+        panel:SetScript("OnShow", function()
+            local settings = GetSettings()
+            promoteEnabledCB:SetValue(settings.promoteEnabled)
+            promoteEditBox:SetText(settings.promoteNames)
+        end)
+    end
+
+    return PRT.Components.GetSubTabGroup(parent, {
+        { name = "Whispers", setup = SetupWhispers },
+        { name = "Guild", setup = SetupGuild },
+        { name = "Auto Promote", setup = SetupAutoPromote },
+    })
 end)
 
 --------------------------------------------------------------------------------

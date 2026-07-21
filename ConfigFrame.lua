@@ -3,10 +3,11 @@
 
 local PRT = PurplexityRaidTools
 
-local FRAME_WIDTH = 750
+local FRAME_WIDTH = 880
 local FRAME_HEIGHT = 675
 local ROW_HEIGHT = 32
 local SECTION_SPACING = 20
+local SIDEBAR_WIDTH = 125
 
 --------------------------------------------------------------------------------
 -- Component Helpers
@@ -282,6 +283,89 @@ function Components.GetTab(parent, text)
     return tab
 end
 
+-- Create a left-side sidebar tab button
+function Components.GetSidebarTab(parent, text)
+    local btn = CreateFrame("Button", nil, parent)
+    btn:SetSize(SIDEBAR_WIDTH - 8, 28)
+
+    btn.selectedBg = btn:CreateTexture(nil, "BACKGROUND")
+    btn.selectedBg:SetAllPoints()
+    btn.selectedBg:SetColorTexture(0.2, 0.2, 0.2, 0.8)
+    btn.selectedBg:Hide()
+
+    btn.highlight = btn:CreateTexture(nil, "HIGHLIGHT")
+    btn.highlight:SetAllPoints()
+    btn.highlight:SetColorTexture(0.3, 0.3, 0.3, 0.5)
+
+    btn.text = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    btn.text:SetPoint("LEFT", 8, 0)
+    btn.text:SetText(text)
+
+    function btn:SetSelected(selected)
+        if selected then
+            btn.selectedBg:Show()
+            btn.text:SetFontObject("GameFontHighlight")
+        else
+            btn.selectedBg:Hide()
+            btn.text:SetFontObject("GameFontNormal")
+        end
+    end
+
+    return btn
+end
+
+-- Create a group of top sub-tabs inside a sidebar tab's content area.
+-- defs: array of { name = "Tab Name", setup = function(panel) ... end }
+-- Each setup function builds its content inside the panel it is given.
+-- Returns the outer container (suitable as a RegisterTab container).
+local SUBTAB_HEIGHT = 24
+
+function Components.GetSubTabGroup(parent, defs)
+    local container = CreateFrame("Frame", nil, parent)
+    container:SetAllPoints()
+    container:Hide()
+
+    local subTabs = {}
+    local currentIndex = 1
+
+    local function SelectSubTab(index)
+        for i, st in ipairs(subTabs) do
+            if i == index then
+                PanelTemplates_SelectTab(st.tab)
+                st.panel:Show()
+            else
+                PanelTemplates_DeselectTab(st.tab)
+                st.panel:Hide()
+            end
+        end
+        currentIndex = index
+    end
+
+    for i, def in ipairs(defs) do
+        local panel = CreateFrame("Frame", nil, container)
+        panel:SetPoint("TOPLEFT", 0, -(SUBTAB_HEIGHT + 10))
+        panel:SetPoint("BOTTOMRIGHT", 0, 0)
+        panel:Hide()
+
+        local tab = Components.GetTab(container, def.name)
+        if i == 1 then
+            tab:SetPoint("TOPLEFT", container, "TOPLEFT", 0, 0)
+        else
+            tab:SetPoint("LEFT", subTabs[i - 1].tab, "RIGHT", 0, 0)
+        end
+        tab:SetScript("OnClick", function() SelectSubTab(i) end)
+
+        table.insert(subTabs, { tab = tab, panel = panel })
+        def.setup(panel)
+    end
+
+    container:SetScript("OnShow", function()
+        SelectSubTab(currentIndex)
+    end)
+
+    return container
+end
+
 -- Export components for modules to use
 PRT.Components = Components
 
@@ -316,46 +400,110 @@ end)
 table.insert(UISpecialFrames, "PurplexityRaidToolsConfigFrame")
 
 --------------------------------------------------------------------------------
--- Tab System
+-- Sidebar Tab System
 --------------------------------------------------------------------------------
 
-local tabs = {}
-local tabContainers = {}
-local currentTab = 1
+local Sidebar = CreateFrame("Frame", nil, ConfigFrame)
+Sidebar:SetWidth(SIDEBAR_WIDTH)
+Sidebar:SetPoint("TOPLEFT", 8, -28)
+Sidebar:SetPoint("BOTTOMLEFT", 8, 8)
 
-local function SelectTab(index)
-    for i, tab in ipairs(tabs) do
-        if i == index then
-            PanelTemplates_SelectTab(tab)
-            tabContainers[i]:Show()
+local sidebarBg = Sidebar:CreateTexture(nil, "BACKGROUND")
+sidebarBg:SetAllPoints()
+sidebarBg:SetColorTexture(0.05, 0.05, 0.05, 0.8)
+
+local ContentArea = CreateFrame("Frame", nil, ConfigFrame)
+ContentArea:SetPoint("TOPLEFT", Sidebar, "TOPRIGHT", 4, 0)
+ContentArea:SetPoint("BOTTOMRIGHT", -8, 8)
+
+local tabEntries = {}
+local bottomEntries = {}
+local currentEntry = nil
+
+local bottomSeparator = Sidebar:CreateTexture(nil, "ARTWORK")
+bottomSeparator:SetColorTexture(0.3, 0.3, 0.3, 0.8)
+bottomSeparator:SetHeight(1)
+bottomSeparator:Hide()
+
+local function ApplySelection(entry, list)
+    for _, e in ipairs(list) do
+        if e == entry then
+            e.button:SetSelected(true)
+            e.container:Show()
         else
-            PanelTemplates_DeselectTab(tab)
-            tabContainers[i]:Hide()
+            e.button:SetSelected(false)
+            e.container:Hide()
         end
     end
-    currentTab = index
 end
 
--- Export tab system for modules
-PRT.RegisterTab = function(self, name, setupFunc)
-    local container = setupFunc(ConfigFrame)
-    table.insert(tabContainers, container)
+local function SelectTab(entry)
+    ApplySelection(entry, tabEntries)
+    ApplySelection(entry, bottomEntries)
+    currentEntry = entry
+end
 
-    local tab = Components.GetTab(ConfigFrame, name)
-    if #tabs == 0 then
-        tab:SetPoint("TOPLEFT", ConfigFrame, "TOPLEFT", 10, -25)
-    else
-        tab:SetPoint("LEFT", tabs[#tabs], "RIGHT", 0, 0)
+local function LayoutSidebarTabs()
+    for i, e in ipairs(tabEntries) do
+        e.button:ClearAllPoints()
+        if i == 1 then
+            e.button:SetPoint("TOPLEFT", Sidebar, "TOPLEFT", 4, -8)
+        else
+            e.button:SetPoint("TOPLEFT", tabEntries[i - 1].button, "BOTTOMLEFT", 0, -2)
+        end
     end
-    local tabIndex = #tabs + 1
-    tab:SetScript("OnClick", function() SelectTab(tabIndex) end)
-    table.insert(tabs, tab)
+
+    -- Bottom entries stack upward from the bottom of the sidebar
+    for i, e in ipairs(bottomEntries) do
+        e.button:ClearAllPoints()
+        if i == 1 then
+            e.button:SetPoint("BOTTOMLEFT", Sidebar, "BOTTOMLEFT", 4, 8)
+        else
+            e.button:SetPoint("BOTTOMLEFT", bottomEntries[i - 1].button, "TOPLEFT", 0, 2)
+        end
+    end
+
+    if #bottomEntries > 0 then
+        local topButton = bottomEntries[#bottomEntries].button
+        bottomSeparator:ClearAllPoints()
+        bottomSeparator:SetPoint("BOTTOMLEFT", topButton, "TOPLEFT", 0, 5)
+        bottomSeparator:SetPoint("BOTTOMRIGHT", topButton, "TOPRIGHT", 0, 5)
+        bottomSeparator:Show()
+    else
+        bottomSeparator:Hide()
+    end
+end
+
+-- Export tab system for modules (tabs are kept in alphabetical order).
+-- Pass opts.bottom = true to pin a tab to the bottom of the sidebar,
+-- separated from the main group.
+PRT.RegisterTab = function(self, name, setupFunc, opts)
+    local entry = {
+        name = name,
+        container = setupFunc(ContentArea),
+        button = Components.GetSidebarTab(Sidebar, name),
+    }
+    entry.button:SetScript("OnClick", function() SelectTab(entry) end)
+
+    if opts and opts.bottom then
+        table.insert(bottomEntries, entry)
+    else
+        local insertAt = #tabEntries + 1
+        for i, e in ipairs(tabEntries) do
+            if name < e.name then
+                insertAt = i
+                break
+            end
+        end
+        table.insert(tabEntries, insertAt, entry)
+    end
+    LayoutSidebarTabs()
 end
 
 -- Select first tab when shown
 ConfigFrame:SetScript("OnShow", function()
-    if #tabs > 0 then
-        SelectTab(currentTab)
+    if #tabEntries > 0 or #bottomEntries > 0 then
+        SelectTab(currentEntry or tabEntries[1] or bottomEntries[1])
     end
 end)
 
@@ -363,22 +511,21 @@ end)
 -- Placeholder content (shown when no modules registered)
 --------------------------------------------------------------------------------
 
-local placeholder = CreateFrame("Frame", nil, ConfigFrame)
-placeholder:SetPoint("TOPLEFT", 8, -60)
-placeholder:SetPoint("BOTTOMRIGHT", -8, 8)
+local placeholder = CreateFrame("Frame", nil, ContentArea)
+placeholder:SetAllPoints()
 
 local placeholderText = placeholder:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 placeholderText:SetPoint("CENTER")
 placeholderText:SetText("No modules loaded.\n\nModules will appear here as tabs.")
 
 placeholder:SetScript("OnShow", function()
-    if #tabs > 0 then
+    if #tabEntries > 0 or #bottomEntries > 0 then
         placeholder:Hide()
     end
 end)
 
 ConfigFrame:HookScript("OnShow", function()
-    if #tabs > 0 then
+    if #tabEntries > 0 or #bottomEntries > 0 then
         placeholder:Hide()
     else
         placeholder:Show()

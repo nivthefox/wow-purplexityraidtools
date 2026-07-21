@@ -250,8 +250,7 @@ end
 
 PRT:RegisterTab("Don't Release", function(parent)
     local container = CreateFrame("Frame", nil, parent)
-    container:SetPoint("TOPLEFT", 8, -60)
-    container:SetPoint("BOTTOMRIGHT", -8, 8)
+    container:SetAllPoints()
     container:Hide()
 
     local scrollFrame = CreateFrame("ScrollFrame", nil, container, "UIPanelScrollFrameTemplate")

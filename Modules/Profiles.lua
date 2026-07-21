@@ -7,8 +7,7 @@ local PRT = PurplexityRaidTools
 
 PRT:RegisterTab("Profiles", function(parent)
     local container = CreateFrame("Frame", nil, parent)
-    container:SetPoint("TOPLEFT", 8, -60)
-    container:SetPoint("BOTTOMRIGHT", -8, 8)
+    container:SetAllPoints()
     container:Hide()
 
     local scrollFrame = CreateFrame("ScrollFrame", nil, container, "UIPanelScrollFrameTemplate")
@@ -92,7 +91,7 @@ PRT:RegisterTab("Profiles", function(parent)
     end)
 
     return container
-end)
+end, { bottom = true })
 
 --------------------------------------------------------------------------------
 -- Profile Dialogs

@@ -314,7 +314,7 @@ PRT:RegisterTab("Ready Check", function(parent)
 
 
     -- Master toggle
-    local enabledCheckbox = PRT.Components.GetCheckbox(container, "Enable Ready Check Features", function(value)
+    local enabledCheckbox = PRT.Components.GetCheckbox(container, "Enabled", function(value)
         GetSettings().enabled = value
     end)
     enabledCheckbox:SetPoint("TOPLEFT", 0, yOffset)
@@ -340,7 +340,7 @@ PRT:RegisterTab("Ready Check", function(parent)
     -- Raid buff checkboxes
     local buffCheckboxes = {}
     for _, buff in ipairs(RAID_BUFFS) do
-        local checkbox = PRT.Components.GetCheckbox(container, "Check " .. buff.name, function(value)
+        local checkbox = PRT.Components.GetCheckbox(container, buff.name, function(value)
             GetSettings()[buff.key] = value
         end)
         checkbox:SetPoint("TOPLEFT", 0, yOffset)
@@ -350,7 +350,7 @@ PRT:RegisterTab("Ready Check", function(parent)
     end
 
     -- Soulstone checkbox
-    local soulstoneCheckbox = PRT.Components.GetCheckbox(container, "Check Soul Stones", function(value)
+    local soulstoneCheckbox = PRT.Components.GetCheckbox(container, "Soul Stones", function(value)
         GetSettings().checkSoulstones = value
     end)
     soulstoneCheckbox:SetPoint("TOPLEFT", 0, yOffset)

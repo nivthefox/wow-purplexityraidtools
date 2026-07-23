@@ -753,7 +753,7 @@ PRT:RegisterTab("Cooldown Roster", function(parent)
     generalHeader:SetPoint("TOPLEFT", 0, yOffset)
     yOffset = yOffset - 28
 
-    local enabledCheckbox = PRT.Components.GetCheckbox(scrollChild, "Enable Cooldown Roster", function(value)
+    local enabledCheckbox = PRT.Components.GetCheckbox(scrollChild, "Enabled", function(value)
         GetSettings().enabled = value
         PRT:ApplySettings("cooldownRoster")
     end)
@@ -761,7 +761,7 @@ PRT:RegisterTab("Cooldown Roster", function(parent)
     enabledCheckbox:SetValue(GetSettings().enabled)
     yOffset = yOffset - ROW_HEIGHT
 
-    local lockCheckbox = PRT.Components.GetCheckbox(scrollChild, "Lock frame positions", function(value)
+    local lockCheckbox = PRT.Components.GetCheckbox(scrollChild, "Locked", function(value)
         GetSettings().lockFrames = value
         CooldownRoster:UpdateDragging()
     end)

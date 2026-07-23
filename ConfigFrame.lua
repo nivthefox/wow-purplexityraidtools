@@ -8,6 +8,7 @@ local FRAME_HEIGHT = 675
 local ROW_HEIGHT = 32
 local SECTION_SPACING = 20
 local SIDEBAR_WIDTH = 125
+local LABEL_WIDTH = 200
 
 --------------------------------------------------------------------------------
 -- Component Helpers
@@ -23,10 +24,10 @@ function Components.GetCheckbox(parent, label, callback)
     holder:SetPoint("RIGHT", -20, 0)
 
     local checkBox = CreateFrame("CheckButton", nil, holder, "SettingsCheckboxTemplate")
-    checkBox:SetPoint("LEFT", holder, "CENTER", -15, 0)
+    checkBox:SetPoint("LEFT", holder, "LEFT", LABEL_WIDTH - 15, 0)
     checkBox:SetText(label)
     checkBox:SetNormalFontObject(GameFontHighlight)
-    checkBox:GetFontString():SetPoint("RIGHT", holder, "CENTER", -30, 0)
+    checkBox:GetFontString():SetPoint("RIGHT", holder, "LEFT", LABEL_WIDTH - 30, 0)
     checkBox:GetFontString():SetPoint("LEFT", holder, 20, 0)
     checkBox:GetFontString():SetJustifyH("RIGHT")
 
@@ -66,11 +67,11 @@ function Components.GetBasicDropdown(parent, labelText, getItems, isSelectedCall
 
     local dropdown = CreateFrame("DropdownButton", nil, frame, "WowStyle1DropdownTemplate")
     dropdown:SetWidth(200)
-    dropdown:SetPoint("LEFT", frame, "CENTER", -20, 0)
+    dropdown:SetPoint("LEFT", frame, "LEFT", LABEL_WIDTH - 20, 0)
 
     local label = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     label:SetPoint("LEFT", 0, 0)
-    label:SetPoint("RIGHT", frame, "CENTER", -40, 0)
+    label:SetPoint("RIGHT", frame, "LEFT", LABEL_WIDTH - 40, 0)
     label:SetJustifyH("RIGHT")
     label:SetText(labelText)
 
@@ -105,7 +106,7 @@ function Components.GetSliderWithInput(parent, labelText, min, max, step, isDeci
     holder.Label = holder:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
     holder.Label:SetJustifyH("RIGHT")
     holder.Label:SetPoint("LEFT", 0, 0)
-    holder.Label:SetPoint("RIGHT", holder, "CENTER", -40, 0)
+    holder.Label:SetPoint("RIGHT", holder, "LEFT", LABEL_WIDTH - 40, 0)
     holder.Label:SetText(labelText)
 
     -- Input box on the right
@@ -118,7 +119,7 @@ function Components.GetSliderWithInput(parent, labelText, min, max, step, isDeci
 
     -- Slider in the middle
     holder.Slider = CreateFrame("Slider", nil, holder, "MinimalSliderWithSteppersTemplate")
-    holder.Slider:SetPoint("LEFT", holder, "CENTER", -20, 0)
+    holder.Slider:SetPoint("LEFT", holder, "LEFT", LABEL_WIDTH - 20, 0)
     holder.Slider:SetPoint("RIGHT", editBox, "LEFT", -10, 0)
     holder.Slider:SetHeight(20)
 
@@ -195,12 +196,12 @@ function Components.GetColorPicker(parent, labelText, hasAlpha, callback)
 
     local label = holder:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     label:SetPoint("LEFT", 0, 0)
-    label:SetPoint("RIGHT", holder, "CENTER", -40, 0)
+    label:SetPoint("RIGHT", holder, "LEFT", LABEL_WIDTH - 40, 0)
     label:SetJustifyH("RIGHT")
     label:SetText(labelText)
 
     local swatch = CreateFrame("Button", nil, holder, "ColorSwatchTemplate")
-    swatch:SetPoint("LEFT", holder, "CENTER", -15, 0)
+    swatch:SetPoint("LEFT", holder, "LEFT", LABEL_WIDTH - 15, 0)
 
     function holder:SetValue(color)
         swatch.currentColor = CopyTable(color)

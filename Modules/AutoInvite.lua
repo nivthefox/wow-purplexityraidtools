@@ -379,6 +379,7 @@ end
 PRT:RegisterTab("Auto-Invite", function(parent)
     local ROW_HEIGHT = 32
     local LABEL_WIDTH = 200
+    local CONTROL_MAX_WIDTH = 350
 
     local function GetSettings()
         return PRT:GetSetting("autoInvite")
@@ -412,8 +413,18 @@ PRT:RegisterTab("Auto-Invite", function(parent)
         local keywordsEditBox = CreateFrame("EditBox", nil, keywordsRow, "InputBoxTemplate")
         keywordsEditBox:SetHeight(20)
         keywordsEditBox:SetPoint("LEFT", keywordsRow, "LEFT", LABEL_WIDTH - 15, 0)
-        keywordsEditBox:SetPoint("RIGHT", keywordsRow, "RIGHT", -20, 0)
         keywordsEditBox:SetAutoFocus(false)
+
+        do
+            local START, RIGHT_INSET = LABEL_WIDTH - 15, 20
+            local function UpdateWidth(_, w)
+                w = w or keywordsRow:GetWidth()
+                local avail = math.max(0, w - START - RIGHT_INSET)
+                keywordsEditBox:SetWidth(math.min(avail, CONTROL_MAX_WIDTH))
+            end
+            keywordsRow:SetScript("OnSizeChanged", UpdateWidth)
+            UpdateWidth(keywordsRow, keywordsRow:GetWidth())
+        end
 
         keywordsEditBox:SetScript("OnEnterPressed", function(self)
             local text = string.match(self:GetText(), "^%s*(.-)%s*$") or ""
@@ -528,8 +539,18 @@ PRT:RegisterTab("Auto-Invite", function(parent)
         local promoteEditBox = CreateFrame("EditBox", nil, promoteRow, "InputBoxTemplate")
         promoteEditBox:SetHeight(20)
         promoteEditBox:SetPoint("LEFT", promoteRow, "LEFT", LABEL_WIDTH - 15, 0)
-        promoteEditBox:SetPoint("RIGHT", promoteRow, "RIGHT", -20, 0)
         promoteEditBox:SetAutoFocus(false)
+
+        do
+            local START, RIGHT_INSET = LABEL_WIDTH - 15, 20
+            local function UpdateWidth(_, w)
+                w = w or promoteRow:GetWidth()
+                local avail = math.max(0, w - START - RIGHT_INSET)
+                promoteEditBox:SetWidth(math.min(avail, CONTROL_MAX_WIDTH))
+            end
+            promoteRow:SetScript("OnSizeChanged", UpdateWidth)
+            UpdateWidth(promoteRow, promoteRow:GetWidth())
+        end
 
         promoteEditBox:SetScript("OnEnterPressed", function(self)
             local text = string.match(self:GetText(), "^%s*(.-)%s*$") or ""

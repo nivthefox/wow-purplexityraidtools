@@ -25,6 +25,10 @@ local pendingInvites = {}
 local knownMembers = {}
 local pendingMassInvite = false
 local massInviteRanks = {}
+-- True once we have requested a party-to-raid conversion and are waiting for it
+-- to complete. GROUP_ROSTER_UPDATE keeps retrying the conversion while set, and
+-- queued invites are held until it clears (i.e. until IsInRaid() is true).
+local convertPending = false
 
 --------------------------------------------------------------------------------
 -- Helper Functions
@@ -86,13 +90,27 @@ local function UnitInGuild(name)
 end
 
 local function QueueOrInvite(name, inviteFunc)
-    local numMembers = GetNumGroupMembers()
-    if numMembers >= 4 and not IsInRaid() then
-        C_PartyInfo.ConvertToRaid()
+    if not IsInRaid() and (convertPending or GetNumGroupMembers() >= 4) then
+        -- A full party would overflow, or a conversion is already in flight.
+        -- Request the conversion (once) and hold the invite until we are a raid.
+        if not convertPending then
+            convertPending = true
+            C_PartyInfo.ConvertToRaid()
+        end
         table.insert(pendingInvites, { name = name, inviteFunc = inviteFunc })
     else
         inviteFunc()
     end
+end
+
+-- Send an invite to a named character on a short stagger so a burst of invites
+-- does not trip the client's invite throttle.
+local function StaggerInvite(index, name)
+    C_Timer.After(index * 0.2, function()
+        if not IsPlayerInGroup(name) then
+            C_PartyInfo.InviteUnit(name)
+        end
+    end)
 end
 
 local function ProcessInviteQueue()
@@ -101,8 +119,8 @@ local function ProcessInviteQueue()
     end
     local queue = pendingInvites
     pendingInvites = {}
-    for _, entry in ipairs(queue) do
-        entry.inviteFunc()
+    for index, entry in ipairs(queue) do
+        C_Timer.After(index * 0.2, entry.inviteFunc)
     end
 end
 
@@ -202,7 +220,15 @@ function AutoInvite:OnBNetWhisper(message, senderName, bnSenderID)
 end
 
 function AutoInvite:OnGroupRosterUpdate()
-    ProcessInviteQueue()
+    -- Drive the party-to-raid conversion. Once we are a raid, clear the flag and
+    -- flush any invites that were queued while waiting. While still a party with
+    -- a pending conversion, keep asking to convert until it takes effect.
+    if IsInRaid() then
+        convertPending = false
+        ProcessInviteQueue()
+    elseif convertPending then
+        C_PartyInfo.ConvertToRaid()
+    end
 
     -- Build current roster snapshot
     local currentRoster = {}
@@ -259,25 +285,62 @@ function AutoInvite:OnGuildRosterUpdate()
     local ranks = massInviteRanks
     massInviteRanks = {}
 
-    local count = 0
+    -- Collect every online guild member of a selected rank who is not already in
+    -- the group or waiting on an invite.
+    local candidates = {}
     for i = 1, GetNumGuildMembers() do
         local name, _, rankIndex, _, _, _, _, _, online = GetGuildRosterInfo(i)
         if name and online and ranks[rankIndex] and not IsPlayerInGroup(name) and not IsInPendingQueue(name) then
-            count = count + 1
-            local inviteName = name
-            local delay = count * 0.2
-            C_Timer.After(delay, function()
-                QueueOrInvite(inviteName, function()
-                    C_PartyInfo.InviteUnit(inviteName)
-                end)
-            end)
+            table.insert(candidates, name)
         end
     end
 
-    if count > 0 then
-        print(string.format("|cFF00FF00PurplexityRaidTools:|r Inviting %d guild members.", count))
-    else
+    if #candidates == 0 then
         print("|cFF00FF00PurplexityRaidTools:|r No matching guild members found to invite.")
+        return
+    end
+
+    print(string.format("|cFF00FF00PurplexityRaidTools:|r Inviting %d guild members.", #candidates))
+
+    -- GetNumGroupMembers() reports 0 when solo; count yourself so the party-size
+    -- math lines up with the 5-player party cap.
+    local groupSize = GetNumGroupMembers()
+    if groupSize == 0 then
+        groupSize = 1
+    end
+
+    if IsInRaid() or (groupSize + #candidates) <= 5 then
+        -- Already a raid, or everyone fits in a party: just invite them all.
+        for index, name in ipairs(candidates) do
+            StaggerInvite(index, name)
+        end
+    else
+        -- More people than a party holds. Invite enough to fill the party, then
+        -- convert to a raid and queue the rest to go out once the conversion
+        -- completes (GROUP_ROSTER_UPDATE flushes the queue). This mirrors MRT's
+        -- InviteTool behaviour and avoids invites bouncing off a full party.
+        local partySlots = 5 - groupSize
+        for index, name in ipairs(candidates) do
+            if index <= partySlots then
+                StaggerInvite(index, name)
+            else
+                local inviteName = name
+                table.insert(pendingInvites, {
+                    name = inviteName,
+                    inviteFunc = function()
+                        C_PartyInfo.InviteUnit(inviteName)
+                    end,
+                })
+            end
+        end
+
+        convertPending = true
+        -- If we are already in a party, kick off the conversion now. When solo,
+        -- there is no group to convert yet; the first invitee to accept triggers
+        -- GROUP_ROSTER_UPDATE, which converts and then flushes the queue.
+        if IsInGroup() then
+            C_PartyInfo.ConvertToRaid()
+        end
     end
 end
 

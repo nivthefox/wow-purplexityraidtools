@@ -378,6 +378,7 @@ end
 
 PRT:RegisterTab("Auto-Invite", function(parent)
     local ROW_HEIGHT = 32
+    local LABEL_WIDTH = 200
 
     local function GetSettings()
         return PRT:GetSetting("autoInvite")
@@ -390,7 +391,7 @@ PRT:RegisterTab("Auto-Invite", function(parent)
     local function SetupWhispers(panel)
         local yOffset = -10
 
-        local whisperEnabledCB = PRT.Components.GetCheckbox(panel, "Enable Whisper Invites", function(value)
+        local whisperEnabledCB = PRT.Components.GetCheckbox(panel, "Enabled", function(value)
             GetSettings().whisperInviteEnabled = value
         end)
         whisperEnabledCB:SetPoint("TOPLEFT", 0, yOffset)
@@ -404,13 +405,13 @@ PRT:RegisterTab("Auto-Invite", function(parent)
 
         local keywordsLabel = keywordsRow:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
         keywordsLabel:SetPoint("LEFT", 20, 0)
-        keywordsLabel:SetPoint("RIGHT", keywordsRow, "CENTER", -30, 0)
+        keywordsLabel:SetPoint("RIGHT", keywordsRow, "LEFT", LABEL_WIDTH - 30, 0)
         keywordsLabel:SetJustifyH("RIGHT")
         keywordsLabel:SetText("Keywords")
 
         local keywordsEditBox = CreateFrame("EditBox", nil, keywordsRow, "InputBoxTemplate")
         keywordsEditBox:SetHeight(20)
-        keywordsEditBox:SetPoint("LEFT", keywordsRow, "CENTER", -15, 0)
+        keywordsEditBox:SetPoint("LEFT", keywordsRow, "LEFT", LABEL_WIDTH - 15, 0)
         keywordsEditBox:SetPoint("RIGHT", keywordsRow, "RIGHT", -20, 0)
         keywordsEditBox:SetAutoFocus(false)
 
@@ -506,7 +507,7 @@ PRT:RegisterTab("Auto-Invite", function(parent)
     local function SetupAutoPromote(panel)
         local yOffset = -10
 
-        local promoteEnabledCB = PRT.Components.GetCheckbox(panel, "Enable Auto-Promote", function(value)
+        local promoteEnabledCB = PRT.Components.GetCheckbox(panel, "Enabled", function(value)
             GetSettings().promoteEnabled = value
         end)
         promoteEnabledCB:SetPoint("TOPLEFT", 0, yOffset)
@@ -520,13 +521,13 @@ PRT:RegisterTab("Auto-Invite", function(parent)
 
         local promoteLabel = promoteRow:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
         promoteLabel:SetPoint("LEFT", 20, 0)
-        promoteLabel:SetPoint("RIGHT", promoteRow, "CENTER", -30, 0)
+        promoteLabel:SetPoint("RIGHT", promoteRow, "LEFT", LABEL_WIDTH - 30, 0)
         promoteLabel:SetJustifyH("RIGHT")
         promoteLabel:SetText("Player Names")
 
         local promoteEditBox = CreateFrame("EditBox", nil, promoteRow, "InputBoxTemplate")
         promoteEditBox:SetHeight(20)
-        promoteEditBox:SetPoint("LEFT", promoteRow, "CENTER", -15, 0)
+        promoteEditBox:SetPoint("LEFT", promoteRow, "LEFT", LABEL_WIDTH - 15, 0)
         promoteEditBox:SetPoint("RIGHT", promoteRow, "RIGHT", -20, 0)
         promoteEditBox:SetAutoFocus(false)
 
@@ -555,7 +556,7 @@ PRT:RegisterTab("Auto-Invite", function(parent)
     end
 
     return PRT.Components.GetSubTabGroup(parent, {
-        { name = "Whispers", setup = SetupWhispers },
+        { name = "Whisper Invites", setup = SetupWhispers },
         { name = "Guild", setup = SetupGuild },
         { name = "Auto Promote", setup = SetupAutoPromote },
     })

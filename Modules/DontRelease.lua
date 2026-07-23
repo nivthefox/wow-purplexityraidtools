@@ -275,14 +275,14 @@ PRT:RegisterTab("Don't Release", function(parent)
     generalHeader:SetPoint("TOPLEFT", 0, yOffset)
     yOffset = yOffset - 28
 
-    local enabledCheckbox = PRT.Components.GetCheckbox(scrollChild, "Enable Don't Release", function(value)
+    local enabledCheckbox = PRT.Components.GetCheckbox(scrollChild, "Enabled", function(value)
         GetSettings().enabled = value
     end)
     enabledCheckbox:SetPoint("TOPLEFT", 0, yOffset)
     enabledCheckbox:SetValue(GetSettings().enabled)
     yOffset = yOffset - ROW_HEIGHT
 
-    local delaySlider = PRT.Components.GetSliderWithInput(scrollChild, "Release Delay (seconds)", 1, 10, 1, false, function(value)
+    local delaySlider = PRT.Components.GetSliderWithInput(scrollChild, "Delay (seconds)", 1, 10, 1, false, function(value)
         GetSettings().delay = value
     end)
     delaySlider:SetPoint("TOPLEFT", 0, yOffset)
@@ -341,7 +341,7 @@ PRT:RegisterTab("Don't Release", function(parent)
     yOffset = yOffset - 28
 
     local randomizeCheckbox
-    local requireModifierCheckbox = PRT.Components.GetCheckbox(scrollChild, "Require modifier key to release", function(value)
+    local requireModifierCheckbox = PRT.Components.GetCheckbox(scrollChild, "Required", function(value)
         GetSettings().requireModifier = value
         if randomizeCheckbox then
             if value then
@@ -357,10 +357,10 @@ PRT:RegisterTab("Don't Release", function(parent)
     requireModifierCheckbox:SetValue(GetSettings().requireModifier)
     yOffset = yOffset - ROW_HEIGHT
 
-    randomizeCheckbox = PRT.Components.GetCheckbox(scrollChild, "Randomize modifier (Ctrl/Alt/Shift)", function(value)
+    randomizeCheckbox = PRT.Components.GetCheckbox(scrollChild, "Randomized", function(value)
         GetSettings().randomizeModifier = value
     end)
-    randomizeCheckbox:SetPoint("TOPLEFT", 20, yOffset)
+    randomizeCheckbox:SetPoint("TOPLEFT", 0, yOffset)
     randomizeCheckbox:SetValue(GetSettings().randomizeModifier)
     if not GetSettings().requireModifier then
         randomizeCheckbox:SetAlpha(0.5)

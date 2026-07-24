@@ -106,6 +106,16 @@ local SOULSTONE_MESSAGES = {
     "You enslave demons for a living. Putting a rock on a healer shouldn't be this hard.",
 }
 
+local DEAD_MESSAGES = {
+    "A ready check went out and you're face-down on the floor. Incredible timing. Get up.",
+    "You're dead. Right now. During the ready check. Bold. Get up.",
+    "Corpses can't hit 'ready.' Get back on your feet and stop holding us hostage.",
+    "I can see you lying there. So can everyone else. Get up.",
+    "Being dead at the ready check is a choice, and frankly it's a bad one. Up. Now.",
+    "The graveyard misses you, but the raid needs you more. Get up already.",
+}
+local DEAD_POLITE_MESSAGE = "Please accept your resurrection before we pull."
+
 --------------------------------------------------------------------------------
 -- Default Settings
 --------------------------------------------------------------------------------
@@ -114,6 +124,7 @@ PRT.defaults.readyCheck = {
     enabled = true,
     snarkyMessages = false,
     checkSoulstones = true,
+    checkDead = true,
     arcaneIntellect = true,
     battleShout = true,
     blessingOfTheBronze = true,
@@ -161,6 +172,20 @@ local function GetAllRaidMembers()
         end
     end
     return members, skipped
+end
+
+local function GetDeadMembers()
+    local dead = {}
+    if not IsInRaid() then return dead end
+    for unit in PRT:IterateGroup() do
+        if UnitIsConnected(unit) and not UnitIsUnit(unit, "player") and UnitIsDeadOrGhost(unit) then
+            local name = GetUnitName(unit, true)
+            if name then
+                table.insert(dead, name)
+            end
+        end
+    end
+    return dead
 end
 
 local function GetHealers()
@@ -241,6 +266,17 @@ function ReadyCheck:OnReadyCheck()
 
     if not UnitIsGroupLeader("player") then
         return
+    end
+
+    -- Nag dead players (independent of buff auras, so run before the secret-aura guard)
+    if settings.checkDead then
+        local dead = GetDeadMembers()
+        if #dead > 0 then
+            for _, name in ipairs(dead) do
+                local message = snarky and GetRandomMessage(DEAD_MESSAGES) or DEAD_POLITE_MESSAGE
+                SendWhisper(name, message)
+            end
+        end
     end
 
     local allMembers, skippedMembers = GetAllRaidMembers()
@@ -357,6 +393,14 @@ PRT:RegisterTab("Ready Check", function(parent)
     soulstoneCheckbox:SetValue(GetSettings().checkSoulstones)
     yOffset = yOffset - ROW_HEIGHT
 
+    -- Dead players checkbox
+    local deadCheckbox = PRT.Components.GetCheckbox(container, "Dead players", function(value)
+        GetSettings().checkDead = value
+    end)
+    deadCheckbox:SetPoint("TOPLEFT", 0, yOffset)
+    deadCheckbox:SetValue(GetSettings().checkDead)
+    yOffset = yOffset - ROW_HEIGHT
+
     -- Refresh all widget values from saved settings on show
     container:SetScript("OnShow", function()
         local settings = GetSettings()
@@ -366,6 +410,7 @@ PRT:RegisterTab("Ready Check", function(parent)
             buffCheckboxes[buff.key]:SetValue(settings[buff.key])
         end
         soulstoneCheckbox:SetValue(settings.checkSoulstones)
+        deadCheckbox:SetValue(settings.checkDead)
     end)
 
     return container

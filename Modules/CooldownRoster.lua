@@ -73,11 +73,15 @@ local SPELL_DATA = {
 local specCache = {}        -- GUID -> specId
 local talentCache = {}      -- GUID -> table of active talent spell IDs (set: spellId -> true)
 local priorityQueue = {}    -- array of GUIDs needing immediate inspection (new joins)
+local sweepQueue = {}       -- array of GUIDs queued by the periodic full-raid sweep
 local inspectPending = nil  -- unit currently being inspected
-local rotationIndex = 0     -- current position in the round-robin rotation
 local inCombat = false
 local rosterCooldowns = {}  -- computed array of {spellId, name, category, playerName, playerClass}
-local inspectTicker = nil
+local inspectTicker = nil   -- drains the inspect queues, one member per tick
+local sweepTicker = nil     -- refills the full-raid sweep on a fixed interval
+
+local TICK_INTERVAL = 1     -- seconds between inspect-drain attempts
+local SWEEP_INTERVAL = 60   -- seconds between full-raid sweeps
 
 -- Display frames
 local categoryFrames = {}   -- keyed by category name
@@ -131,19 +135,48 @@ local function BeginInspect(unit)
     end)
 end
 
---- Build a snapshot of inspectable units (everyone except the player).
-local function GetRotationUnits()
-    local units = {}
+--- Return true if the Blizzard inspect window is open. Inspecting while it is
+--- shown hijacks the single inspect slot and breaks the player's gear tooltips.
+local function IsInspectFrameOpen()
+    return (InspectFrame and InspectFrame:IsShown()) or false
+end
+
+--- Return true if anyone in the group is in combat. We never inspect mid-fight,
+--- and the player's own PLAYER_REGEN flag misses cases like dying mid-pull, so we
+--- scan the whole group.
+local function GroupInCombat()
+    if inCombat then
+        return true
+    end
     for unit in PRT:IterateGroup() do
-        if not UnitIsUnit(unit, "player") then
-            table.insert(units, unit)
+        if UnitAffectingCombat(unit) then
+            return true
         end
     end
-    return units
+    return false
+end
+
+--- Rebuild the full-raid sweep queue. Runs on a fixed interval as a backstop for
+--- spec/talent changes we failed to catch via events. Skips while the previous
+--- sweep is still draining so a slow sweep cannot starve itself.
+local function RefillSweepQueue()
+    if #sweepQueue > 0 then
+        return
+    end
+    for unit in PRT:IterateGroup() do
+        if not UnitIsUnit(unit, "player") then
+            local guid = UnitGUID(unit)
+            if guid then
+                table.insert(sweepQueue, guid)
+            end
+        end
+    end
 end
 
 local function ProcessNextInspect()
-    if inCombat or inspectPending then
+    -- Never inspect mid-fight, while an inspect is already pending, or while the
+    -- player has the Blizzard inspect window open (doing so breaks gear tooltips).
+    if GroupInCombat() or inspectPending or IsInspectFrameOpen() then
         return
     end
 
@@ -157,30 +190,34 @@ local function ProcessNextInspect()
         end
     end
 
-    -- Background rotation: inspect the next person round-robin.
-    local units = GetRotationUnits()
-    if #units == 0 then
-        return
-    end
-
-    rotationIndex = rotationIndex % #units + 1
-    local unit = units[rotationIndex]
-    if UnitExists(unit) then
-        BeginInspect(unit)
+    -- Periodic full sweep: drain one queued member per tick.
+    while #sweepQueue > 0 do
+        local guid = table.remove(sweepQueue, 1)
+        local unit = UnitForGUID(guid)
+        if unit and UnitExists(unit) then
+            BeginInspect(unit)
+            return
+        end
     end
 end
 
 local function StartInspectTicker()
-    if inspectTicker then
-        return
+    if not inspectTicker then
+        inspectTicker = C_Timer.NewTicker(TICK_INTERVAL, ProcessNextInspect)
     end
-    inspectTicker = C_Timer.NewTicker(0.5, ProcessNextInspect)
+    if not sweepTicker then
+        sweepTicker = C_Timer.NewTicker(SWEEP_INTERVAL, RefillSweepQueue)
+    end
 end
 
 local function StopInspectTicker()
     if inspectTicker then
         inspectTicker:Cancel()
         inspectTicker = nil
+    end
+    if sweepTicker then
+        sweepTicker:Cancel()
+        sweepTicker = nil
     end
 end
 
@@ -261,6 +298,13 @@ local function OnInspectReady(eventGUID)
     local specId = GetInspectSpecialization(inspectPending)
     local talents = ReadInspectTalents()
     inspectPending = nil
+
+    -- Release the single inspect slot so we stop squatting on it between sweeps.
+    -- Never clear while the player's inspect window is open, or we would yank the
+    -- data out from under their gear tooltips.
+    if not IsInspectFrameOpen() then
+        ClearInspectPlayer()
+    end
 
     local changed = false
 

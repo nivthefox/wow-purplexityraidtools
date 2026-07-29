@@ -55,7 +55,7 @@ jobs:
           CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
           RELEASE_BODY: ${{ github.event.release.body }}
         run: |
-          METADATA=$(jq -n \
+          jq -n \
             --arg changelog "${RELEASE_BODY:-No release notes provided.}" \
             --arg version "${{ steps.meta.outputs.game_version }}" \
             --arg release_type "${{ steps.meta.outputs.cf_release_type }}" \
@@ -66,11 +66,11 @@ jobs:
               displayName: $display_name,
               gameVersionNames: [$version],
               releaseType: $release_type
-            }')
+            }' > cf-metadata.json
 
           curl -f -X POST \
             -H "X-Api-Token: $CF_API_TOKEN" \
-            -F "metadata=$METADATA" \
+            -F "metadata=<cf-metadata.json" \
             -F "file=@PurplexityRaidTools-${{ github.event.release.tag_name }}.zip" \
             "https://wow.curseforge.com/api/projects/1439949/upload-file"
 
@@ -79,7 +79,7 @@ jobs:
           WAGO_API_TOKEN: ${{ secrets.WAGO_API_TOKEN }}
           RELEASE_BODY: ${{ github.event.release.body }}
         run: |
-          METADATA=$(jq -n \
+          jq -n \
             --arg label "${{ github.event.release.tag_name }}" \
             --arg changelog "${RELEASE_BODY:-No release notes provided.}" \
             --arg stability "${{ steps.meta.outputs.wago_stability }}" \
@@ -89,12 +89,12 @@ jobs:
               stability: $stability,
               changelog: $changelog,
               supported_retail_patch: $patch
-            }')
+            }' > wago-metadata.json
 
           curl -f -X POST \
             -H "Authorization: Bearer $WAGO_API_TOKEN" \
             -H "Accept: application/json" \
-            -F "metadata=$METADATA" \
+            -F "metadata=<wago-metadata.json" \
             -F "file=@PurplexityRaidTools-${{ github.event.release.tag_name }}.zip" \
             "https://addons.wago.io/api/projects/wow-purplexityraidtools/version"
 

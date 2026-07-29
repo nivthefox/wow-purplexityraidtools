@@ -22,6 +22,11 @@ PRT.defaults.cooldownRoster = {
         external = true,
         movement = true,
     },
+    usageTracking = {
+        enabled = true,
+        barTexture = "Interface\\TargetingFrame\\UI-StatusBar",
+        barTextureName = nil,  -- LSM name; nil = default
+    },
 }
 
 --------------------------------------------------------------------------------
@@ -100,6 +105,64 @@ local CATEGORY_INFO = {
 -- Helpers
 --------------------------------------------------------------------------------
 
+--- Return a bright, saturated tint of the player's class color (for active bars).
+local function GetActiveColor(classToken)
+    local c = RAID_CLASS_COLORS[classToken]
+    if not c then return 0.5, 0.8, 0.5 end
+    return math.min(c.r * 1.3, 1), math.min(c.g * 1.3, 1), math.min(c.b * 1.3, 1)
+end
+
+--- Return a desaturated, darkened version of the player's class color (for cooldown bars).
+local function GetCooldownColor(classToken)
+    local c = RAID_CLASS_COLORS[classToken]
+    if not c then return 0.3, 0.3, 0.3 end
+    local gray = c.r * 0.299 + c.g * 0.587 + c.b * 0.114
+    local t = 0.5
+    return (c.r * (1 - t) + gray * t) * 0.6,
+           (c.g * (1 - t) + gray * t) * 0.6,
+           (c.b * (1 - t) + gray * t) * 0.6
+end
+
+--- OnUpdate handler for bars with trackable abilities. Runs every frame to
+--- pick up state changes from the tracker (which has no callback mechanism).
+local function BarOnUpdate(bar)
+    local state, remaining, total = PRT.CooldownTracker:GetState(bar.guid, bar.spellId)
+
+    if state == "ready" then
+        if bar.trackerState ~= "ready" then
+            bar.statusBar:Hide()
+            bar.countdownText:Hide()
+            bar.trackerState = "ready"
+            bar.lastCountdown = nil
+        end
+        return
+    end
+
+    -- Active or cooldown: show the bar
+    if total > 0 then
+        bar.statusBar:SetValue(remaining / total)
+    else
+        bar.statusBar:SetValue(0)
+    end
+
+    local shown = math.ceil(remaining)
+    if shown ~= bar.lastCountdown then
+        bar.countdownText:SetText(shown)
+        bar.lastCountdown = shown
+    end
+
+    -- Update color and visibility on state transitions
+    if state ~= bar.trackerState then
+        bar.trackerState = state
+        if state == "active" then
+            bar.statusBar:SetStatusBarColor(GetActiveColor(bar.playerClass))
+        else
+            bar.statusBar:SetStatusBarColor(GetCooldownColor(bar.playerClass))
+        end
+        bar.statusBar:Show()
+        bar.countdownText:Show()
+    end
+end
 
 local function GetPlayerSpecId()
     local specIndex = GetSpecialization()
@@ -361,12 +424,21 @@ function CooldownRoster:ScanRoster()
 
             if UnitIsUnit(unit, "player") then
                 local specId = GetPlayerSpecId()
-                if specId then
+                if specId and specId > 0 then
                     specCache[guid] = specId
                 end
                 local talents = ReadPlayerTalents()
                 if talents then
                     talentCache[guid] = talents
+                end
+                -- If spec or talents are still missing after load, retry shortly.
+                -- The talent system may not be ready on the first frame after login.
+                if not specCache[guid] or not talentCache[guid] then
+                    C_Timer.After(1, function()
+                        CooldownRoster:ScanRoster()
+                        CooldownRoster:RebuildRoster()
+                        CooldownRoster:UpdateDisplay()
+                    end)
                 end
             elseif not specCache[guid] then
                 -- New join with no cache entry: push to priority queue.
@@ -418,6 +490,7 @@ function CooldownRoster:RebuildRoster()
                                 category = spell.category,
                                 playerName = playerName,
                                 playerClass = classToken,
+                                guid = guid,
                             })
                         end
                     end
@@ -434,6 +507,9 @@ function CooldownRoster:RebuildRoster()
         if a.name ~= b.name then return a.name < b.name end
         return a.playerName < b.playerName
     end)
+
+    -- Notify the tracker so it knows which abilities to watch for
+    PRT.CooldownTracker:OnRosterChanged(rosterCooldowns, talentCache)
 end
 
 --------------------------------------------------------------------------------
@@ -453,6 +529,24 @@ local function CreateBar(parent)
     local barWidth = parent:GetWidth() - BACKDROP_PADDING * 2
     bar:SetSize(barWidth, BAR_HEIGHT)
 
+    -- Status bar for active/cooldown display (behind everything)
+    local statusBar = CreateFrame("StatusBar", nil, bar)
+    statusBar:SetAllPoints()
+    local settings = PRT:GetSetting("cooldownRoster")
+    local texturePath = settings and settings.usageTracking and settings.usageTracking.barTexture
+        or "Interface\\TargetingFrame\\UI-StatusBar"
+    statusBar:SetStatusBarTexture(texturePath)
+    statusBar:SetMinMaxValues(0, 1)
+    statusBar:SetValue(0)
+    statusBar:SetFrameLevel(bar:GetFrameLevel())
+    statusBar:Hide()
+    bar.statusBar = statusBar
+
+    -- Dark background behind the status bar
+    local statusBg = statusBar:CreateTexture(nil, "BACKGROUND")
+    statusBg:SetAllPoints()
+    statusBg:SetColorTexture(0, 0, 0, 0.4)
+
     local icon = bar:CreateTexture(nil, "ARTWORK")
     icon:SetSize(ICON_SIZE, ICON_SIZE)
     icon:SetPoint("LEFT", 2, 0)
@@ -463,11 +557,24 @@ local function CreateBar(parent)
     spellText:SetJustifyH("LEFT")
     bar.spellText = spellText
 
+    -- Countdown text (right side, visible during active/cooldown)
+    local countdownText = bar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    countdownText:SetPoint("RIGHT", bar, "RIGHT", -4, 0)
+    countdownText:SetJustifyH("RIGHT")
+    countdownText:Hide()
+    bar.countdownText = countdownText
+
+    -- Player text sits between spell and countdown
     local playerText = bar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     playerText:SetPoint("LEFT", spellText, "RIGHT", 4, 0)
-    playerText:SetPoint("RIGHT", bar, "RIGHT", -2, 0)
+    playerText:SetPoint("RIGHT", countdownText, "LEFT", -4, 0)
     playerText:SetJustifyH("LEFT")
     bar.playerText = playerText
+
+    bar.trackerState = nil
+    bar.lastCountdown = nil
+    bar.guid = nil
+    bar.playerClass = nil
 
     bar:EnableMouse(true)
     bar:SetScript("OnEnter", function(self)
@@ -682,6 +789,8 @@ function CooldownRoster:UpdateDisplay()
             for i, entry in ipairs(entries) do
                 local bar = frame.bars[i]
                 bar.spellId = entry.spellId
+                bar.guid = entry.guid
+                bar.playerClass = entry.playerClass
                 bar.icon:SetTexture(C_Spell.GetSpellTexture(entry.spellId))
                 bar.spellText:SetText(entry.name)
 
@@ -690,6 +799,22 @@ function CooldownRoster:UpdateDisplay()
                     bar.playerText:SetText(classColor:WrapTextInColorCode(entry.playerName))
                 else
                     bar.playerText:SetText(entry.playerName)
+                end
+
+                -- For trackable abilities with usage tracking enabled, always
+                -- attach OnUpdate so we pick up state changes from the tracker
+                -- in real time. BarOnUpdate handles show/hide based on state.
+                local trackingEnabled = settings and settings.usageTracking
+                    and settings.usageTracking.enabled
+                if trackingEnabled and PRT.CooldownTracker:IsTrackable(entry.spellId) then
+                    bar.trackerState = nil  -- force a visual refresh on next OnUpdate
+                    bar:SetScript("OnUpdate", BarOnUpdate)
+                else
+                    bar.statusBar:Hide()
+                    bar.countdownText:Hide()
+                    bar.trackerState = nil
+                    bar.lastCountdown = nil
+                    bar:SetScript("OnUpdate", nil)
                 end
 
                 bar:ClearAllPoints()
@@ -771,149 +896,259 @@ end
 --------------------------------------------------------------------------------
 
 PRT:RegisterTab("Cooldown Roster", function(parent)
-    local container = CreateFrame("Frame", nil, parent)
-    container:SetAllPoints()
-    container:Hide()
-
-    local scrollFrame = CreateFrame("ScrollFrame", nil, container, "UIPanelScrollFrameTemplate")
-    scrollFrame:SetPoint("TOPLEFT", 0, 0)
-    scrollFrame:SetPoint("BOTTOMRIGHT", -26, 0)
-
-    local scrollChild = CreateFrame("Frame", nil, scrollFrame)
-    scrollChild:SetWidth(container:GetWidth() - 40)
-    scrollChild:SetHeight(600)
-    scrollFrame:SetScrollChild(scrollChild)
-
-    local yOffset = 0
-    local ROW_HEIGHT = 24
-
     local function GetSettings()
         return PRT:GetSetting("cooldownRoster")
     end
 
+    local ROW_HEIGHT = 24
 
-    -- General Section
-    local generalHeader = PRT.Components.GetHeader(scrollChild, "General")
-    generalHeader:SetPoint("TOPLEFT", 0, yOffset)
-    yOffset = yOffset - 28
+    return PRT.Components.GetSubTabGroup(parent, {
+        -----------------------------------------------------------------
+        -- General sub-tab
+        -----------------------------------------------------------------
+        {
+            name = "General",
+            setup = function(panel)
+                local scrollFrame = CreateFrame("ScrollFrame", nil, panel, "UIPanelScrollFrameTemplate")
+                scrollFrame:SetPoint("TOPLEFT", 0, 0)
+                scrollFrame:SetPoint("BOTTOMRIGHT", -26, 0)
 
-    local enabledCheckbox = PRT.Components.GetCheckbox(scrollChild, "Enabled", function(value)
-        GetSettings().enabled = value
-        PRT:ApplySettings("cooldownRoster")
-    end)
-    enabledCheckbox:SetPoint("TOPLEFT", 0, yOffset)
-    enabledCheckbox:SetValue(GetSettings().enabled)
-    yOffset = yOffset - ROW_HEIGHT
+                local scrollChild = CreateFrame("Frame", nil, scrollFrame)
+                scrollChild:SetWidth(panel:GetWidth() - 40)
+                scrollChild:SetHeight(600)
+                scrollFrame:SetScrollChild(scrollChild)
 
-    local lockCheckbox = PRT.Components.GetCheckbox(scrollChild, "Locked", function(value)
-        GetSettings().lockFrames = value
-        CooldownRoster:UpdateDragging()
-    end)
-    lockCheckbox:SetPoint("TOPLEFT", 0, yOffset)
-    lockCheckbox:SetValue(GetSettings().lockFrames)
-    yOffset = yOffset - ROW_HEIGHT
+                local yOffset = 0
 
-    -- Categories Section
-    yOffset = yOffset - 10
-    local catHeader = PRT.Components.GetHeader(scrollChild, "Categories")
-    catHeader:SetPoint("TOPLEFT", 0, yOffset)
-    yOffset = yOffset - 28
+                -- General Section
+                local generalHeader = PRT.Components.GetHeader(scrollChild, "General")
+                generalHeader:SetPoint("TOPLEFT", 0, yOffset)
+                yOffset = yOffset - 28
 
-    local categoryCheckboxes = {}
+                local enabledCheckbox = PRT.Components.GetCheckbox(scrollChild, "Enabled", function(value)
+                    GetSettings().enabled = value
+                    PRT:ApplySettings("cooldownRoster")
+                end)
+                enabledCheckbox:SetPoint("TOPLEFT", 0, yOffset)
+                enabledCheckbox:SetValue(GetSettings().enabled)
+                yOffset = yOffset - ROW_HEIGHT
 
-    local catDefs = {
-        { label = "Defensives", key = "defensive" },
-        { label = "Externals",  key = "external" },
-        { label = "Movement",   key = "movement" },
-    }
+                local lockCheckbox = PRT.Components.GetCheckbox(scrollChild, "Locked", function(value)
+                    GetSettings().lockFrames = value
+                    CooldownRoster:UpdateDragging()
+                end)
+                lockCheckbox:SetPoint("TOPLEFT", 0, yOffset)
+                lockCheckbox:SetValue(GetSettings().lockFrames)
+                yOffset = yOffset - ROW_HEIGHT
 
-    for _, def in ipairs(catDefs) do
-        local checkbox = PRT.Components.GetCheckbox(scrollChild, def.label, function(value)
-            local s = GetSettings()
-            if not s.categories then s.categories = {} end
-            s.categories[def.key] = value
-            PRT:ApplySettings("cooldownRoster")
-        end)
-        checkbox:SetPoint("TOPLEFT", 0, yOffset)
-        checkbox:SetValue(GetSettings().categories[def.key])
-        table.insert(categoryCheckboxes, { widget = checkbox, key = def.key })
-        yOffset = yOffset - ROW_HEIGHT
-    end
+                -- Categories Section
+                yOffset = yOffset - 10
+                local catHeader = PRT.Components.GetHeader(scrollChild, "Categories")
+                catHeader:SetPoint("TOPLEFT", 0, yOffset)
+                yOffset = yOffset - 28
 
-    -- Content Types Section
-    yOffset = yOffset - 10
-    local contentHeader = PRT.Components.GetHeader(scrollChild, "Show In")
-    contentHeader:SetPoint("TOPLEFT", 0, yOffset)
-    yOffset = yOffset - 28
+                local categoryCheckboxes = {}
 
-    local contentCheckboxes = {
-        { label = "Open World",        path = {"contentTypes", "openWorld"} },
-        { label = "Dungeon (Normal)",  path = {"contentTypes", "dungeon", "normal"} },
-        { label = "Dungeon (Heroic)",  path = {"contentTypes", "dungeon", "heroic"} },
-        { label = "Dungeon (Mythic)",  path = {"contentTypes", "dungeon", "mythic"} },
-        { label = "Dungeon (Mythic+)", path = {"contentTypes", "dungeon", "mythicPlus"} },
-        { label = "Raid (LFR)",        path = {"contentTypes", "raid", "lfr"} },
-        { label = "Raid (Normal)",     path = {"contentTypes", "raid", "normal"} },
-        { label = "Raid (Heroic)",     path = {"contentTypes", "raid", "heroic"} },
-        { label = "Raid (Mythic)",     path = {"contentTypes", "raid", "mythic"} },
-        { label = "Scenario (Normal)", path = {"contentTypes", "scenario", "normal"} },
-        { label = "Scenario (Heroic)", path = {"contentTypes", "scenario", "heroic"} },
-    }
+                local catDefs = {
+                    { label = "Defensives", key = "defensive" },
+                    { label = "Externals",  key = "external" },
+                    { label = "Movement",   key = "movement" },
+                }
 
-    for i, info in ipairs(contentCheckboxes) do
-        local checkbox = PRT.Components.GetCheckbox(scrollChild, info.label, function(value)
-            local settings = GetSettings()
-            if #info.path == 2 then
-                settings[info.path[1]][info.path[2]] = value
-            else
-                settings[info.path[1]][info.path[2]][info.path[3]] = value
-            end
-            PRT:ApplySettings("cooldownRoster")
-        end)
-        checkbox:SetPoint("TOPLEFT", 0, yOffset)
-        contentCheckboxes[i].widget = checkbox
+                for _, def in ipairs(catDefs) do
+                    local checkbox = PRT.Components.GetCheckbox(scrollChild, def.label, function(value)
+                        local s = GetSettings()
+                        if not s.categories then s.categories = {} end
+                        s.categories[def.key] = value
+                        PRT:ApplySettings("cooldownRoster")
+                    end)
+                    checkbox:SetPoint("TOPLEFT", 0, yOffset)
+                    checkbox:SetValue(GetSettings().categories[def.key])
+                    table.insert(categoryCheckboxes, { widget = checkbox, key = def.key })
+                    yOffset = yOffset - ROW_HEIGHT
+                end
 
-        local settings = GetSettings()
-        local currentValue
-        if #info.path == 2 then
-            currentValue = settings[info.path[1]][info.path[2]]
-        else
-            currentValue = settings[info.path[1]][info.path[2]][info.path[3]]
-        end
-        checkbox:SetValue(currentValue)
+                -- Content Types Section
+                yOffset = yOffset - 10
+                local contentHeader = PRT.Components.GetHeader(scrollChild, "Show In")
+                contentHeader:SetPoint("TOPLEFT", 0, yOffset)
+                yOffset = yOffset - 28
 
-        yOffset = yOffset - ROW_HEIGHT
-    end
+                local contentCheckboxes = {
+                    { label = "Open World",        path = {"contentTypes", "openWorld"} },
+                    { label = "Dungeon (Normal)",  path = {"contentTypes", "dungeon", "normal"} },
+                    { label = "Dungeon (Heroic)",  path = {"contentTypes", "dungeon", "heroic"} },
+                    { label = "Dungeon (Mythic)",  path = {"contentTypes", "dungeon", "mythic"} },
+                    { label = "Dungeon (Mythic+)", path = {"contentTypes", "dungeon", "mythicPlus"} },
+                    { label = "Raid (LFR)",        path = {"contentTypes", "raid", "lfr"} },
+                    { label = "Raid (Normal)",     path = {"contentTypes", "raid", "normal"} },
+                    { label = "Raid (Heroic)",     path = {"contentTypes", "raid", "heroic"} },
+                    { label = "Raid (Mythic)",     path = {"contentTypes", "raid", "mythic"} },
+                    { label = "Scenario (Normal)", path = {"contentTypes", "scenario", "normal"} },
+                    { label = "Scenario (Heroic)", path = {"contentTypes", "scenario", "heroic"} },
+                }
 
-    -- Refresh all widget values from saved settings on show
-    container:SetScript("OnShow", function()
-        local settings = GetSettings()
-        enabledCheckbox:SetValue(settings.enabled)
-        lockCheckbox:SetValue(settings.lockFrames)
+                for i, info in ipairs(contentCheckboxes) do
+                    local checkbox = PRT.Components.GetCheckbox(scrollChild, info.label, function(value)
+                        local settings = GetSettings()
+                        if #info.path == 2 then
+                            settings[info.path[1]][info.path[2]] = value
+                        else
+                            settings[info.path[1]][info.path[2]][info.path[3]] = value
+                        end
+                        PRT:ApplySettings("cooldownRoster")
+                    end)
+                    checkbox:SetPoint("TOPLEFT", 0, yOffset)
+                    contentCheckboxes[i].widget = checkbox
 
-        for _, cat in ipairs(categoryCheckboxes) do
-            cat.widget:SetValue(settings.categories[cat.key])
-        end
+                    local settings = GetSettings()
+                    local currentValue
+                    if #info.path == 2 then
+                        currentValue = settings[info.path[1]][info.path[2]]
+                    else
+                        currentValue = settings[info.path[1]][info.path[2]][info.path[3]]
+                    end
+                    checkbox:SetValue(currentValue)
 
-        for _, info in ipairs(contentCheckboxes) do
-            local currentValue
-            if #info.path == 2 then
-                currentValue = settings[info.path[1]][info.path[2]]
-            else
-                currentValue = settings[info.path[1]][info.path[2]][info.path[3]]
-            end
-            info.widget:SetValue(currentValue)
-        end
-    end)
+                    yOffset = yOffset - ROW_HEIGHT
+                end
 
-    return container
+                -- Refresh all widget values on show
+                panel:SetScript("OnShow", function()
+                    local settings = GetSettings()
+                    enabledCheckbox:SetValue(settings.enabled)
+                    lockCheckbox:SetValue(settings.lockFrames)
+
+                    for _, cat in ipairs(categoryCheckboxes) do
+                        cat.widget:SetValue(settings.categories[cat.key])
+                    end
+
+                    for _, info in ipairs(contentCheckboxes) do
+                        local currentValue
+                        if #info.path == 2 then
+                            currentValue = settings[info.path[1]][info.path[2]]
+                        else
+                            currentValue = settings[info.path[1]][info.path[2]][info.path[3]]
+                        end
+                        info.widget:SetValue(currentValue)
+                    end
+                end)
+            end,
+        },
+
+        -----------------------------------------------------------------
+        -- Usage Tracking sub-tab
+        -----------------------------------------------------------------
+        {
+            name = "Usage Tracking",
+            setup = function(panel)
+                local yOffset = 0
+
+                local header = PRT.Components.GetHeader(panel, "Usage Tracking")
+                header:SetPoint("TOPLEFT", 0, yOffset)
+                yOffset = yOffset - 28
+
+                local trackingCheckbox = PRT.Components.GetCheckbox(panel, "Enabled", function(value)
+                    local s = GetSettings()
+                    if not s.usageTracking then s.usageTracking = {} end
+                    s.usageTracking.enabled = value
+                    PRT:ApplySettings("cooldownRoster")
+                end)
+                trackingCheckbox:SetPoint("TOPLEFT", 0, yOffset)
+                yOffset = yOffset - ROW_HEIGHT
+
+                -- Bar Texture dropdown (via LibSharedMedia)
+                yOffset = yOffset - 10
+                local textureHeader = PRT.Components.GetHeader(panel, "Bar Texture")
+                textureHeader:SetPoint("TOPLEFT", 0, yOffset)
+                yOffset = yOffset - 28
+
+                local function ListTextures()
+                    local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
+                    if not LSM then
+                        return {{ name = "Default", value = "Interface\\TargetingFrame\\UI-StatusBar" }}
+                    end
+                    local names = LSM:List("statusbar")
+                    local items = {}
+                    for _, name in ipairs(names) do
+                        items[#items + 1] = { name = name, value = name }
+                    end
+                    return items
+                end
+
+                local function GetCurrentTextureName()
+                    local s = GetSettings()
+                    local tracking = s and s.usageTracking
+                    return tracking and tracking.barTextureName or nil
+                end
+
+                local textureDropdown = PRT.Components.GetBasicDropdown(
+                    panel,
+                    "Texture",
+                    ListTextures,
+                    function(value)
+                        local current = GetCurrentTextureName()
+                        return current == value
+                    end,
+                    function(value)
+                        local s = GetSettings()
+                        if not s.usageTracking then s.usageTracking = {} end
+                        -- Store the LSM name; resolve to path at render time
+                        local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
+                        if LSM then
+                            s.usageTracking.barTexture = LSM:Fetch("statusbar", value) or value
+                            s.usageTracking.barTextureName = value
+                        else
+                            s.usageTracking.barTexture = value
+                        end
+                        PRT:ApplySettings("cooldownRoster")
+                    end
+                )
+                textureDropdown:SetPoint("TOPLEFT", 0, yOffset)
+                yOffset = yOffset - ROW_HEIGHT
+
+                -- Refresh on show
+                panel:SetScript("OnShow", function()
+                    local s = GetSettings()
+                    local tracking = s and s.usageTracking
+                    trackingCheckbox:SetValue(tracking and tracking.enabled or false)
+                    textureDropdown:SetValue()
+                end)
+            end,
+        },
+    })
 end)
 
 --------------------------------------------------------------------------------
 -- Apply Callback
 --------------------------------------------------------------------------------
 
+--- Update all existing bar textures from settings.
+local function RefreshBarTextures()
+    local settings = PRT:GetSetting("cooldownRoster")
+    local texturePath = settings and settings.usageTracking and settings.usageTracking.barTexture
+        or "Interface\\TargetingFrame\\UI-StatusBar"
+    for _, frame in pairs(categoryFrames) do
+        for _, bar in ipairs(frame.bars) do
+            if bar.statusBar then
+                bar.statusBar:SetStatusBarTexture(texturePath)
+            end
+        end
+    end
+end
+
 PRT:RegisterApplyCallback("cooldownRoster", function()
+    -- Re-evaluate tracker enabled state
+    local settings = PRT:GetSetting("cooldownRoster")
+    if settings and settings.usageTracking and settings.usageTracking.enabled then
+        if CooldownRoster.active then
+            PRT.CooldownTracker:Enable()
+        end
+    else
+        PRT.CooldownTracker:Disable()
+    end
+
+    RefreshBarTextures()
     CooldownRoster:UpdateVisibility()
 end)
 
@@ -952,9 +1187,16 @@ function CooldownRoster:OnEnable()
     self:ScanRoster()
     self:RebuildRoster()
     self:UpdateVisibility()
+
+    local settings = PRT:GetSetting("cooldownRoster")
+    if settings and settings.usageTracking and settings.usageTracking.enabled then
+        PRT.CooldownTracker:Enable()
+    end
 end
 
 function CooldownRoster:OnDisable()
+    PRT.CooldownTracker:Disable()
+
     self.eventFrame:UnregisterAllEvents()
     self.eventFrame:SetScript("OnEvent", nil)
     StopInspectTicker()

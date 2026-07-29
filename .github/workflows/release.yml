@@ -10,19 +10,111 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    environment: release
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           path: PurplexityRaidTools
 
+      - name: Extract metadata
+        id: meta
+        working-directory: PurplexityRaidTools
+        run: |
+          # Interface version from TOC (e.g. 120000 → 12.0.0)
+          INTERFACE=$(grep -oP '## Interface:\s*\K\d+' PurplexityRaidTools.toc)
+          MAJOR=$((INTERFACE / 10000))
+          MINOR=$(( (INTERFACE % 10000) / 100 ))
+          PATCH=$((INTERFACE % 100))
+          GAME_VERSION="${MAJOR}.${MINOR}.${PATCH}"
+          echo "game_version=$GAME_VERSION" >> "$GITHUB_OUTPUT"
+
+          # Release type from tag (alpha/beta → that, otherwise release)
+          TAG="${{ github.event.release.tag_name }}"
+          if [[ "$TAG" == *"-alpha"* ]]; then
+            echo "cf_release_type=alpha" >> "$GITHUB_OUTPUT"
+            echo "wago_stability=alpha" >> "$GITHUB_OUTPUT"
+          elif [[ "$TAG" == *"-beta"* ]]; then
+            echo "cf_release_type=beta" >> "$GITHUB_OUTPUT"
+            echo "wago_stability=beta" >> "$GITHUB_OUTPUT"
+          else
+            echo "cf_release_type=release" >> "$GITHUB_OUTPUT"
+            echo "wago_stability=stable" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Create zip
-        run: zip -r PurplexityRaidTools-${{ github.event.release.tag_name }}.zip PurplexityRaidTools -x "PurplexityRaidTools/.git/*" -x "PurplexityRaidTools/.github/*" -x "PurplexityRaidTools/.claude/*" -x "PurplexityRaidTools/CLAUDE.md" -x "PurplexityRaidTools/tests/*" -x "PurplexityRaidTools/docs/*"
+        run: zip -r PurplexityRaidTools-${{ github.event.release.tag_name }}.zip PurplexityRaidTools -x "PurplexityRaidTools/.git/*" -x "PurplexityRaidTools/.github/*" -x "PurplexityRaidTools/.claude/*" -x "PurplexityRaidTools/CLAUDE.md" -x "PurplexityRaidTools/tests/*" -x "PurplexityRaidTools/docs/*" -x "PurplexityRaidTools/.gitignore"
 
       - name: Upload release asset
         uses: softprops/action-gh-release@v2
         with:
           files: PurplexityRaidTools-${{ github.event.release.tag_name }}.zip
+
+      - name: Upload to CurseForge
+        env:
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          RELEASE_BODY: ${{ github.event.release.body }}
+        run: |
+          METADATA=$(jq -n \
+            --arg changelog "${RELEASE_BODY:-No release notes provided.}" \
+            --arg version "${{ steps.meta.outputs.game_version }}" \
+            --arg release_type "${{ steps.meta.outputs.cf_release_type }}" \
+            --arg display_name "PurplexityRaidTools ${{ github.event.release.tag_name }}" \
+            '{
+              changelog: $changelog,
+              changelogType: "markdown",
+              displayName: $display_name,
+              gameVersionNames: [$version],
+              releaseType: $release_type
+            }')
+
+          curl -f -X POST \
+            -H "X-Api-Token: $CF_API_TOKEN" \
+            -F "metadata=$METADATA" \
+            -F "file=@PurplexityRaidTools-${{ github.event.release.tag_name }}.zip" \
+            "https://wow.curseforge.com/api/projects/1439949/upload-file"
+
+      - name: Upload to Wago
+        env:
+          WAGO_API_TOKEN: ${{ secrets.WAGO_API_TOKEN }}
+          RELEASE_BODY: ${{ github.event.release.body }}
+        run: |
+          METADATA=$(jq -n \
+            --arg label "${{ github.event.release.tag_name }}" \
+            --arg changelog "${RELEASE_BODY:-No release notes provided.}" \
+            --arg stability "${{ steps.meta.outputs.wago_stability }}" \
+            --arg patch "${{ steps.meta.outputs.game_version }}" \
+            '{
+              label: $label,
+              stability: $stability,
+              changelog: $changelog,
+              supported_retail_patch: $patch
+            }')
+
+          curl -f -X POST \
+            -H "Authorization: Bearer $WAGO_API_TOKEN" \
+            -H "Accept: application/json" \
+            -F "metadata=$METADATA" \
+            -F "file=@PurplexityRaidTools-${{ github.event.release.tag_name }}.zip" \
+            "https://addons.wago.io/api/projects/wow-purplexityraidtools/version"
+
+      - name: Upload to WoWInterface
+        env:
+          WOWI_API_TOKEN: ${{ secrets.WOWI_API_TOKEN }}
+          RELEASE_BODY: ${{ github.event.release.body }}
+        run: |
+          # Resolve the WoWInterface game version ID from their API
+          COMPATIBLE=$(curl -sf https://api.wowinterface.com/addons/compatible.json \
+            | jq -r 'map(select(.game == "Retail")) | max_by(.id) | .id')
+
+          curl -f \
+            -H "x-api-token: $WOWI_API_TOKEN" \
+            -F "id=27017" \
+            -F "version=${{ github.event.release.tag_name }}" \
+            -F "compatible=$COMPATIBLE" \
+            -F "changelog=$RELEASE_BODY" \
+            -F "updatefile=@PurplexityRaidTools-${{ github.event.release.tag_name }}.zip" \
+            https://api.wowinterface.com/addons/update
 
       - name: Announce on Discord
         env:

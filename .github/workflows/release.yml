@@ -33,13 +33,10 @@ jobs:
           TAG="${{ github.event.release.tag_name }}"
           if [[ "$TAG" == *"-alpha"* ]]; then
             echo "cf_release_type=alpha" >> "$GITHUB_OUTPUT"
-            echo "wago_stability=alpha" >> "$GITHUB_OUTPUT"
           elif [[ "$TAG" == *"-beta"* ]]; then
             echo "cf_release_type=beta" >> "$GITHUB_OUTPUT"
-            echo "wago_stability=beta" >> "$GITHUB_OUTPUT"
           else
             echo "cf_release_type=release" >> "$GITHUB_OUTPUT"
-            echo "wago_stability=stable" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Create zip
@@ -73,30 +70,6 @@ jobs:
             -F "metadata=<cf-metadata.json" \
             -F "file=@PurplexityRaidTools-${{ github.event.release.tag_name }}.zip" \
             "https://wow.curseforge.com/api/projects/1439949/upload-file"
-
-      - name: Upload to Wago
-        env:
-          WAGO_API_TOKEN: ${{ secrets.WAGO_API_TOKEN }}
-          RELEASE_BODY: ${{ github.event.release.body }}
-        run: |
-          jq -n \
-            --arg label "${{ github.event.release.tag_name }}" \
-            --arg changelog "${RELEASE_BODY:-No release notes provided.}" \
-            --arg stability "${{ steps.meta.outputs.wago_stability }}" \
-            --arg patch "${{ steps.meta.outputs.game_version }}" \
-            '{
-              label: $label,
-              stability: $stability,
-              changelog: $changelog,
-              supported_retail_patch: $patch
-            }' > wago-metadata.json
-
-          curl -f -X POST \
-            -H "Authorization: Bearer $WAGO_API_TOKEN" \
-            -H "Accept: application/json" \
-            -F "metadata=<wago-metadata.json" \
-            -F "file=@PurplexityRaidTools-${{ github.event.release.tag_name }}.zip" \
-            "https://addons.wago.io/api/projects/wow-purplexityraidtools/version"
 
       - name: Upload to WoWInterface
         env:

@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Cooldown Tracker** module that monitors raid cooldown usage in real time via combat log events, feeding live availability data to the Cooldown Roster.
+  - Tracks spell casts, aura applications, and talent-based charge modifications.
+  - Cooldown Roster now shows status bars for active cooldowns and remaining time.
+- Ready Check now whispers dead players so they don't miss the check.
+- Releases are now automatically published to CurseForge, Wago, and WoWInterface when a GitHub release is created.
+
+### Changed
+
+- Config UI reworked from a top tab row to a left sidebar layout.
+  - Sidebar tabs are kept in alphabetical order; Profiles is pinned to the bottom with a separator.
+  - Auto-Invite and Notes tabs now use sub-tabs to organize their settings (e.g., Whispers / Guild / Auto Promote).
+- Config sliders and inputs are capped at a responsive max width so the UI doesn't stretch awkwardly on wide frames.
+- Config labels use a fixed-width column for consistent alignment.
+
+### Fixed
+
+- Gear tooltips no longer break when the Cooldown Roster inspects group members in the background.
+- Auto-Invite now correctly upgrades a party to a raid when mass-inviting guild members.
+- Mouse wheel scrolling removed from config sliders to prevent accidental value changes.
+
 ## [1.0.0-alpha-4] - 2026-07-18
 
 ### Added

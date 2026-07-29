@@ -20,10 +20,7 @@ Displays available raid cooldowns based on current group composition. Categorize
 Tracks the actual cooldown state of raid abilities in real time using combat log events. Detects spell casts, aura applications, and talent-based charge modifications. Feeds data to the Cooldown Roster for live availability display.
 
 ### Notes
-Timed boss encounter reminders. Write notes with phase-based timers that trigger on-screen popups, countdown alerts, text-to-speech callouts, and sound effects during boss fights. Notes are matched to encounters by encounter ID and difficulty. Supports tagging so reminders only show for relevant players (by name, class, role, group, or spell assignment).
-
-### Profiles
-Multiple configuration profiles with create, clone, rename, delete, and switch. All module settings are stored per-profile.
+Timed boss encounter reminders based on the format used by [wowutils](https://wowutils.com/viserio-cooldowns/planning). Write notes with phase-based timers that trigger on-screen popups, countdown alerts, text-to-speech callouts, and sound effects during boss fights. Notes are matched to encounters by encounter ID and difficulty. Supports tagging so reminders only show for relevant players (by name, class, role, group, or spell assignment).
 
 ## Communication
 

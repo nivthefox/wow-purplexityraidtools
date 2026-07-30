@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.0.0-beta-2] - 2026-07-30
+
 ### Added
 
 - **Visual Note Editor** with a vertical timeline that displays reminders as blocks positioned by phase and time, replacing the raw text modal for day-to-day editing.
@@ -112,7 +114,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Initial alpha release with Don't Release and Ready Check modules.
 
-[Unreleased]: https://github.com/nivthefox/wow-purplexityraidtools/compare/v1.0.0-beta-1...HEAD
+[Unreleased]: https://github.com/nivthefox/wow-purplexityraidtools/compare/v1.0.0-beta-2...HEAD
+[1.0.0-beta-2]: https://github.com/nivthefox/wow-purplexityraidtools/compare/v1.0.0-beta-1...v1.0.0-beta-2
 [1.0.0-beta-1]: https://github.com/nivthefox/wow-purplexityraidtools/releases/tag/v1.0.0-beta-1
 [1.0.0-alpha-4]: https://github.com/nivthefox/wow-purplexityraidtools/releases/tag/v1.0.0-alpha-4
 [1.0.0-alpha-3]: https://github.com/nivthefox/wow-purplexityraidtools/releases/tag/v1.0.0-alpha-3

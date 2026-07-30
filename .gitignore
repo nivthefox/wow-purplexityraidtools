@@ -12,6 +12,9 @@ Thumbs.db
 # Lua
 *.luac
 
+# Node
+node_modules/
+
 # Docs
 docs/
 

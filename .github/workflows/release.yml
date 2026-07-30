@@ -40,7 +40,7 @@ jobs:
           fi
 
       - name: Create zip
-        run: zip -r PurplexityRaidTools-${{ github.event.release.tag_name }}.zip PurplexityRaidTools -x "PurplexityRaidTools/.git/*" -x "PurplexityRaidTools/.github/*" -x "PurplexityRaidTools/.claude/*" -x "PurplexityRaidTools/CLAUDE.md" -x "PurplexityRaidTools/tests/*" -x "PurplexityRaidTools/docs/*" -x "PurplexityRaidTools/.gitignore"
+        run: zip -r PurplexityRaidTools-${{ github.event.release.tag_name }}.zip PurplexityRaidTools -x "PurplexityRaidTools/.git/*" -x "PurplexityRaidTools/.github/*" -x "PurplexityRaidTools/.claude/*" -x "PurplexityRaidTools/CLAUDE.md" -x "PurplexityRaidTools/tests/*" -x "PurplexityRaidTools/docs/*" -x "PurplexityRaidTools/.gitignore" -x "PurplexityRaidTools/scripts/*" -x "PurplexityRaidTools/node_modules/*" -x "PurplexityRaidTools/package.json" -x "PurplexityRaidTools/package-lock.json"
 
       - name: Upload release asset
         uses: softprops/action-gh-release@v2

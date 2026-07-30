@@ -30,63 +30,20 @@ PRT.defaults.cooldownRoster = {
 }
 
 --------------------------------------------------------------------------------
--- Spell Data
+-- Flag-to-Category Mapping
 --------------------------------------------------------------------------------
 
--- Spec IDs:
--- Restoration Druid: 105
--- Preservation Evoker: 1468
--- Restoration Shaman: 264
--- Mistweaver Monk: 270
--- Holy Paladin: 65
--- Discipline Priest: 256
--- Holy Priest: 257
-
-local SPELL_DATA = {
-    -- Defensive
-    { spellId = 740,    name = "Tranquility",             category = "defensive", class = "DRUID",        specId = 105  },
-    { spellId = 359816, name = "Dream Flight",            category = "defensive", class = "EVOKER",       specId = 1468, talentId = 359816 },
-    { spellId = 363534, name = "Rewind",                  category = "defensive", class = "EVOKER",       specId = 1468, talentId = 363534 },
-    { spellId = 108280, name = "Healing Tide Totem",      category = "defensive", class = "SHAMAN",       specId = 264  },
-    { spellId = 98008,  name = "Spirit Link Totem",       category = "defensive", class = "SHAMAN",       specId = 264,  talentId = 98008  },
-    { spellId = 115310, name = "Revival / Restoral",      category = "defensive", class = "MONK",         specId = 270  },
-    { spellId = 31821,  name = "Aura Mastery",            category = "defensive", class = "PALADIN",      specId = 65,   talentId = 31821  },
-    { spellId = 62618,  name = "PW:B / Luminous Barrier", category = "defensive", class = "PRIEST",       specId = 256,  talentId = 62618  },
-    { spellId = 64843,  name = "Divine Hymn",             category = "defensive", class = "PRIEST",       specId = 257,  talentId = 64843  },
-    { spellId = 97462,  name = "Rallying Cry",            category = "defensive", class = "WARRIOR",      specId = nil,  talentId = 97462  },
-    { spellId = 51052,  name = "Anti-Magic Zone",         category = "defensive", class = "DEATHKNIGHT",  specId = nil,  talentId = 51052  },
-    { spellId = 196718, name = "Darkness",                category = "defensive", class = "DEMONHUNTER",  specId = nil,  talentId = 196718 },
-
-    -- External
-    { spellId = 357170, name = "Time Dilation",           category = "external",  class = "EVOKER",       specId = 1468, talentId = 357170 },
-    { spellId = 33206,  name = "Pain Suppression",        category = "external",  class = "PRIEST",       specId = 256,  talentId = 33206  },
-    { spellId = 102342, name = "Ironbark",                category = "external",  class = "DRUID",        specId = 105  },
-    { spellId = 6940,   name = "Blessing of Sacrifice",   category = "external",  class = "PALADIN",      specId = nil,  talentId = 6940   },
-    { spellId = 47788,  name = "Guardian Spirit",         category = "external",  class = "PRIEST",       specId = 257,  talentId = 47788  },
-    { spellId = 53480,  name = "Roar of Sacrifice",      category = "external",  class = "HUNTER",       specId = nil,  talentId = 53480  },
-
-    -- Movement
-    { spellId = 106898, name = "Stampeding Roar",         category = "movement",  class = "DRUID",        specId = nil,  talentId = 106898 },
-    { spellId = 192077, name = "Wind Rush Totem",         category = "movement",  class = "SHAMAN",       specId = nil,  talentId = 192077 },
-    { spellId = 374968, name = "Time Spiral",             category = "movement",  class = "EVOKER",       specId = nil,  talentId = 374968 },
+local FLAG_TO_CATEGORY = {
+    RAID_COOLDOWN       = "defensive",
+    EXTERNAL_DEFENSIVE  = "external",
+    RAID_MOVEMENT       = "movement",
 }
 
 --------------------------------------------------------------------------------
 -- Local State
 --------------------------------------------------------------------------------
 
-local specCache = {}        -- GUID -> specId
-local talentCache = {}      -- GUID -> table of active talent spell IDs (set: spellId -> true)
-local priorityQueue = {}    -- array of GUIDs needing immediate inspection (new joins)
-local sweepQueue = {}       -- array of GUIDs queued by the periodic full-raid sweep
-local inspectPending = nil  -- unit currently being inspected
-local inCombat = false
 local rosterCooldowns = {}  -- computed array of {spellId, name, category, playerName, playerClass}
-local inspectTicker = nil   -- drains the inspect queues, one member per tick
-local sweepTicker = nil     -- refills the full-raid sweep on a fixed interval
-
-local TICK_INTERVAL = 1     -- seconds between inspect-drain attempts
-local SWEEP_INTERVAL = 60   -- seconds between full-raid sweeps
 
 -- Display frames
 local categoryFrames = {}   -- keyed by category name
@@ -164,332 +121,52 @@ local function BarOnUpdate(bar)
     end
 end
 
-local function GetPlayerSpecId()
-    local specIndex = GetSpecialization()
-    if not specIndex then
+--- Return the display category for an ability based on its flags, or nil if it
+--- does not belong in any CooldownRoster category.
+local function GetAbilityCategory(ability)
+    if not ability.flags then
         return nil
     end
-    local specId = GetSpecializationInfo(specIndex)
-    return specId
-end
-
---------------------------------------------------------------------------------
--- Inspection Queue
---------------------------------------------------------------------------------
-
---- Find the unit token for a GUID by scanning the current group.
-local function UnitForGUID(guid)
-    for unit in PRT:IterateGroup() do
-        if UnitGUID(unit) == guid then
-            return unit
+    for i = 1, #ability.flags do
+        local cat = FLAG_TO_CATEGORY[ability.flags[i]]
+        if cat then
+            return cat
         end
     end
     return nil
 end
 
---- Fire off an inspect request for the given unit and set a 2-second timeout.
-local function BeginInspect(unit)
-    inspectPending = unit
-    NotifyInspect(unit)
-    C_Timer.After(2, function()
-        if inspectPending == unit then
-            inspectPending = nil
-        end
-    end)
-end
-
---- Return true if the Blizzard inspect window is open. Inspecting while it is
---- shown hijacks the single inspect slot and breaks the player's gear tooltips.
-local function IsInspectFrameOpen()
-    return (InspectFrame and InspectFrame:IsShown()) or false
-end
-
---- Return true if anyone in the group is in combat. We never inspect mid-fight,
---- and the player's own PLAYER_REGEN flag misses cases like dying mid-pull, so we
---- scan the whole group.
-local function GroupInCombat()
-    if inCombat then
-        return true
-    end
-    for unit in PRT:IterateGroup() do
-        if UnitAffectingCombat(unit) then
-            return true
-        end
-    end
-    return false
-end
-
---- Rebuild the full-raid sweep queue. Runs on a fixed interval as a backstop for
---- spec/talent changes we failed to catch via events. Skips while the previous
---- sweep is still draining so a slow sweep cannot starve itself.
-local function RefillSweepQueue()
-    if #sweepQueue > 0 then
-        return
-    end
-    for unit in PRT:IterateGroup() do
-        if not UnitIsUnit(unit, "player") then
-            local guid = UnitGUID(unit)
-            if guid then
-                table.insert(sweepQueue, guid)
-            end
-        end
-    end
-end
-
-local function ProcessNextInspect()
-    -- Never inspect mid-fight, while an inspect is already pending, or while the
-    -- player has the Blizzard inspect window open (doing so breaks gear tooltips).
-    if GroupInCombat() or inspectPending or IsInspectFrameOpen() then
-        return
-    end
-
-    -- Priority queue: new joins with no cache entry go first.
-    while #priorityQueue > 0 do
-        local guid = table.remove(priorityQueue, 1)
-        local unit = UnitForGUID(guid)
-        if unit and not specCache[guid] then
-            BeginInspect(unit)
-            return
-        end
-    end
-
-    -- Periodic full sweep: drain one queued member per tick.
-    while #sweepQueue > 0 do
-        local guid = table.remove(sweepQueue, 1)
-        local unit = UnitForGUID(guid)
-        if unit and UnitExists(unit) then
-            BeginInspect(unit)
-            return
-        end
-    end
-end
-
-local function StartInspectTicker()
-    if not inspectTicker then
-        inspectTicker = C_Timer.NewTicker(TICK_INTERVAL, ProcessNextInspect)
-    end
-    if not sweepTicker then
-        sweepTicker = C_Timer.NewTicker(SWEEP_INTERVAL, RefillSweepQueue)
-    end
-end
-
-local function StopInspectTicker()
-    if inspectTicker then
-        inspectTicker:Cancel()
-        inspectTicker = nil
-    end
-    if sweepTicker then
-        sweepTicker:Cancel()
-        sweepTicker = nil
-    end
-end
-
---- Walk a trait config and return a set of active talent spell IDs
---- (spellId -> true). Returns nil if the API data is unavailable.
-local function ReadTalentsFromConfig(configId)
-    local config = C_Traits.GetConfigInfo(configId)
-    if not config or not config.treeIDs then
-        return nil
-    end
-
-    local treeID = config.treeIDs[1]
-    if not treeID then
-        return nil
-    end
-
-    local nodes = C_Traits.GetTreeNodes(treeID)
-    if not nodes then
-        return nil
-    end
-
-    local talents = {}
-    for i = 1, #nodes do
-        local nodeID = nodes[i]
-        local node = C_Traits.GetNodeInfo(configId, nodeID)
-        if node and node.ID ~= 0 and node.activeEntry then
-            -- Skip hero talent subtree selection nodes.
-            if not (Enum.TraitNodeType and Enum.TraitNodeType.SubTreeSelection
-                    and node.type == Enum.TraitNodeType.SubTreeSelection) then
-                if node.currentRank and node.currentRank > 0
-                        and (not node.subTreeID or node.subTreeActive) then
-                    local entryID = node.activeEntry.entryID
-                    local entry = C_Traits.GetEntryInfo(configId, entryID)
-                    if entry and entry.definitionID then
-                        local defInfo = C_Traits.GetDefinitionInfo(entry.definitionID)
-                        if defInfo and defInfo.spellID then
-                            talents[defInfo.spellID] = true
-                        end
-                    end
-                end
-            end
-        end
-    end
-
-    return talents
-end
-
---- Read the local player's active talents.
-local function ReadPlayerTalents()
-    if not C_ClassTalents or not C_ClassTalents.GetActiveConfigID then
-        return nil
-    end
-    local configId = C_ClassTalents.GetActiveConfigID()
-    if not configId then
-        return nil
-    end
-    return ReadTalentsFromConfig(configId)
-end
-
---- Read the inspected player's active talents via C_Traits and return a set of
---- spell IDs (spellId -> true). Returns nil if the API data is unavailable.
-local function ReadInspectTalents()
-    return ReadTalentsFromConfig(Constants.TraitConsts.INSPECT_TRAIT_CONFIG_ID)
-end
-
-local function OnInspectReady(eventGUID)
-    if not inspectPending then
-        return
-    end
-
-    -- Verify the event GUID matches the unit we actually requested. Another
-    -- addon may have triggered an inspect for a different target.
-    local pendingGUID = UnitGUID(inspectPending)
-    if not pendingGUID or eventGUID ~= pendingGUID then
-        return
-    end
-
-    local specId = GetInspectSpecialization(inspectPending)
-    local talents = ReadInspectTalents()
-    inspectPending = nil
-
-    -- Release the single inspect slot so we stop squatting on it between sweeps.
-    -- Never clear while the player's inspect window is open, or we would yank the
-    -- data out from under their gear tooltips.
-    if not IsInspectFrameOpen() then
-        ClearInspectPlayer()
-    end
-
-    local changed = false
-
-    if specId and specId > 0 then
-        if specCache[pendingGUID] ~= specId then
-            specCache[pendingGUID] = specId
-            changed = true
-        end
-    end
-
-    if talents then
-        local oldTalents = talentCache[pendingGUID]
-        -- Compare talent sets: rebuild if the new set differs from the cached one.
-        local talentsChanged = not oldTalents
-        if not talentsChanged then
-            for spellId in pairs(talents) do
-                if not oldTalents[spellId] then
-                    talentsChanged = true
-                    break
-                end
-            end
-        end
-        if not talentsChanged then
-            for spellId in pairs(oldTalents) do
-                if not talents[spellId] then
-                    talentsChanged = true
-                    break
-                end
-            end
-        end
-        if talentsChanged then
-            talentCache[pendingGUID] = talents
-            changed = true
-        end
-    end
-
-    if changed then
-        CooldownRoster:RebuildRoster()
-        CooldownRoster:UpdateDisplay()
-    end
-end
-
 --------------------------------------------------------------------------------
--- Roster Scanning
+-- Roster Building
 --------------------------------------------------------------------------------
-
-function CooldownRoster:ScanRoster()
-    local activeGUIDs = {}
-
-    for unit in PRT:IterateGroup() do
-        local guid = UnitGUID(unit)
-        if guid then
-            activeGUIDs[guid] = true
-
-            if UnitIsUnit(unit, "player") then
-                local specId = GetPlayerSpecId()
-                if specId and specId > 0 then
-                    specCache[guid] = specId
-                end
-                local talents = ReadPlayerTalents()
-                if talents then
-                    talentCache[guid] = talents
-                end
-                -- If spec or talents are still missing after load, retry shortly.
-                -- The talent system may not be ready on the first frame after login.
-                if not specCache[guid] or not talentCache[guid] then
-                    C_Timer.After(1, function()
-                        CooldownRoster:ScanRoster()
-                        CooldownRoster:RebuildRoster()
-                        CooldownRoster:UpdateDisplay()
-                    end)
-                end
-            elseif not specCache[guid] then
-                -- New join with no cache entry: push to priority queue.
-                table.insert(priorityQueue, guid)
-            end
-        end
-    end
-
-    -- Remove stale GUIDs (players who left)
-    for guid in pairs(specCache) do
-        if not activeGUIDs[guid] then
-            specCache[guid] = nil
-        end
-    end
-    for guid in pairs(talentCache) do
-        if not activeGUIDs[guid] then
-            talentCache[guid] = nil
-        end
-    end
-end
 
 function CooldownRoster:RebuildRoster()
     rosterCooldowns = {}
 
-    for unit in PRT:IterateGroup() do
-        local guid = UnitGUID(unit)
-        if guid then
-            local _, classToken = UnitClass(unit)
-            local playerName = UnitName(unit)
-            local cachedSpec = specCache[guid]
-
-            local talents = talentCache[guid]
-
-            for _, spell in ipairs(SPELL_DATA) do
-                if spell.class == classToken then
-                    if spell.specId == nil or spell.specId == cachedSpec then
-                        -- When a spell has a talentId, check the player's cached
-                        -- talents. If talent data is unavailable, fall back to
-                        -- showing based on class + spec only.
+    for guid, member in pairs(PRT.GroupInspect.members) do
+        local specId = member.specId
+        if specId then
+            local specData = PRT.SpellData[specId]
+            if specData and specData.abilities then
+                for spellId, ability in pairs(specData.abilities) do
+                    local category = GetAbilityCategory(ability)
+                    if category then
+                        -- When talent data is available, only show the ability
+                        -- if its spellId appears in the player's talent set.
+                        -- If talents haven't loaded yet, fall back to showing
+                        -- everything for the spec.
                         local show = true
-                        if spell.talentId and talents then
-                            show = talents[spell.talentId] or false
+                        if member.talents then
+                            show = member.talents[spellId] or false
                         end
 
                         if show then
                             table.insert(rosterCooldowns, {
-                                spellId = spell.spellId,
-                                name = spell.name,
-                                category = spell.category,
-                                playerName = playerName,
-                                playerClass = classToken,
+                                spellId = spellId,
+                                name = ability.name,
+                                category = category,
+                                playerName = member.name,
+                                playerClass = member.class,
                                 guid = guid,
                             })
                         end
@@ -508,8 +185,16 @@ function CooldownRoster:RebuildRoster()
         return a.playerName < b.playerName
     end)
 
+    -- Build a talent map compatible with CooldownTracker:OnRosterChanged
+    local talents = {}
+    for guid, member in pairs(PRT.GroupInspect.members) do
+        if member.talents then
+            talents[guid] = member.talents
+        end
+    end
+
     -- Notify the tracker so it knows which abilities to watch for
-    PRT.CooldownTracker:OnRosterChanged(rosterCooldowns, talentCache)
+    PRT.CooldownTracker:OnRosterChanged(rosterCooldowns, talents)
 end
 
 --------------------------------------------------------------------------------
@@ -871,22 +556,10 @@ end
 -- Event Handling
 --------------------------------------------------------------------------------
 
-local function OnEvent(_, event, ...)
-    if event == "GROUP_ROSTER_UPDATE" then
-        CooldownRoster:ScanRoster()
-        CooldownRoster:RebuildRoster()
-        CooldownRoster:UpdateVisibility()
-
-    elseif event == "INSPECT_READY" then
-        OnInspectReady(...)
-
-    elseif event == "PLAYER_REGEN_DISABLED" then
-        inCombat = true
-
-    elseif event == "PLAYER_REGEN_ENABLED" then
-        inCombat = false
-
-    elseif event == "ZONE_CHANGED_NEW_AREA" or event == "PLAYER_ENTERING_WORLD" then
+local function OnEvent(_, event)
+    if event == "GROUP_ROSTER_UPDATE"
+        or event == "ZONE_CHANGED_NEW_AREA"
+        or event == "PLAYER_ENTERING_WORLD" then
         CooldownRoster:UpdateVisibility()
     end
 end
@@ -1167,6 +840,14 @@ function CooldownRoster:Initialize()
         self:RestoreFramePosition(categoryKey)
         SetupDragging(categoryFrames[categoryKey], categoryKey)
     end
+
+    -- Listen for GroupInspect data changes
+    PRT.GroupInspect:Listen(function()
+        if CooldownRoster.active then
+            CooldownRoster:RebuildRoster()
+            CooldownRoster:UpdateDisplay()
+        end
+    end)
 end
 
 function CooldownRoster:IsActivatable()
@@ -1175,16 +856,10 @@ end
 
 function CooldownRoster:OnEnable()
     self.eventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
-    self.eventFrame:RegisterEvent("INSPECT_READY")
-    self.eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
-    self.eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
     self.eventFrame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
     self.eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
     self.eventFrame:SetScript("OnEvent", OnEvent)
 
-    StartInspectTicker()
-
-    self:ScanRoster()
     self:RebuildRoster()
     self:UpdateVisibility()
 
@@ -1199,9 +874,7 @@ function CooldownRoster:OnDisable()
 
     self.eventFrame:UnregisterAllEvents()
     self.eventFrame:SetScript("OnEvent", nil)
-    StopInspectTicker()
     for _, frame in pairs(categoryFrames) do
         frame:Hide()
     end
 end
-

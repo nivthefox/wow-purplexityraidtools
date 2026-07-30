@@ -141,15 +141,9 @@ PRT.defaults.readyCheck = {
 local function GetPlayersByClass(className)
     local players = {}
     if not IsInRaid() then return players end
-    for unit in PRT:IterateGroup() do
-        if UnitIsConnected(unit) then
-            local _, classToken = UnitClass(unit)
-            if classToken == className then
-                local name = GetUnitName(unit, true)
-                if name then
-                    table.insert(players, name)
-                end
-            end
+    for _, member in pairs(PRT.GroupInspect.members) do
+        if member.class == className then
+            table.insert(players, member.name)
         end
     end
     return players
@@ -419,6 +413,12 @@ end)
 --------------------------------------------------------------------------------
 -- Initialization
 --------------------------------------------------------------------------------
+
+function ReadyCheck:Initialize()
+    PRT.GroupInspect:Listen(function()
+        -- No-op today; registered for consumer pattern consistency
+    end)
+end
 
 function ReadyCheck:IsActivatable()
     return IsInRaid()

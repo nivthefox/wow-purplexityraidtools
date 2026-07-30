@@ -97,6 +97,10 @@ local function hasContent(note)
     return false
 end
 
+local function chronologicalKey(reminder)
+    return (reminder.phase or 1) * 1000000 + (reminder.time or 0)
+end
+
 function NotesSerializer:Serialize(note)
     if not note then
         return ""
@@ -111,12 +115,44 @@ function NotesSerializer:Serialize(note)
         output[#output + 1] = serializeMetadata(note)
     end
 
-    if note.lines then
-        for _, entry in ipairs(note.lines) do
-            if entry.type == "freeform" then
-                output[#output + 1] = entry.text
-            elseif entry.type == "reminder" then
-                output[#output + 1] = serializeReminder(entry.reminder)
+    if not note.lines then
+        return table.concat(output, "\n")
+    end
+
+    local sortedReminders = {}
+    local freeformAfter = {}
+    local leadingFreeform = {}
+    local lastReminder = nil
+
+    for _, entry in ipairs(note.lines) do
+        if entry.type == "freeform" then
+            if lastReminder then
+                if not freeformAfter[lastReminder] then
+                    freeformAfter[lastReminder] = {}
+                end
+                freeformAfter[lastReminder][#freeformAfter[lastReminder] + 1] = entry.text
+            else
+                leadingFreeform[#leadingFreeform + 1] = entry.text
+            end
+        elseif entry.type == "reminder" then
+            sortedReminders[#sortedReminders + 1] = entry.reminder
+            lastReminder = entry.reminder
+        end
+    end
+
+    table.sort(sortedReminders, function(a, b)
+        return chronologicalKey(a) < chronologicalKey(b)
+    end)
+
+    for _, text in ipairs(leadingFreeform) do
+        output[#output + 1] = text
+    end
+
+    for _, reminder in ipairs(sortedReminders) do
+        output[#output + 1] = serializeReminder(reminder)
+        if freeformAfter[reminder] then
+            for _, text in ipairs(freeformAfter[reminder]) do
+                output[#output + 1] = text
             end
         end
     end

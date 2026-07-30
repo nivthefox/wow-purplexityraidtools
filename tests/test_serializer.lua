@@ -246,7 +246,7 @@ tests["multi-phase note: ph:1 omitted, ph:2 present"] = function()
     assertTrue(foundP2, "phase 2 reminder not found in output")
 end
 
-tests["freeform lines preserved in position between reminders"] = function()
+tests["freeform lines follow the reminder they trail in chronological output"] = function()
     local note = makeNote({ encounterID = 1 })
     addFreeformToNote(note, "-- Phase 1 CDs")
     local r1 = makeReminder({ time = 30, text = "Go" })
@@ -270,10 +270,10 @@ tests["freeform lines preserved in position between reminders"] = function()
 
     assertEquals(lines[metaOffset + 1], "-- Phase 1 CDs")
     assertTrue(lines[metaOffset + 2]:find("time:30", 1, true) ~= nil,
-        "second content line should be the first reminder")
+        "phase 1 reminder follows its leading freeform")
     assertEquals(lines[metaOffset + 3], "-- Phase 2 stuff")
     assertTrue(lines[metaOffset + 4]:find("text:Spread", 1, true) ~= nil,
-        "fourth content line should be the second reminder")
+        "phase 2 reminder follows its freeform separator")
 end
 
 tests["metadata line: encounterID only"] = function()

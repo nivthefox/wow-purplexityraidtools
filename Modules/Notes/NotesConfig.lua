@@ -132,6 +132,7 @@ PRT:RegisterTab("Notes", function(parent)
 
         local refreshGates
         local refreshList
+        local RefreshTestNoteButton
 
         local function CurrentActiveName()
             return (PRT.Notes:GetActiveNote())
@@ -146,16 +147,7 @@ PRT:RegisterTab("Notes", function(parent)
             if name ~= CurrentActiveName() then
                 return
             end
-            local _, text = PRT.Notes:GetActiveNote()
-            if not text then
-                return
-            end
-            local parsed, err = PRT.NotesParser:Parse(text)
-            if err then
-                return
-            end
-            PRT.Notes:MarkRelevance(parsed)
-            PRT.NotesFrame:SetNote(parsed)
+            PRT.Notes:OnActiveNoteChanged()
         end
 
         local listFrame = CreateFrame("Frame", nil, panel, "BackdropTemplate")
@@ -262,13 +254,21 @@ PRT:RegisterTab("Notes", function(parent)
         buttonRow:SetPoint("TOPLEFT", 20, yOffset)
         buttonRow:SetSize(childWidth - 48, 24)
 
-        local function MakeButton(label, width, anchor)
+        local function MakeButton(label, width, anchor, fromRight)
             local button = CreateFrame("Button", nil, buttonRow, "UIPanelButtonTemplate")
             button:SetSize(width, 22)
-            if anchor then
-                button:SetPoint("LEFT", anchor, "RIGHT", 6, 0)
+            if fromRight then
+                if anchor then
+                    button:SetPoint("RIGHT", anchor, "LEFT", -6, 0)
+                else
+                    button:SetPoint("RIGHT", 0, 0)
+                end
             else
-                button:SetPoint("LEFT", 0, 0)
+                if anchor then
+                    button:SetPoint("LEFT", anchor, "RIGHT", 6, 0)
+                else
+                    button:SetPoint("LEFT", 0, 0)
+                end
             end
             button:SetText(label)
             return button
@@ -278,9 +278,12 @@ PRT:RegisterTab("Notes", function(parent)
         local editButton = MakeButton("Edit", 60, newButton)
         local annotateButton = MakeButton("Annotate", 70, editButton)
         local deleteButton = MakeButton("Delete", 60, annotateButton)
-        local sendButton = MakeButton("Send", 60, deleteButton)
-        local clearButton = MakeButton("Clear", 60, sendButton)
-        local showHideButton = MakeButton("Show/Hide", 80, clearButton)
+
+        local testButton = MakeButton("Test", 60, nil, true)
+        local showHideButton = MakeButton("Show", 60, testButton, true)
+        local clearButton = MakeButton("Clear", 60, showHideButton, true)
+        local sendButton = MakeButton("Send", 70, clearButton, true)
+        local activateButton = MakeButton("Activate", 70, clearButton, true)
 
         yOffset = yOffset - 30
 
@@ -316,6 +319,17 @@ PRT:RegisterTab("Notes", function(parent)
             PRT.NotesEditor:Open(selectedNote, text or "", "annotate")
         end)
 
+        activateButton:SetScript("OnClick", function()
+            if not selectedNote then
+                return
+            end
+            buttonError:SetText("")
+            PRT.Notes:ActivateNote(selectedNote, "self")
+            PRT.NotesFrame:Show()
+            refreshList()
+            refreshGates()
+        end)
+
         deleteButton:SetScript("OnClick", function()
             if not selectedNote then
                 return
@@ -342,19 +356,17 @@ PRT:RegisterTab("Notes", function(parent)
             buttonError:SetText("")
             if not selectedNote then
                 PRT.NotesFrame:Toggle()
+                refreshGates()
                 return
             end
             if IsNotesFrameShown() then
                 PRT.NotesFrame:Hide()
+                refreshGates()
                 return
             end
-            local text = GetSettings().savedNotes[selectedNote]
-            local parsed, err = PRT.NotesParser:Parse(text or "")
-            if not err then
-                PRT.Notes:MarkRelevance(parsed)
-                PRT.NotesFrame:SetNote(parsed)
-            end
+            PRT.Notes:ActivateNote(selectedNote, "self")
             PRT.NotesFrame:Show()
+            refreshGates()
         end)
 
         local function PrivilegeCombatReason()
@@ -396,73 +408,87 @@ PRT:RegisterTab("Notes", function(parent)
         HookTooltip(editButton)
         HookTooltip(annotateButton)
         HookTooltip(deleteButton)
+        HookTooltip(activateButton)
 
         refreshGates = function()
-            local privilegeCombat = PrivilegeCombatReason()
-            local sendReason = privilegeCombat
-            if not sendReason and not selectedNote then
-                sendReason = TOOLTIP_NO_SELECTION
+            local isPrivileged = not IsInGroup() or PRT.Comms:IsSenderPrivileged(UnitName("player"))
+            local inCombat = InCombatLockdown and InCombatLockdown()
+
+            if isPrivileged then
+                sendButton:Show()
+                activateButton:Hide()
+                local sendReason
+                if inCombat then
+                    sendReason = TOOLTIP_COMBAT
+                elseif not selectedNote then
+                    sendReason = TOOLTIP_NO_SELECTION
+                end
+                ApplyGate(sendButton, sendReason)
+            else
+                sendButton:Hide()
+                activateButton:Show()
+                local activateReason
+                if not selectedNote then
+                    activateReason = TOOLTIP_NO_SELECTION
+                elseif PRT.Notes:GetActiveNoteSource() == "broadcast" then
+                    activateReason = "The raid leader has set an active note."
+                end
+                ApplyGate(activateButton, activateReason)
             end
-            ApplyGate(sendButton, sendReason)
-            ApplyGate(clearButton, privilegeCombat)
+
+            local clearReason
+            if isPrivileged then
+                if inCombat then clearReason = TOOLTIP_COMBAT end
+            else
+                clearReason = TOOLTIP_NO_PRIVILEGE
+            end
+            ApplyGate(clearButton, clearReason)
             ApplyGate(editButton, not selectedNote and TOOLTIP_NO_SELECTION or nil)
             ApplyGate(annotateButton, not selectedNote and TOOLTIP_NO_SELECTION or nil)
             ApplyGate(deleteButton, not selectedNote and TOOLTIP_NO_SELECTION or nil)
-        end
 
-        -- Test buttons
-        yOffset = yOffset - 12
-
-        local testButtonRow = CreateFrame("Frame", nil, panel)
-        testButtonRow:SetPoint("TOPLEFT", 20, yOffset)
-        testButtonRow:SetSize(childWidth - 48, 24)
-
-        local TEST_BUTTON_WIDTH = 120
-        local TEST_BUTTON_GAP = 8
-        local totalTestWidth = TEST_BUTTON_WIDTH * 2 + TEST_BUTTON_GAP
-        local testLeftOffset = (childWidth - 48 - totalTestWidth) / 2
-
-        local testNoteButton = CreateFrame("Button", nil, testButtonRow, "UIPanelButtonTemplate")
-        testNoteButton:SetSize(TEST_BUTTON_WIDTH, 22)
-        testNoteButton:SetPoint("LEFT", testLeftOffset, 0)
-        testNoteButton:SetText("Test Note")
-
-        local function RefreshTestNoteButton()
-            if PRT.Notes:IsTestRunning() then
-                testNoteButton:SetText("Stop Test")
-                testNoteButton:Enable()
+            if IsNotesFrameShown() then
+                showHideButton:SetText("Hide")
             else
-                testNoteButton:SetText("Test Note")
-                local activeName = CurrentActiveName()
-                if activeName then
-                    testNoteButton:Enable()
-                    testNoteButton.disabledReason = nil
-                else
-                    testNoteButton:Disable()
-                    testNoteButton.disabledReason = "No active note."
-                end
+                showHideButton:SetText("Show")
+            end
+
+            if RefreshTestNoteButton then
+                RefreshTestNoteButton()
             end
         end
 
-        testNoteButton:SetScript("OnClick", function()
+        testButton:SetScript("OnClick", function()
             if PRT.Notes:IsTestRunning() then
                 PRT.Notes:TestStop()
             else
                 PRT.Notes:TestStart()
             end
-            RefreshTestNoteButton()
+            refreshGates()
         end)
-        HookTooltip(testNoteButton)
+        HookTooltip(testButton)
 
-        PRT.Notes.onTestStopped = RefreshTestNoteButton
+        PRT.Notes.onTestStopped = function()
+            refreshGates()
+        end
 
-        local testPopupsButton = CreateFrame("Button", nil, testButtonRow, "UIPanelButtonTemplate")
-        testPopupsButton:SetSize(TEST_BUTTON_WIDTH, 22)
-        testPopupsButton:SetPoint("LEFT", testNoteButton, "RIGHT", TEST_BUTTON_GAP, 0)
-        testPopupsButton:SetText("Test Popups")
-        testPopupsButton:SetScript("OnClick", function()
-            PRT.NotesPopups:Test()
-        end)
+        RefreshTestNoteButton = function()
+            if PRT.Notes:IsTestRunning() then
+                testButton:SetText("Stop")
+                testButton:Enable()
+                testButton.disabledReason = nil
+            else
+                testButton:SetText("Test")
+                local activeName = CurrentActiveName()
+                if activeName then
+                    testButton:Enable()
+                    testButton.disabledReason = nil
+                else
+                    testButton:Disable()
+                    testButton.disabledReason = "No active note."
+                end
+            end
+        end
 
         NotesConfig.OnDeleteNote = function()
             if not selectedNote then
@@ -673,6 +699,15 @@ PRT:RegisterTab("Notes", function(parent)
             PRT:ApplySettings("notes")
         end)
         soundsCheckbox:SetPoint("TOPLEFT", 0, yOffset)
+        yOffset = yOffset - ROW_HEIGHT - 8
+
+        local testPopupsButton = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+        testPopupsButton:SetSize(120, 22)
+        testPopupsButton:SetPoint("TOPLEFT", 0, yOffset)
+        testPopupsButton:SetText("Test Popups")
+        testPopupsButton:SetScript("OnClick", function()
+            PRT.NotesPopups:Test()
+        end)
 
         panel:SetScript("OnShow", function()
             local settings = GetSettings()
@@ -681,6 +716,11 @@ PRT:RegisterTab("Notes", function(parent)
             growDropdown:SetValue()
             ttsCheckbox:SetValue(settings.popups.ttsEnabled)
             soundsCheckbox:SetValue(settings.popups.soundsEnabled)
+            if settings.popups.enabled then
+                testPopupsButton:Enable()
+            else
+                testPopupsButton:Disable()
+            end
         end)
     end
 

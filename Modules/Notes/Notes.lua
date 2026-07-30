@@ -164,14 +164,20 @@ function Notes:RenameNote(oldName, newName)
     return true
 end
 
-function Notes:ActivateNote(name)
+function Notes:ActivateNote(name, source)
     local store = GetNotesStore()
     if name ~= nil and not store.savedNotes[name] then
         return false
     end
     store.activeNote = name
+    store.activeNoteSource = name and (source or "self") or nil
     self:OnActiveNoteChanged()
     return true
+end
+
+function Notes:GetActiveNoteSource()
+    local store = GetNotesStore()
+    return store.activeNoteSource
 end
 
 function Notes:GetActiveNote()
@@ -277,7 +283,10 @@ end
 --------------------------------------------------------------------------------
 
 local function NoteApplies(note, encounterID, difficultyString)
-    if not note or note.encounterID ~= encounterID then
+    if not note then
+        return false
+    end
+    if note.encounterID ~= nil and note.encounterID ~= encounterID then
         return false
     end
     return note.difficulty == nil or note.difficulty == difficultyString
@@ -415,7 +424,7 @@ local function OnEncounterStart(encounterID, difficultyID)
     end)
 end
 
-local function OnEncounterEnd()
+local function OnEncounterEnd(success)
     StopTicker()
     PRT.NotesTimer:Stop()
     PRT.NotesPopups:DismissAll()
@@ -423,6 +432,10 @@ local function OnEncounterEnd()
     local settings = PRT:GetSetting("notes")
     local hideMode = settings and settings.display and settings.display.hideMode
     PRT.NotesFrame:OnEncounterEnd(hideMode)
+
+    if success == 1 then
+        Notes:ActivateNote(nil)
+    end
 end
 
 --------------------------------------------------------------------------------
@@ -537,7 +550,7 @@ function Notes:BroadcastNote(name)
         return false, REASON_NO_NOTE
     end
     if not IsInGroup() then
-        self:ActivateNote(name)
+        self:ActivateNote(name, "broadcast")
         PRT.NotesFrame:Show()
         return true
     end
@@ -575,7 +588,7 @@ local function OnNoteReceived(data, sender)
     if not Notes:SaveNote(data.name, data.text) then
         return
     end
-    Notes:ActivateNote(data.name)
+    Notes:ActivateNote(data.name, "broadcast")
     print("PRT: Received note: " .. data.name .. " from " .. sender)
     PRT.NotesFrame:Show()
 end
@@ -592,12 +605,12 @@ end
 -- Event dispatch
 --------------------------------------------------------------------------------
 
-local function OnEvent(_, event, arg1, arg2, arg3)
+local function OnEvent(_, event, arg1, arg2, arg3, arg4, arg5)
     if event == "ENCOUNTER_START" then
         HookBossMods()
         OnEncounterStart(arg1, arg3)
     elseif event == "ENCOUNTER_END" then
-        OnEncounterEnd()
+        OnEncounterEnd(arg5)
     elseif event == "GROUP_ROSTER_UPDATE" or event == "PLAYER_SPECIALIZATION_CHANGED" then
         RefreshRelevance()
     elseif event == "ADDON_LOADED" then

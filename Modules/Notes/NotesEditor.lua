@@ -2,7 +2,7 @@ local PRT = PurplexityRaidTools
 local NotesEditor = {}
 PRT.NotesEditor = NotesEditor
 
-local VPPS = 4
+local VPPS = 8
 local BLOCK_WIDTH = 95
 local BLOCK_HEIGHT = 34
 local BLOCK_GAP = 4
@@ -409,6 +409,38 @@ local function CollectReminders(parsedNote, activePhase)
     return result
 end
 
+local function CollectFreeformLines(parsedNote, activePhase)
+    if not parsedNote or not parsedNote.lines then
+        return {}
+    end
+
+    local result = {}
+    local lastReminder = nil
+
+    for _, entry in ipairs(parsedNote.lines) do
+        if entry.type == "reminder" then
+            lastReminder = entry.reminder
+        elseif entry.type == "freeform" then
+            local phase = lastReminder and lastReminder.phase or 1
+            local time = lastReminder and lastReminder.time or 0
+            local dur = lastReminder and lastReminder.duration or 0
+            local visualHeight = math.max(dur * VPPS, BLOCK_HEIGHT)
+            local timeOffset = visualHeight / VPPS
+            local num = tonumber(phase) or 1
+            if activePhase == "all" or num == activePhase then
+                local label = entry.text:match("^%-%-%s*(.+)") or entry.text
+                result[#result + 1] = {
+                    text = label,
+                    phase = num,
+                    time = time + timeOffset,
+                }
+            end
+        end
+    end
+
+    return result
+end
+
 local function SplitAbilityAndText(text, knownAbilities)
     if not text or text == "" then
         return "", ""
@@ -477,6 +509,7 @@ local gridPool = {}
 local tickPool = {}
 local phaseTabPool = {}
 local phaseDividerPool = {}
+local freeformPool = {}
 
 local function RecyclePool(pool)
     for _, obj in ipairs(pool) do
@@ -537,7 +570,7 @@ local function CreateBlock(parent)
         self:SetBackdropBorderColor(0.91, 0.27, 0.37, 1)
     end)
     block:SetScript("OnLeave", function(self)
-        if self.isPersonal then
+        if self.isPersonal or self.isAnnotated then
             self:SetBackdropBorderColor(0.94, 0.75, 0.25, 1)
         else
             self:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
@@ -574,6 +607,22 @@ local function CreatePhaseDivider(parent)
     holder.label = holder:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     holder.label:SetPoint("TOPLEFT", holder.line, "BOTTOMLEFT", 4, -2)
     holder.label:SetTextColor(0.91, 0.27, 0.37, 1)
+
+    return holder
+end
+
+local function CreateFreeformSeparator(parent)
+    local holder = CreateFrame("Frame", nil, parent)
+    holder:SetHeight(14)
+
+    holder.line = holder:CreateTexture(nil, "ARTWORK")
+    holder.line:SetHeight(1)
+    holder.line:SetPoint("TOPLEFT")
+    holder.line:SetPoint("TOPRIGHT")
+
+    holder.label = holder:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    holder.label:SetPoint("TOPLEFT", holder.line, "BOTTOMLEFT", 4, -2)
+    holder.label:SetFont(holder.label:GetFont(), 9)
 
     return holder
 end
@@ -1040,8 +1089,20 @@ local function BuildFrame()
     modeBar.showMineLabel:SetPoint("LEFT", modeBar.showMineCheck, "RIGHT", 2, 0)
     modeBar.showMineLabel:SetText("Show Only Mine")
 
+    modeBar.annotateBtn = CreateFrame("Button", nil, modeBar, "UIPanelButtonTemplate")
+    modeBar.annotateBtn:SetSize(80, 20)
+    modeBar.annotateBtn:SetPoint("RIGHT", -100, 0)
+    modeBar.annotateBtn:SetText("Annotate")
+    modeBar.annotateBtn:SetScript("OnClick", function()
+        if not state.noteName then
+            return
+        end
+        local text = PRT.NotesSerializer:Serialize(state.parsedNote)
+        NotesEditor:Open(state.noteName, text, "annotate")
+    end)
+
     modeBar.rawBtn = CreateFrame("Button", nil, modeBar, "UIPanelButtonTemplate")
-    modeBar.rawBtn:SetSize(110, 20)
+    modeBar.rawBtn:SetSize(80, 20)
     modeBar.rawBtn:SetPoint("RIGHT", -8, 0)
     modeBar.rawBtn:SetText("Import")
     modeBar.rawBtn:SetScript("OnClick", function()
@@ -1215,6 +1276,7 @@ function NotesEditor:RenderTimeline()
     RecyclePool(gridPool)
     RecyclePool(tickPool)
     RecyclePool(phaseDividerPool)
+    RecyclePool(freeformPool)
 
     local phases = DerivePhases(state.parsedNote)
     local totalDur = TotalDuration(phases, state.activePhase)
@@ -1350,6 +1412,24 @@ function NotesEditor:RenderTimeline()
             NotesEditor:RenderBlock(r, y, stackIdx, h, phases, playerCtx)
         end
     end
+
+    local freeformLines = CollectFreeformLines(state.parsedNote, state.activePhase)
+    local isAnnotateMode = state.mode == "annotate"
+    for _, fl in ipairs(freeformLines) do
+        local y = TimeToY(fl.time, fl.phase, phases, state.activePhase)
+        local sep = GetFromPool(freeformPool, function()
+            return CreateFreeformSeparator(canvas)
+        end)
+        sep:SetPoint("TOPLEFT", canvas, "TOPLEFT", 0, -y)
+        sep:SetPoint("RIGHT", canvas, "RIGHT", 0, 0)
+        sep:SetFrameLevel(canvas:GetFrameLevel() + 3)
+
+        sep.line:SetColorTexture(0.4, 0.7, 1, 0.5)
+        sep.label:SetTextColor(0.4, 0.7, 1, 0.8)
+
+        sep.label:SetText(fl.text)
+        sep:Show()
+    end
 end
 
 function NotesEditor:RenderBlock(reminder, y, stackIdx, height, phases, playerCtx)
@@ -1371,16 +1451,16 @@ function NotesEditor:RenderBlock(reminder, y, stackIdx, height, phases, playerCt
     block.extra:SetText("")
     block.extra:Hide()
 
+    block.isPersonal = reminder.isPersonal or false
+    block.isAnnotated = reminder.isAnnotated or false
+
     if reminder.isPersonal then
-        block.isPersonal = true
         block:SetBackdropBorderColor(0.94, 0.75, 0.25, 1)
         block.personalBorder:Show()
     elseif reminder.isAnnotated then
-        block.isPersonal = false
         block:SetBackdropBorderColor(0.94, 0.75, 0.25, 1)
         block.personalBorder:Hide()
     else
-        block.isPersonal = false
         block:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
         block.personalBorder:Hide()
     end
@@ -1418,10 +1498,12 @@ function NotesEditor:Render()
         modeBar.showMineCheck:Show()
         modeBar.showMineLabel:Show()
         modeBar.rawBtn:Hide()
+        modeBar.annotateBtn:Hide()
     else
         modeBar.showMineCheck:Hide()
         modeBar.showMineLabel:Hide()
         modeBar.rawBtn:Show()
+        modeBar.annotateBtn:Show()
     end
 
     titleBar.nameText:SetText(state.noteName or "New Note")
@@ -1540,8 +1622,11 @@ function NotesEditor:SaveRawText()
     state.encounterName = parsed.name or (parsed.encounterID and tostring(parsed.encounterID)) or ""
     state.difficulty = parsed.difficulty
 
+    local normalizedText = PRT.NotesSerializer:Serialize(parsed)
+    state.noteText = normalizedText
+
     if state.noteName then
-        local ok, saveErr = PRT.Notes:SaveNote(state.noteName, rawText)
+        local ok, saveErr = PRT.Notes:SaveNote(state.noteName, normalizedText)
         if ok then
             NotesEditor:NotifyConfigSaved(state.noteName)
         else
@@ -2007,12 +2092,14 @@ function NotesEditor:ReloadNote()
         return
     end
 
-    local annText = PRT.Notes:GetAnnotation(state.noteName)
-    if annText then
-        local annParsed = PRT.NotesParser:Parse(annText)
-        if annParsed then
-            state.annotationNote = annParsed
-            parsed = PRT.NotesMerge:Merge(parsed, annParsed)
+    if state.mode == "annotate" then
+        local annText = PRT.Notes:GetAnnotation(state.noteName)
+        if annText then
+            local annParsed = PRT.NotesParser:Parse(annText)
+            if annParsed then
+                state.annotationNote = annParsed
+                parsed = PRT.NotesMerge:Merge(parsed, annParsed)
+            end
         end
     end
 
@@ -2051,12 +2138,14 @@ function NotesEditor:Open(name, text, mode)
             or ""
         state.difficulty = state.parsedNote.difficulty
 
-        local annText = PRT.Notes:GetAnnotation(name)
-        if annText then
-            local annParsed = PRT.NotesParser:Parse(annText)
-            if annParsed then
-                state.annotationNote = annParsed
-                state.parsedNote = PRT.NotesMerge:Merge(state.parsedNote, annParsed)
+        if state.mode == "annotate" then
+            local annText = PRT.Notes:GetAnnotation(name)
+            if annText then
+                local annParsed = PRT.NotesParser:Parse(annText)
+                if annParsed then
+                    state.annotationNote = annParsed
+                    state.parsedNote = PRT.NotesMerge:Merge(state.parsedNote, annParsed)
+                end
             end
         end
     end
@@ -2066,11 +2155,13 @@ function NotesEditor:Open(name, text, mode)
         modeBar.showMineCheck:Show()
         modeBar.showMineLabel:Show()
         modeBar.rawBtn:Hide()
+        modeBar.annotateBtn:Hide()
         frame:SetTitle("Annotate Note")
     else
         modeBar.showMineCheck:Hide()
         modeBar.showMineLabel:Hide()
         modeBar.rawBtn:Show()
+        modeBar.annotateBtn:Show()
         frame:SetTitle("Edit Note")
     end
 

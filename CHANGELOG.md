@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Visual Note Editor** with a vertical timeline that displays reminders as blocks positioned by phase and time, replacing the raw text modal for day-to-day editing.
+  - Edit mode for raid leaders to add, modify, and delete reminders through a structured form (who, ability, time, phase) instead of hand-editing syntax.
+  - Annotate mode for any raider to customize how existing reminders alert them (display type, sound, TTS, countdown) and to add personal reminders that only they see.
+  - Ability picker that suggests spells based on the target's spec and talents, with free-text fallback.
+  - Raw text import remains available for pasting notes from external tools.
+  - Freeform comment lines from the note text appear as labeled separator bars on the timeline.
+- **Note self-activation** for raiders: an Activate button lets non-leaders activate a note for themselves when the raid leader hasn't set one. The raid leader's broadcast always takes priority.
+
+### Changed
+
+- Notes without an EncounterID now apply to any encounter when activated, instead of silently doing nothing.
+- Active note is automatically cleared when a boss is killed; wipes leave it active for the next pull.
+- Note serialization now emits reminders in chronological order (grouped by phase, sorted by time) so the note frame display matches the visual editor's layout.
+- Notes config button bar reorganized: New, Edit, Annotate, and Delete are left-aligned; Send/Activate, Clear, Show/Hide, and Test are right-aligned. Show/Hide label updates to reflect frame visibility.
+- Test Popups button moved to the Popups settings tab.
+
 ## [1.0.0-beta-1] - 2026-07-28
 
 ### Added

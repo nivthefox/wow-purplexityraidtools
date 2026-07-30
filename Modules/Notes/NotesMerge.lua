@@ -61,6 +61,7 @@ function NotesMerge:Merge(canonicalNote, annotationNote)
                                 canonReminder[field] = annReminder[field]
                             end
                         end
+                        canonReminder.isAnnotated = true
                         overridden[canonBucket[i]] = true
                         matched = true
                         break

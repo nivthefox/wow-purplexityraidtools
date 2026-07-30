@@ -157,59 +157,14 @@ local function FindMemberByName(name)
     return nil
 end
 
-local function GetAbilitiesForTag(tag)
-    if not tag or tag == "" then
-        return {}
-    end
-
-    if IsRoleOrGroupTag(tag) then
-        local result = {}
-        for _, name in ipairs(GENERIC_ABILITIES) do
-            result[#result + 1] = { name = name, spellId = nil }
-        end
-        return result
-    end
-
-    if not PRT.SpellData then
-        return {}
-    end
-
-    local member = FindMemberByName(tag)
-    if member and member.specId then
-        local specData = PRT.SpellData[member.specId]
-        if specData and specData.abilities then
-            local result = {}
-            for _, ability in pairs(specData.abilities) do
-                result[#result + 1] = { name = ability.name, spellId = ability.spellId }
-            end
-            table.sort(result, function(a, b)
-                return a.name < b.name
-            end)
-            return result
+local function CollectAbilitiesFromSpec(specData)
+    local result = {}
+    for _, ability in pairs(specData.abilities) do
+        if ability.cooldown and ability.cooldown > 0 then
+            result[#result + 1] = { name = ability.name, spellId = ability.spellId }
         end
     end
-
-    local upperTag = tag:upper()
-    if IsClassTag(tag) then
-        local seen = {}
-        local result = {}
-        for _, specData in pairs(PRT.SpellData) do
-            if specData.class == upperTag and specData.abilities then
-                for _, ability in pairs(specData.abilities) do
-                    if not seen[ability.name] then
-                        seen[ability.name] = true
-                        result[#result + 1] = { name = ability.name, spellId = ability.spellId }
-                    end
-                end
-            end
-        end
-        table.sort(result, function(a, b)
-            return a.name < b.name
-        end)
-        return result
-    end
-
-    return {}
+    return result
 end
 
 local function GetLocalPlayerAbilities()
@@ -228,14 +183,71 @@ local function GetLocalPlayerAbilities()
     if not specData or not specData.abilities then
         return {}
     end
-    local result = {}
-    for _, ability in pairs(specData.abilities) do
-        result[#result + 1] = { name = ability.name, spellId = ability.spellId }
-    end
+    local result = CollectAbilitiesFromSpec(specData)
     table.sort(result, function(a, b)
         return a.name < b.name
     end)
     return result
+end
+
+local function GetAbilitiesForTag(tag)
+    if not tag or tag == "" then
+        return {}
+    end
+
+    if IsRoleOrGroupTag(tag) then
+        local result = {}
+        for _, name in ipairs(GENERIC_ABILITIES) do
+            result[#result + 1] = { name = name, spellId = nil }
+        end
+        return result
+    end
+
+    if not PRT.SpellData then
+        return {}
+    end
+
+    local playerName = UnitName("player")
+    if playerName then
+        local shortName = playerName:match("^([^%-]+)")
+        if shortName and tag:lower() == shortName:lower() then
+            return GetLocalPlayerAbilities()
+        end
+    end
+
+    local member = FindMemberByName(tag)
+    if member and member.specId then
+        local specData = PRT.SpellData[member.specId]
+        if specData and specData.abilities then
+            local result = CollectAbilitiesFromSpec(specData)
+            table.sort(result, function(a, b)
+                return a.name < b.name
+            end)
+            return result
+        end
+    end
+
+    local upperTag = tag:upper()
+    if IsClassTag(tag) then
+        local seen = {}
+        local result = {}
+        for _, specData in pairs(PRT.SpellData) do
+            if specData.class == upperTag and specData.abilities then
+                for _, ability in pairs(specData.abilities) do
+                    if ability.cooldown and ability.cooldown > 0 and not seen[ability.name] then
+                        seen[ability.name] = true
+                        result[#result + 1] = { name = ability.name, spellId = ability.spellId }
+                    end
+                end
+            end
+        end
+        table.sort(result, function(a, b)
+            return a.name < b.name
+        end)
+        return result
+    end
+
+    return {}
 end
 
 local function BuildPlayerCtx()
@@ -652,29 +664,37 @@ local function CreateFieldDropdown(parent, labelText, getItems, onSelect)
     return dropdown
 end
 
-local function BuildEditPanel(parent)
-    local panel = CreateFrame("Frame", nil, parent, "BackdropTemplate")
-    panel:SetWidth(EDIT_PANEL_WIDTH)
-    panel:SetBackdrop(BACKDROP_INFO)
-    panel:SetBackdropColor(0, 0, 0, 0.8)
-    panel:SetBackdropBorderColor(0.3, 0.3, 0.3, 0.8)
+local function BuildEditPanel()
+    local panel = CreateFrame("Frame", "PRT_NotesEditPanel", UIParent, "ButtonFrameTemplate")
+    panel:SetSize(EDIT_PANEL_WIDTH, 500)
+    panel:SetPoint("CENTER", UIParent, "CENTER", 200, 0)
+    panel:SetFrameStrata("DIALOG")
+    panel:SetToplevel(true)
     panel:Hide()
 
-    local headerText = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    headerText:SetPoint("TOPLEFT", 12, -10)
-    headerText:SetTextColor(0.91, 0.27, 0.37, 1)
-    panel.headerText = headerText
+    ButtonFrameTemplate_HidePortrait(panel)
+    ButtonFrameTemplate_HideButtonBar(panel)
+    panel.Inset:Hide()
 
-    local closeBtn = CreateFrame("Button", nil, panel, "UIPanelCloseButton")
-    closeBtn:SetPoint("TOPRIGHT", -2, -2)
-    closeBtn:SetSize(20, 20)
-    closeBtn:SetScript("OnClick", function()
-        panel:Hide()
+    panel:SetMovable(true)
+    panel:SetClampedToScreen(true)
+    panel:EnableMouse(true)
+    panel:RegisterForDrag("LeftButton")
+    panel:SetScript("OnDragStart", panel.StartMoving)
+    panel:SetScript("OnDragStop", function(self)
+        self:StopMovingOrSizing()
+        self:SetUserPlaced(false)
+    end)
+    panel:SetScript("OnHide", function()
         state.editingReminder = nil
     end)
 
+    panel.headerText = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    panel.headerText:SetPoint("TOPLEFT", 12, -28)
+    panel.headerText:SetTextColor(0.91, 0.27, 0.37, 1)
+
     local scrollFrame = CreateFrame("ScrollFrame", nil, panel, "UIPanelScrollFrameTemplate")
-    scrollFrame:SetPoint("TOPLEFT", 8, -30)
+    scrollFrame:SetPoint("TOPLEFT", 8, -46)
     scrollFrame:SetPoint("BOTTOMRIGHT", -28, 40)
 
     local scrollChild = CreateFrame("Frame", nil, scrollFrame)
@@ -793,7 +813,7 @@ local function BuildEditPanel(parent)
     editFields.colorsLabel = AddLabel("COLORS")
     editFields.colors = AddInput()
 
-    panel.fieldRows = {
+    local allFields = {
         { label = panel.originalInfoLabel, field = panel.originalInfo, fieldHeight = 32 },
         { label = editFields.phaseLabel, field = editFields.phase },
         { label = editFields.timeLabel, field = editFields.time },
@@ -810,19 +830,53 @@ local function BuildEditPanel(parent)
         { label = editFields.colorsLabel, field = editFields.colors },
     }
 
-    function panel:LayoutFields()
+    local function layoutFields(visibleSet)
+        local lookup = {}
+        for _, entry in ipairs(visibleSet) do
+            lookup[entry] = true
+        end
+
         local y = 0
-        for _, row in ipairs(self.fieldRows) do
-            if row.label:IsShown() or row.field:IsShown() then
+        for _, row in ipairs(allFields) do
+            if lookup[row.field] then
                 row.label:ClearAllPoints()
                 row.label:SetPoint("TOPLEFT", 4, y)
+                row.label:Show()
                 y = y - 14
                 row.field:ClearAllPoints()
                 row.field:SetPoint("TOPLEFT", 4, y)
+                row.field:Show()
                 y = y - (row.fieldHeight or 28)
+            else
+                row.label:Hide()
+                row.field:Hide()
             end
         end
         scrollChild:SetHeight(math.abs(y) + 20)
+    end
+
+    function panel:LayoutForEdit()
+        layoutFields({
+            editFields.phase, editFields.time, editFields.who,
+            editFields.ability, editFields.displayText, editFields.duration,
+            editFields.bossSpell,
+        })
+    end
+
+    function panel:LayoutForAnnotate()
+        layoutFields({
+            panel.originalInfo,
+            editFields.displayType, editFields.sound, editFields.tts,
+            editFields.ttsTimer, editFields.countdown,
+        })
+    end
+
+    function panel:LayoutForAddPersonal()
+        layoutFields({
+            editFields.phase, editFields.time, editFields.ability,
+            editFields.displayText, editFields.displayType, editFields.sound,
+            editFields.tts, editFields.ttsTimer, editFields.countdown,
+        })
     end
 
     local footer = CreateFrame("Frame", nil, panel)
@@ -1074,9 +1128,7 @@ local function BuildFrame()
     end)
 
     -- Edit panel
-    editPanel = BuildEditPanel(frame)
-    editPanel:SetPoint("TOPLEFT", timelineArea, "TOPRIGHT", 4, 0)
-    editPanel:SetPoint("BOTTOMLEFT", timelineArea, "BOTTOMRIGHT", 4, 0)
+    editPanel = BuildEditPanel()
 
     -- Close on Escape
     table.insert(UISpecialFrames, "PRT_NotesEditor")
@@ -1323,13 +1375,15 @@ function NotesEditor:RenderBlock(reminder, y, stackIdx, height, phases, playerCt
         block.isPersonal = true
         block:SetBackdropBorderColor(0.94, 0.75, 0.25, 1)
         block.personalBorder:Show()
+    elseif reminder.isAnnotated then
+        block.isPersonal = false
+        block:SetBackdropBorderColor(0.94, 0.75, 0.25, 1)
+        block.personalBorder:Hide()
     else
         block.isPersonal = false
         block:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
         block.personalBorder:Hide()
     end
-
-    block.annotatedDot:Hide()
 
     local isInteractive = true
     if state.mode == "annotate" and playerCtx then
@@ -1524,40 +1578,17 @@ end
 
 function NotesEditor:OpenAddPanel(time, phaseNum)
     editPanel:Show()
-    editPanel.headerText:SetText(state.mode == "edit" and "Add Reminder" or "Add Personal Reminder")
     editPanel.errorText:SetText("")
     editPanel.deleteBtn:Hide()
-    editPanel.saveBtn:SetText(state.mode == "edit" and "Add" or "Add Personal")
-    editPanel.originalInfo:Hide()
-    editPanel.originalInfoLabel:Hide()
-
     state.editingReminder = nil
 
     editFields.phase:SetText(tostring(phaseNum or 1))
     editFields.time:SetText(FormatTime(time or 0))
-
-    if state.mode == "annotate" then
-        editFields.who:SetText(UnitName("player") or "")
-        editFields.who:Disable()
-        editFields.whoLabel:Hide()
-        editFields.who:Hide()
-        editFields.phaseLabel:Hide()
-        editFields.phase:Hide()
-        currentAbilities = GetLocalPlayerAbilities()
-    else
-        editFields.who:SetText("")
-        editFields.who:Enable()
-        editFields.whoLabel:Show()
-        editFields.who:Show()
-        editFields.phaseLabel:Show()
-        editFields.phase:Show()
-        currentAbilities = {}
-    end
+    editFields.who:SetText("")
+    editFields.who:Enable()
     editFields.ability:SetValue("")
-    editFields.ability:GenerateMenu()
     editFields.abilityText = nil
     editFields.abilitySpellId = nil
-
     editFields.displayText:SetText("")
     editFields.duration:SetText("5")
     editFields.displayType:SetValue("Icon")
@@ -1567,23 +1598,26 @@ function NotesEditor:OpenAddPanel(time, phaseNum)
     editFields.countdown:SetText("")
     editFields.bossSpell:SetText("")
     editFields.colors:SetText("")
+    currentAbilities = {}
+    editFields.ability:GenerateMenu()
 
-    if state.mode == "edit" then
-        editFields.abilityLabel:Show()
-        editFields.ability:Show()
-        editFields.displayTextLabel:Show()
-        editFields.displayText:Show()
+    if state.mode == "annotate" then
+        editPanel:SetTitle("Add Personal Reminder")
+        editPanel.saveBtn:SetText("Add")
+        editFields.who:SetText(UnitName("player") or "")
+        editFields.who:Disable()
+        currentAbilities = GetLocalPlayerAbilities()
+        editFields.ability:GenerateMenu()
+        editPanel:LayoutForAddPersonal()
     else
-        editFields.abilityLabel:Show()
-        editFields.ability:Show()
-        editFields.displayTextLabel:Show()
-        editFields.displayText:Show()
+        editPanel:SetTitle("Add Reminder")
+        editPanel.saveBtn:SetText("Add")
+        editPanel:LayoutForEdit()
     end
 
     editPanel.saveBtn:SetScript("OnClick", function()
         NotesEditor:SaveFromPanel()
     end)
-    editPanel:LayoutFields()
 end
 
 function NotesEditor:OpenEditPanel(reminder)
@@ -1592,89 +1626,40 @@ function NotesEditor:OpenEditPanel(reminder)
     state.editingReminder = reminder
 
     if state.mode == "annotate" and not reminder.isPersonal then
-        editPanel.headerText:SetText("Customize Alert")
+        editPanel:SetTitle("Customize Alert")
         editPanel.deleteBtn:Hide()
         editPanel.saveBtn:SetText("Save")
-        editPanel.originalInfoLabel:Show()
-        editPanel.originalInfo:Show()
+
         editPanel.originalInfo:SetText(
             FormatTime(reminder.time) .. " - " .. (reminder.tag or "") .. " - " .. (reminder.text or "")
         )
-
-        editFields.phaseLabel:Hide()
-        editFields.phase:Hide()
-        editFields.timeLabel:Hide()
-        editFields.time:Hide()
-        editFields.whoLabel:Hide()
-        editFields.who:Hide()
-        editFields.abilityLabel:Hide()
-        editFields.ability:Hide()
-        editFields.displayTextLabel:Hide()
-        editFields.displayText:Hide()
-        editFields.durationLabel:Hide()
-        editFields.duration:Hide()
-        editFields.bossSpellLabel:Hide()
-        editFields.bossSpell:Hide()
-        editFields.colorsLabel:Hide()
-        editFields.colors:Hide()
-
         editFields.displayType:SetValue(reminder.displayType or "Icon")
         editFields.sound:SetText(reminder.sound or "")
         editFields.tts:SetText(reminder.tts == true and "true" or (reminder.tts == false and "false" or (reminder.tts or "")))
+        editFields.ttsTimer:SetText(reminder.ttsTimer and tostring(reminder.ttsTimer) or "")
         editFields.countdown:SetText(reminder.countdown and tostring(reminder.countdown) or "")
 
+        editPanel:LayoutForAnnotate()
         editPanel.saveBtn:SetScript("OnClick", function()
             NotesEditor:SaveAnnotationFromPanel()
         end)
-        editPanel:LayoutFields()
         return
     end
 
     if state.mode == "annotate" and reminder.isPersonal then
-        editPanel.headerText:SetText("Edit Personal Reminder")
+        editPanel:SetTitle("Edit Personal Reminder")
         editPanel.deleteBtn:Show()
     else
-        editPanel.headerText:SetText("Edit Reminder")
+        editPanel:SetTitle("Edit Reminder")
         editPanel.deleteBtn:Show()
     end
-
-    editPanel.originalInfoLabel:Hide()
-    editPanel.originalInfo:Hide()
     editPanel.saveBtn:SetText("Save")
-
-    editFields.phaseLabel:Show()
-    editFields.phase:Show()
-    editFields.timeLabel:Show()
-    editFields.time:Show()
-    editFields.durationLabel:Show()
-    editFields.duration:Show()
-    editFields.bossSpellLabel:Show()
-    editFields.bossSpell:Show()
-    editFields.colorsLabel:Show()
-    editFields.colors:Show()
 
     editFields.phase:SetText(tostring(reminder.phase or 1))
     editFields.time:SetText(FormatTime(reminder.time))
-
-    if state.mode == "annotate" then
-        editFields.who:SetText(UnitName("player") or "")
-        editFields.who:Disable()
-        editFields.whoLabel:Hide()
-        editFields.who:Hide()
-        currentAbilities = GetLocalPlayerAbilities()
-    else
-        editFields.who:SetText(reminder.tag or "")
-        editFields.who:Enable()
-        editFields.whoLabel:Show()
-        editFields.who:Show()
-        local abilities = GetAbilitiesForTag(reminder.tag)
-        currentAbilities = abilities
-    end
-
-    editFields.abilityLabel:Show()
-    editFields.ability:Show()
-    editFields.displayTextLabel:Show()
-    editFields.displayText:Show()
+    editFields.who:SetText(reminder.tag or "")
+    editFields.who:Enable()
+    currentAbilities = GetAbilitiesForTag(reminder.tag)
 
     local abilityName, displayText = SplitAbilityAndText(reminder.text, currentAbilities)
     editFields.ability:SetValue(abilityName)
@@ -1692,13 +1677,13 @@ function NotesEditor:OpenEditPanel(reminder)
     editFields.colors:SetText(reminder.colors or "")
     editFields.abilitySpellId = reminder.spellID
 
+    editPanel:LayoutForEdit()
     editPanel.deleteBtn:SetScript("OnClick", function()
         NotesEditor:DeleteFromPanel()
     end)
     editPanel.saveBtn:SetScript("OnClick", function()
         NotesEditor:SaveFromPanel()
     end)
-    editPanel:LayoutFields()
 end
 
 function NotesEditor:SaveFromPanel()
@@ -1819,6 +1804,26 @@ function NotesEditor:SaveFromPanel()
 
     if state.mode == "annotate" then
         newReminder.isPersonal = true
+
+        if not state.annotationNote then
+            state.annotationNote = {
+                encounterID = state.parsedNote and state.parsedNote.encounterID,
+                reminders = {},
+                lines = {},
+            }
+        end
+        local annNote = state.annotationNote
+        local annBucket = annNote.reminders[newReminder.phaseKey]
+        if not annBucket then
+            annBucket = {}
+            annNote.reminders[newReminder.phaseKey] = annBucket
+        end
+        annBucket[#annBucket + 1] = newReminder
+        table.sort(annBucket, function(a, b)
+            return a.time < b.time
+        end)
+        annNote.lines[#annNote.lines + 1] = { type = "reminder", reminder = newReminder }
+
         self:SaveCurrentAnnotation()
     else
         self:SaveCurrentNote()

@@ -3629,6 +3629,7 @@ PRT.SpellData = {
                 duration = 8,
                 cooldown = 120,
                 charges = 1,
+                flags = { "RAID_MOVEMENT" },
                 talents = {
                     [288826] = { cooldown = -60 },
                 },
@@ -4154,6 +4155,7 @@ PRT.SpellData = {
                 duration = 8,
                 cooldown = 120,
                 charges = 1,
+                flags = { "RAID_MOVEMENT" },
                 talents = {
                     [288826] = { cooldown = -60 },
                 },
@@ -4718,6 +4720,7 @@ PRT.SpellData = {
                 duration = 8,
                 cooldown = 120,
                 charges = 1,
+                flags = { "RAID_MOVEMENT" },
                 talents = {
                     [288826] = { cooldown = -60 },
                 },
@@ -5273,6 +5276,7 @@ PRT.SpellData = {
                 duration = 8,
                 cooldown = 120,
                 charges = 1,
+                flags = { "RAID_MOVEMENT" },
                 talents = {
                     [288826] = { cooldown = -60 },
                 },
@@ -9544,6 +9548,7 @@ PRT.SpellData = {
                 duration = 15,
                 cooldown = 120,
                 charges = 1,
+                flags = { "RAID_MOVEMENT" },
                 talents = {
                     [462791] = { cooldown = -30 },
                 },
@@ -9939,6 +9944,7 @@ PRT.SpellData = {
                 duration = 15,
                 cooldown = 120,
                 charges = 1,
+                flags = { "RAID_MOVEMENT" },
                 talents = {
                     [462791] = { cooldown = -30 },
                 },
@@ -10356,6 +10362,7 @@ PRT.SpellData = {
                 duration = 15,
                 cooldown = 120,
                 charges = 1,
+                flags = { "RAID_MOVEMENT" },
                 talents = {
                     [462791] = { cooldown = -30 },
                 },
@@ -13166,6 +13173,7 @@ PRT.SpellData = {
                 duration = 0,
                 cooldown = 120,
                 charges = 1,
+                flags = { "RAID_MOVEMENT" },
             },
             [375087] = {
                 spellId = 375087,
@@ -13477,6 +13485,7 @@ PRT.SpellData = {
                 duration = 0,
                 cooldown = 120,
                 charges = 1,
+                flags = { "RAID_MOVEMENT" },
             },
             [390386] = {
                 spellId = 390386,
@@ -13766,6 +13775,7 @@ PRT.SpellData = {
                 duration = 0,
                 cooldown = 120,
                 charges = 1,
+                flags = { "RAID_MOVEMENT" },
                 talents = {
                     [412713] = { cooldown_pct = -0.1 },
                 },

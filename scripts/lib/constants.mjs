@@ -35,6 +35,12 @@ export const NUM_CLASS_FAMILY_FLAGS = 4;
 // ---------------------------------------------------------------------------
 // Statically maintained — WoW has no attribute bit for raidwide CDs.
 // ---------------------------------------------------------------------------
+export const RAID_MOVEMENT_SPELLS = new Set([
+    106898,   // Stampeding Roar
+    192077,   // Wind Rush Totem
+    374968,   // Time Spiral
+]);
+
 export const RAID_COOLDOWN_SPELLS = new Set([
     740,      // Tranquility
     31821,    // Aura Mastery

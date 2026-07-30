@@ -1,4 +1,4 @@
-import { SPELL_ATTR0_PASSIVE, SX_IS_BIG_DEFENSIVE, SX_IS_EXTERNAL_DEFENSIVE, SX_IMPORTANT_SPELL, RAID_COOLDOWN_SPELLS } from './constants.mjs';
+import { SPELL_ATTR0_PASSIVE, SX_IS_BIG_DEFENSIVE, SX_IS_EXTERNAL_DEFENSIVE, SX_IMPORTANT_SPELL, RAID_COOLDOWN_SPELLS, RAID_MOVEMENT_SPELLS } from './constants.mjs';
 
 /**
  * Combine parsed data to produce per-spec ability lists.
@@ -203,6 +203,9 @@ function attachFlags(abilities, spells) {
         }
         if (RAID_COOLDOWN_SPELLS.has(spellId)) {
             flags.push('RAID_COOLDOWN');
+        }
+        if (RAID_MOVEMENT_SPELLS.has(spellId)) {
+            flags.push('RAID_MOVEMENT');
         }
 
         if (flags.length > 0) {

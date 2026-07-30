@@ -107,138 +107,10 @@ StaticPopupDialogs["PRT_NOTES_DELETE"] = {
     end,
 }
 
---------------------------------------------------------------------------------
--- Edit modal
---
--- A single shared modal instance. StaticPopups cannot host a multiline editor,
--- so this is a custom centered frame above the config frame. Only Save commits;
--- Cancel/Escape discard. New opens it empty; Edit opens it loaded.
---------------------------------------------------------------------------------
-
-local function BuildEditModal(onSaved)
-    local modal = CreateFrame("Frame", nil, UIParent, "ButtonFrameTemplate")
-    modal:SetSize(560, 440)
-    modal:SetPoint("CENTER")
-    modal:SetFrameStrata("FULLSCREEN_DIALOG")
-    modal:SetToplevel(true)
-    modal:EnableMouse(true)
-    ButtonFrameTemplate_HidePortrait(modal)
-    ButtonFrameTemplate_HideButtonBar(modal)
-    modal.Inset:Hide()
-    modal:SetTitle("Edit Note")
-    modal:Hide()
-
-    local nameLabel = modal:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    nameLabel:SetPoint("TOPLEFT", 24, -54)
-    nameLabel:SetText("Name")
-
-    local nameBox = CreateFrame("EditBox", nil, modal, "InputBoxTemplate")
-    nameBox:SetSize(480, 22)
-    nameBox:SetPoint("TOPLEFT", nameLabel, "BOTTOMLEFT", 6, -6)
-    nameBox:SetAutoFocus(false)
-    nameBox:SetScript("OnEscapePressed", function()
-        modal:Hide()
-    end)
-
-    local textLabel = modal:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    textLabel:SetPoint("TOPLEFT", nameBox, "BOTTOMLEFT", -6, -14)
-    textLabel:SetText("Note")
-
-    local textScroll = CreateFrame("ScrollFrame", nil, modal, "UIPanelScrollFrameTemplate")
-    textScroll:SetPoint("TOPLEFT", textLabel, "BOTTOMLEFT", 6, -6)
-    textScroll:SetSize(480, 230)
-
-    local textBg = CreateFrame("Frame", nil, textScroll, "BackdropTemplate")
-    textBg:SetPoint("TOPLEFT", textScroll, "TOPLEFT", -6, 6)
-    textBg:SetPoint("BOTTOMRIGHT", textScroll, "BOTTOMRIGHT", 30, -6)
-    textBg:SetBackdrop({
-        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        tile = true, tileSize = 16, edgeSize = 12,
-        insets = { left = 3, right = 3, top = 3, bottom = 3 },
-    })
-    textBg:SetBackdropColor(0, 0, 0, 0.5)
-    textBg:SetFrameLevel(textScroll:GetFrameLevel() - 1)
-
-    local textBox = CreateFrame("EditBox", nil, textScroll)
-    textBox:SetMultiLine(true)
-    textBox:SetMaxLetters(0)
-    textBox:SetFontObject(ChatFontNormal)
-    textBox:SetWidth(468)
-    textBox:SetAutoFocus(false)
-    textBox:SetScript("OnEscapePressed", function()
-        modal:Hide()
-    end)
-    textScroll:SetScrollChild(textBox)
-
-    -- The multiline EditBox is only as tall as its text; catch clicks on the
-    -- rest of the visible box and forward them to the editor.
-    textScroll:EnableMouse(true)
-    textScroll:SetScript("OnMouseDown", function()
-        textBox:SetFocus()
-        textBox:SetCursorPosition(#textBox:GetText())
-    end)
-
-    local errorLine = modal:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    errorLine:SetPoint("TOPLEFT", textScroll, "BOTTOMLEFT", -6, -10)
-    errorLine:SetWidth(480)
-    errorLine:SetJustifyH("LEFT")
-    errorLine:SetTextColor(1, 0.3, 0.3, 1)
-
-    local saveButton = CreateFrame("Button", nil, modal, "UIPanelButtonTemplate")
-    saveButton:SetSize(100, 24)
-    saveButton:SetPoint("BOTTOMRIGHT", -24, 20)
-    saveButton:SetText("Save")
-
-    local cancelButton = CreateFrame("Button", nil, modal, "UIPanelButtonTemplate")
-    cancelButton:SetSize(100, 24)
-    cancelButton:SetPoint("RIGHT", saveButton, "LEFT", -8, 0)
-    cancelButton:SetText("Cancel")
-    cancelButton:SetScript("OnClick", function()
-        modal:Hide()
-    end)
-
-    modal.editingName = nil
-
-    function modal:Open(name, text)
-        self.editingName = name
-        nameBox:SetText(name or "")
-        textBox:SetText(text or "")
-        errorLine:SetText("")
-        self:Show()
-        nameBox:SetFocus()
+local function OnEditorSaved(savedName)
+    if NotesConfig._refreshAfterSave then
+        NotesConfig._refreshAfterSave(savedName)
     end
-
-    saveButton:SetScript("OnClick", function()
-        local name = nameBox:GetText()
-        if not name or name == "" then
-            errorLine:SetText(ERROR_NAME_REQUIRED)
-            return
-        end
-
-        local oldName = modal.editingName
-        if oldName and oldName ~= name then
-            if not PRT.Notes:RenameNote(oldName, name) then
-                errorLine:SetText(ERROR_NAME_TAKEN)
-                return
-            end
-            modal.editingName = name
-        end
-
-        local ok, err = PRT.Notes:SaveNote(name, textBox:GetText())
-        if not ok then
-            errorLine:SetText(err or "")
-            return
-        end
-
-        errorLine:SetText("")
-        modal:Hide()
-        if onSaved then
-            onSaved(name)
-        end
-    end)
-
-    return modal
 end
 
 --------------------------------------------------------------------------------
@@ -274,11 +146,11 @@ PRT:RegisterTab("Notes", function(parent)
             if name ~= CurrentActiveName() then
                 return
             end
-            local _, note = PRT.Notes:GetActiveNote()
-            if not note then
+            local _, text = PRT.Notes:GetActiveNote()
+            if not text then
                 return
             end
-            local parsed, err = PRT.NotesParser:Parse(note.text or "")
+            local parsed, err = PRT.NotesParser:Parse(text)
             if err then
                 return
             end
@@ -379,12 +251,12 @@ PRT:RegisterTab("Notes", function(parent)
 
         yOffset = yOffset - LIST_HEIGHT - 8
 
-        local editModal = BuildEditModal(function(savedName)
+        NotesConfig._refreshAfterSave = function(savedName)
             selectedNote = savedName
             refreshList()
             refreshGates()
             PushIfActive(savedName)
-        end)
+        end
 
         local buttonRow = CreateFrame("Frame", nil, panel)
         buttonRow:SetPoint("TOPLEFT", 20, yOffset)
@@ -402,12 +274,13 @@ PRT:RegisterTab("Notes", function(parent)
             return button
         end
 
-        local newButton = MakeButton("New", 70)
-        local editButton = MakeButton("Edit", 70, newButton)
-        local deleteButton = MakeButton("Delete", 70, editButton)
-        local sendButton = MakeButton("Send", 70, deleteButton)
-        local clearButton = MakeButton("Clear", 70, sendButton)
-        local showHideButton = MakeButton("Show/Hide", 90, clearButton)
+        local newButton = MakeButton("New", 60)
+        local editButton = MakeButton("Edit", 60, newButton)
+        local annotateButton = MakeButton("Annotate", 70, editButton)
+        local deleteButton = MakeButton("Delete", 60, annotateButton)
+        local sendButton = MakeButton("Send", 60, deleteButton)
+        local clearButton = MakeButton("Clear", 60, sendButton)
+        local showHideButton = MakeButton("Show/Hide", 80, clearButton)
 
         yOffset = yOffset - 30
 
@@ -422,16 +295,25 @@ PRT:RegisterTab("Notes", function(parent)
 
         newButton:SetScript("OnClick", function()
             buttonError:SetText("")
-            editModal:Open(nil, "")
+            PRT.NotesEditor:Open(nil, "")
         end)
 
         editButton:SetScript("OnClick", function()
             if not selectedNote then
                 return
             end
-            local note = GetSettings().savedNotes[selectedNote]
+            local text = GetSettings().savedNotes[selectedNote]
             buttonError:SetText("")
-            editModal:Open(selectedNote, note and note.text or "")
+            PRT.NotesEditor:Open(selectedNote, text or "", "edit")
+        end)
+
+        annotateButton:SetScript("OnClick", function()
+            if not selectedNote then
+                return
+            end
+            local text = GetSettings().savedNotes[selectedNote]
+            buttonError:SetText("")
+            PRT.NotesEditor:Open(selectedNote, text or "", "annotate")
         end)
 
         deleteButton:SetScript("OnClick", function()
@@ -466,8 +348,8 @@ PRT:RegisterTab("Notes", function(parent)
                 PRT.NotesFrame:Hide()
                 return
             end
-            local note = GetSettings().savedNotes[selectedNote]
-            local parsed, err = PRT.NotesParser:Parse(note and note.text or "")
+            local text = GetSettings().savedNotes[selectedNote]
+            local parsed, err = PRT.NotesParser:Parse(text or "")
             if not err then
                 PRT.Notes:MarkRelevance(parsed)
                 PRT.NotesFrame:SetNote(parsed)
@@ -512,6 +394,7 @@ PRT:RegisterTab("Notes", function(parent)
         HookTooltip(sendButton)
         HookTooltip(clearButton)
         HookTooltip(editButton)
+        HookTooltip(annotateButton)
         HookTooltip(deleteButton)
 
         refreshGates = function()
@@ -523,6 +406,7 @@ PRT:RegisterTab("Notes", function(parent)
             ApplyGate(sendButton, sendReason)
             ApplyGate(clearButton, privilegeCombat)
             ApplyGate(editButton, not selectedNote and TOOLTIP_NO_SELECTION or nil)
+            ApplyGate(annotateButton, not selectedNote and TOOLTIP_NO_SELECTION or nil)
             ApplyGate(deleteButton, not selectedNote and TOOLTIP_NO_SELECTION or nil)
         end
 

@@ -24,10 +24,13 @@ Modules/AutoInvite.lua
 Modules/CooldownTracker.lua
 Modules/CooldownRoster.lua
 Modules/Notes/NotesParser.lua
+Modules/Notes/NotesSerializer.lua
+Modules/Notes/NotesMerge.lua
 Modules/Notes/NotesTags.lua
 Modules/Notes/NotesTimer.lua
 Modules/Notes/NotesFrame.lua
 Modules/Notes/NotesPopups.lua
+Modules/Notes/NotesEditor.lua
 Modules/Notes/Notes.lua
 Modules/Notes/NotesConfig.lua
 Modules/Profiles.lua

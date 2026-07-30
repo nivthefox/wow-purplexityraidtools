@@ -1,0 +1,2003 @@
+local PRT = PurplexityRaidTools
+local NotesEditor = {}
+PRT.NotesEditor = NotesEditor
+
+local VPPS = 4
+local BLOCK_WIDTH = 95
+local BLOCK_HEIGHT = 34
+local BLOCK_GAP = 4
+local RULER_WIDTH = 50
+local EDIT_PANEL_WIDTH = 260
+local DEFAULT_FRAME_WIDTH = 700
+local DEFAULT_FRAME_HEIGHT = 550
+local GRID_INTERVAL = 30
+local TICK_INTERVAL = 5
+local TICK_LABEL_INTERVAL = 10
+local PHASE_PAD = 10
+
+local DIFFICULTY_OPTIONS = {
+    { name = "Normal",  value = "Normal" },
+    { name = "Heroic",  value = "Heroic" },
+    { name = "Mythic",  value = "Mythic" },
+    { name = "LFR",     value = "LFR" },
+}
+
+local DISPLAY_TYPE_OPTIONS = {
+    { name = "Icon (cooldown swipe)", value = "Icon" },
+    { name = "Status Bar",           value = "Bar" },
+    { name = "Text Overlay",         value = "Text" },
+    { name = "Circle (swipe)",       value = "Circle" },
+}
+
+local GENERIC_ABILITIES = {
+    "Defensive", "Kick", "Soak", "Spread", "Stack",
+    "Raid Cooldown", "External", "Dispel",
+    "Active Mitigation", "Taunt Swap",
+}
+
+local BACKDROP_INFO = {
+    bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+    edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+    tile = true, tileSize = 16, edgeSize = 12,
+    insets = { left = 2, right = 2, top = 2, bottom = 2 },
+}
+
+local frame
+local state = {}
+
+--------------------------------------------------------------------------------
+-- Helpers
+--------------------------------------------------------------------------------
+
+local function GetSettings()
+    return PRT:GetSetting("notes")
+end
+
+local function EnsurePositions()
+    local profile = PRT.Profiles:GetCurrent()
+    if not profile.notes then
+        profile.notes = {}
+    end
+    if not profile.notes.positions then
+        profile.notes.positions = {}
+    end
+    return profile.notes.positions
+end
+
+local function FormatTime(seconds)
+    if not seconds then
+        return "0:00"
+    end
+    local m = math.floor(seconds / 60)
+    local s = math.floor(seconds % 60)
+    return m .. ":" .. (s < 10 and "0" or "") .. s
+end
+
+local function ParseTimeInput(text)
+    if not text or text == "" then
+        return nil
+    end
+    local m, s = text:match("^(%d+):(%d+)$")
+    if m then
+        return tonumber(m) * 60 + tonumber(s)
+    end
+    return tonumber(text)
+end
+
+local function ClassColorForTag(tag)
+    if not tag then
+        return 0.8, 0.8, 0.8
+    end
+    local lowerTag = tag:lower()
+
+    if lowerTag == "everyone" then
+        return 0.8, 0.8, 0.8
+    end
+    if lowerTag == "healer" or lowerTag == "healers" then
+        return 0.3, 0.8, 0.6
+    end
+    if lowerTag == "tank" or lowerTag == "tanks" then
+        return 0.96, 0.62, 0.04
+    end
+    if lowerTag == "damager" or lowerTag == "dps" then
+        return 0.77, 0.12, 0.23
+    end
+
+    if PRT.GroupInspect and PRT.GroupInspect.members then
+        for _, member in pairs(PRT.GroupInspect.members) do
+            if member.name and member.name:lower() == lowerTag then
+                local color = RAID_CLASS_COLORS and RAID_CLASS_COLORS[member.class]
+                if color then
+                    return color.r, color.g, color.b
+                end
+            end
+        end
+    end
+
+    return 0.8, 0.8, 0.8
+end
+
+local function IsRoleOrGroupTag(tag)
+    if not tag then
+        return false
+    end
+    local lower = tag:lower()
+    return lower == "everyone"
+        or lower == "healer" or lower == "healers"
+        or lower == "tank" or lower == "tanks"
+        or lower == "damager" or lower == "dps"
+        or lower == "melee" or lower == "ranged"
+        or lower:match("^group%d+$") ~= nil
+end
+
+local function IsClassTag(tag)
+    if not tag or not PRT.SpellData then
+        return false
+    end
+    local upper = tag:upper()
+    for _, specData in pairs(PRT.SpellData) do
+        if specData.class == upper then
+            return true
+        end
+    end
+    return false
+end
+
+local function FindMemberByName(name)
+    if not name or not PRT.GroupInspect or not PRT.GroupInspect.members then
+        return nil
+    end
+    local lowerName = name:lower()
+    for _, member in pairs(PRT.GroupInspect.members) do
+        if member.name and member.name:lower() == lowerName then
+            return member
+        end
+    end
+    return nil
+end
+
+local function GetAbilitiesForTag(tag)
+    if not tag or tag == "" then
+        return {}
+    end
+
+    if IsRoleOrGroupTag(tag) then
+        local result = {}
+        for _, name in ipairs(GENERIC_ABILITIES) do
+            result[#result + 1] = { name = name, spellId = nil }
+        end
+        return result
+    end
+
+    if not PRT.SpellData then
+        return {}
+    end
+
+    local member = FindMemberByName(tag)
+    if member and member.specId then
+        local specData = PRT.SpellData[member.specId]
+        if specData and specData.abilities then
+            local result = {}
+            for _, ability in pairs(specData.abilities) do
+                result[#result + 1] = { name = ability.name, spellId = ability.spellId }
+            end
+            table.sort(result, function(a, b)
+                return a.name < b.name
+            end)
+            return result
+        end
+    end
+
+    local upperTag = tag:upper()
+    if IsClassTag(tag) then
+        local seen = {}
+        local result = {}
+        for _, specData in pairs(PRT.SpellData) do
+            if specData.class == upperTag and specData.abilities then
+                for _, ability in pairs(specData.abilities) do
+                    if not seen[ability.name] then
+                        seen[ability.name] = true
+                        result[#result + 1] = { name = ability.name, spellId = ability.spellId }
+                    end
+                end
+            end
+        end
+        table.sort(result, function(a, b)
+            return a.name < b.name
+        end)
+        return result
+    end
+
+    return {}
+end
+
+local function GetLocalPlayerAbilities()
+    if not PRT.SpellData then
+        return {}
+    end
+    local specIndex = GetSpecialization and GetSpecialization()
+    if not specIndex then
+        return {}
+    end
+    local specId = GetSpecializationInfo and GetSpecializationInfo(specIndex)
+    if not specId then
+        return {}
+    end
+    local specData = PRT.SpellData[specId]
+    if not specData or not specData.abilities then
+        return {}
+    end
+    local result = {}
+    for _, ability in pairs(specData.abilities) do
+        result[#result + 1] = { name = ability.name, spellId = ability.spellId }
+    end
+    table.sort(result, function(a, b)
+        return a.name < b.name
+    end)
+    return result
+end
+
+local function BuildPlayerCtx()
+    local name = UnitName("player")
+    local _, _, classID = UnitClass("player")
+    local role = UnitGroupRolesAssigned("player")
+    local specID
+    local specIndex = GetSpecialization and GetSpecialization()
+    if specIndex then
+        specID = GetSpecializationInfo(specIndex)
+    end
+
+    local subgroup = 1
+    if IsInRaid() then
+        for i = 1, GetNumGroupMembers() do
+            local unitName, _, subGroup = GetRaidRosterInfo(i)
+            if unitName and name and unitName == name then
+                subgroup = subGroup
+                break
+            end
+        end
+    end
+
+    local isMelee = role == "TANK" or PRT.NotesTags.IsMeleeSpec(specID)
+    return {
+        name = name,
+        role = role,
+        classID = classID,
+        specID = specID,
+        subgroup = subgroup,
+        isMelee = isMelee,
+    }
+end
+
+--------------------------------------------------------------------------------
+-- Phase derivation
+--------------------------------------------------------------------------------
+
+local function DerivePhases(parsedNote)
+    if not parsedNote or not parsedNote.reminders then
+        return { { num = 1, name = "Phase 1", start = 0, duration = PHASE_PAD } }
+    end
+
+    local phaseNums = {}
+    local phaseSet = {}
+    for phaseKey, bucket in pairs(parsedNote.reminders) do
+        local num = tonumber(phaseKey)
+        if num and not phaseSet[num] then
+            phaseSet[num] = true
+            phaseNums[#phaseNums + 1] = num
+        end
+    end
+
+    if #phaseNums == 0 then
+        return { { num = 1, name = "Phase 1", start = 0, duration = PHASE_PAD } }
+    end
+
+    table.sort(phaseNums)
+
+    local phases = {}
+    local offset = 0
+    for _, num in ipairs(phaseNums) do
+        local bucket = parsedNote.reminders[tostring(num)]
+        local maxTime = 0
+        if bucket then
+            for _, r in ipairs(bucket) do
+                if r.time > maxTime then
+                    maxTime = r.time
+                end
+            end
+        end
+        local duration = maxTime + PHASE_PAD
+        phases[#phases + 1] = {
+            num = num,
+            name = "Phase " .. num,
+            start = offset,
+            duration = duration,
+        }
+        offset = offset + duration
+    end
+
+    return phases
+end
+
+local function TimeToY(time, phaseNum, phases, activePhase)
+    if activePhase == "all" then
+        for _, p in ipairs(phases) do
+            if p.num == phaseNum then
+                return (p.start + time) * VPPS
+            end
+        end
+        return time * VPPS
+    end
+    return time * VPPS
+end
+
+local function YToTimeAndPhase(y, phases, activePhase)
+    local absTime = y / VPPS
+    if activePhase == "all" then
+        for i = #phases, 1, -1 do
+            if absTime >= phases[i].start then
+                return math.max(0, math.floor(absTime - phases[i].start + 0.5)), phases[i].num
+            end
+        end
+        return math.max(0, math.floor(absTime + 0.5)), phases[1] and phases[1].num or 1
+    end
+    return math.max(0, math.floor(absTime + 0.5)), activePhase
+end
+
+local function TotalDuration(phases, activePhase)
+    if activePhase == "all" then
+        local last = phases[#phases]
+        if not last then
+            return PHASE_PAD
+        end
+        return last.start + last.duration
+    end
+    for _, p in ipairs(phases) do
+        if p.num == activePhase then
+            return p.duration
+        end
+    end
+    return PHASE_PAD
+end
+
+--------------------------------------------------------------------------------
+-- Reminder collection from parsed note
+--------------------------------------------------------------------------------
+
+local function CollectReminders(parsedNote, activePhase)
+    if not parsedNote or not parsedNote.reminders then
+        return {}
+    end
+    local result = {}
+    for phaseKey, bucket in pairs(parsedNote.reminders) do
+        local num = tonumber(phaseKey)
+        if activePhase == "all" or num == activePhase then
+            for _, r in ipairs(bucket) do
+                result[#result + 1] = r
+            end
+        end
+    end
+    return result
+end
+
+local function SplitAbilityAndText(text, knownAbilities)
+    if not text or text == "" then
+        return "", ""
+    end
+    if knownAbilities then
+        for _, ab in ipairs(knownAbilities) do
+            local abLen = #ab.name
+            if text:sub(1, abLen) == ab.name then
+                local rest = text:sub(abLen + 1)
+                if rest == "" then
+                    return ab.name, ""
+                end
+                if rest:sub(1, 1) == " " then
+                    return ab.name, rest:sub(2)
+                end
+            end
+        end
+    end
+    return text, ""
+end
+
+--------------------------------------------------------------------------------
+-- Position persistence
+--------------------------------------------------------------------------------
+
+local function SaveEditorPosition()
+    if not frame then
+        return
+    end
+    local positions = EnsurePositions()
+    local scale = frame:GetEffectiveScale() / UIParent:GetEffectiveScale()
+    local x = frame:GetLeft() * scale
+    local y = (frame:GetTop() - UIParent:GetTop()) * scale
+    positions.editor = {
+        point = "TOPLEFT",
+        x = x,
+        y = y,
+    }
+end
+
+local function RestoreEditorPosition()
+    if not frame then
+        return
+    end
+    local settings = GetSettings()
+    local positions = settings and settings.positions
+    local pos = positions and positions.editor
+
+    frame:ClearAllPoints()
+    frame:SetSize(DEFAULT_FRAME_WIDTH, DEFAULT_FRAME_HEIGHT)
+    if pos then
+        frame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", pos.x or 0, pos.y or 0)
+    else
+        frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+    end
+end
+
+--------------------------------------------------------------------------------
+-- Frame creation
+--------------------------------------------------------------------------------
+
+local titleBar, modeBar, phaseTabs, timelineArea, rawPanel, editPanel
+local rulerFrame, bodyScroll, canvas, cursorLine, cursorLabel
+local blockPool = {}
+local gridPool = {}
+local tickPool = {}
+local phaseTabPool = {}
+local phaseDividerPool = {}
+
+local function RecyclePool(pool)
+    for _, obj in ipairs(pool) do
+        obj:Hide()
+        obj:ClearAllPoints()
+    end
+end
+
+local function GetFromPool(pool, createFn)
+    for _, obj in ipairs(pool) do
+        if not obj:IsShown() then
+            return obj
+        end
+    end
+    local obj = createFn()
+    pool[#pool + 1] = obj
+    return obj
+end
+
+local function CreateBlock(parent)
+    local block = CreateFrame("Button", nil, parent, "BackdropTemplate")
+    block:SetSize(BLOCK_WIDTH, BLOCK_HEIGHT)
+    block:SetBackdrop(BACKDROP_INFO)
+    block:SetBackdropColor(0, 0, 0, 0.7)
+
+    block.who = block:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    block.who:SetPoint("TOPLEFT", 4, -3)
+    block.who:SetPoint("RIGHT", -4, 0)
+    block.who:SetJustifyH("LEFT")
+    block.who:SetWordWrap(false)
+
+    block.ability = block:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    block.ability:SetPoint("TOPLEFT", block.who, "BOTTOMLEFT", 0, -1)
+    block.ability:SetPoint("RIGHT", -4, 0)
+    block.ability:SetJustifyH("LEFT")
+    block.ability:SetWordWrap(false)
+    block.ability:SetTextColor(0.8, 0.8, 0.8)
+
+    block.extra = block:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    block.extra:SetPoint("TOPLEFT", block.ability, "BOTTOMLEFT", 0, -1)
+    block.extra:SetPoint("RIGHT", -4, 0)
+    block.extra:SetJustifyH("LEFT")
+    block.extra:SetWordWrap(false)
+    block.extra:SetTextColor(0.5, 0.5, 0.5)
+
+    block.personalBorder = block:CreateTexture(nil, "OVERLAY")
+    block.personalBorder:SetAllPoints()
+    block.personalBorder:SetColorTexture(0.94, 0.75, 0.25, 0.15)
+    block.personalBorder:Hide()
+
+    block.annotatedDot = block:CreateTexture(nil, "OVERLAY")
+    block.annotatedDot:SetSize(8, 8)
+    block.annotatedDot:SetPoint("TOPRIGHT", -1, -1)
+    block.annotatedDot:SetColorTexture(0.94, 0.75, 0.25, 1)
+    block.annotatedDot:Hide()
+
+    block:SetScript("OnEnter", function(self)
+        self:SetBackdropBorderColor(0.91, 0.27, 0.37, 1)
+    end)
+    block:SetScript("OnLeave", function(self)
+        if self.isPersonal then
+            self:SetBackdropBorderColor(0.94, 0.75, 0.25, 1)
+        else
+            self:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
+        end
+    end)
+
+    return block
+end
+
+local function CreateGridLine(parent)
+    local line = parent:CreateTexture(nil, "BACKGROUND")
+    line:SetHeight(1)
+    line:SetColorTexture(1, 1, 1, 0.04)
+    return line
+end
+
+local function CreateTick(parent)
+    local tick = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    tick:SetTextColor(0.5, 0.5, 0.5)
+    tick:SetJustifyH("RIGHT")
+    return tick
+end
+
+local function CreatePhaseDivider(parent)
+    local holder = CreateFrame("Frame", nil, parent)
+    holder:SetHeight(14)
+
+    holder.line = holder:CreateTexture(nil, "ARTWORK")
+    holder.line:SetHeight(2)
+    holder.line:SetPoint("TOPLEFT")
+    holder.line:SetPoint("TOPRIGHT")
+    holder.line:SetColorTexture(0.91, 0.27, 0.37, 1)
+
+    holder.label = holder:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    holder.label:SetPoint("TOPLEFT", holder.line, "BOTTOMLEFT", 4, -2)
+    holder.label:SetTextColor(0.91, 0.27, 0.37, 1)
+
+    return holder
+end
+
+local function CreatePhaseTab(parent)
+    local tab = CreateFrame("Button", nil, parent)
+    tab:SetHeight(22)
+
+    tab.bg = tab:CreateTexture(nil, "BACKGROUND")
+    tab.bg:SetAllPoints()
+    tab.bg:SetColorTexture(0.91, 0.27, 0.37, 0.8)
+    tab.bg:Hide()
+
+    tab.highlight = tab:CreateTexture(nil, "HIGHLIGHT")
+    tab.highlight:SetAllPoints()
+    tab.highlight:SetColorTexture(1, 1, 1, 0.05)
+
+    tab.text = tab:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    tab.text:SetPoint("CENTER")
+    tab.text:SetTextColor(0.6, 0.6, 0.6)
+
+    tab.underline = tab:CreateTexture(nil, "OVERLAY")
+    tab.underline:SetHeight(2)
+    tab.underline:SetPoint("BOTTOMLEFT")
+    tab.underline:SetPoint("BOTTOMRIGHT")
+    tab.underline:SetColorTexture(0.91, 0.27, 0.37, 1)
+    tab.underline:Hide()
+
+    return tab
+end
+
+--------------------------------------------------------------------------------
+-- Edit panel fields
+--------------------------------------------------------------------------------
+
+local editFields = {}
+local currentAbilities = {}
+
+local function CreateFieldLabel(parent, text)
+    local label = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    label:SetTextColor(0.5, 0.5, 0.5)
+    label:SetText(text)
+    return label
+end
+
+local function CreateFieldInput(parent)
+    local box = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
+    box:SetHeight(22)
+    box:SetAutoFocus(false)
+    box:SetScript("OnEscapePressed", function(self)
+        self:ClearFocus()
+    end)
+    return box
+end
+
+local function CreateFieldDropdown(parent, labelText, getItems, onSelect)
+    local dropdown = CreateFrame("DropdownButton", nil, parent, "WowStyle1DropdownTemplate")
+    dropdown:SetHeight(22)
+    dropdown.getItems = getItems
+    dropdown.onSelect = onSelect
+    dropdown.currentValue = nil
+
+    dropdown:SetupMenu(function(_, rootDescription)
+        local items = dropdown.getItems()
+        for _, item in ipairs(items) do
+            rootDescription:CreateRadio(
+                item.name,
+                function() return dropdown.currentValue == item.value end,
+                function()
+                    dropdown.currentValue = item.value
+                    if dropdown.onSelect then
+                        dropdown.onSelect(item.value)
+                    end
+                end
+            )
+        end
+    end)
+
+    function dropdown:SetValue(value)
+        self.currentValue = value
+    end
+
+    function dropdown:GetValue()
+        return self.currentValue
+    end
+
+    return dropdown
+end
+
+local function BuildEditPanel(parent)
+    local panel = CreateFrame("Frame", nil, parent, "BackdropTemplate")
+    panel:SetWidth(EDIT_PANEL_WIDTH)
+    panel:SetBackdrop(BACKDROP_INFO)
+    panel:SetBackdropColor(0, 0, 0, 0.8)
+    panel:SetBackdropBorderColor(0.3, 0.3, 0.3, 0.8)
+    panel:Hide()
+
+    local headerText = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    headerText:SetPoint("TOPLEFT", 12, -10)
+    headerText:SetTextColor(0.91, 0.27, 0.37, 1)
+    panel.headerText = headerText
+
+    local closeBtn = CreateFrame("Button", nil, panel, "UIPanelCloseButton")
+    closeBtn:SetPoint("TOPRIGHT", -2, -2)
+    closeBtn:SetSize(20, 20)
+    closeBtn:SetScript("OnClick", function()
+        panel:Hide()
+        state.editingReminder = nil
+    end)
+
+    local scrollFrame = CreateFrame("ScrollFrame", nil, panel, "UIPanelScrollFrameTemplate")
+    scrollFrame:SetPoint("TOPLEFT", 8, -30)
+    scrollFrame:SetPoint("BOTTOMRIGHT", -28, 40)
+
+    local scrollChild = CreateFrame("Frame", nil, scrollFrame)
+    scrollChild:SetWidth(EDIT_PANEL_WIDTH - 44)
+    scrollChild:SetHeight(600)
+    scrollFrame:SetScrollChild(scrollChild)
+
+    local yOff = 0
+    local fieldWidth = EDIT_PANEL_WIDTH - 48
+
+    local function AddLabel(text)
+        local label = CreateFieldLabel(scrollChild, text)
+        label:SetPoint("TOPLEFT", 4, yOff)
+        yOff = yOff - 14
+        return label
+    end
+
+    local function AddInput()
+        local input = CreateFieldInput(scrollChild)
+        input:SetPoint("TOPLEFT", 4, yOff)
+        input:SetWidth(fieldWidth)
+        yOff = yOff - 28
+        return input
+    end
+
+    local function AddDropdown(labelText, getItems, onSelect)
+        local dd = CreateFieldDropdown(scrollChild, labelText, getItems, onSelect)
+        dd:SetPoint("TOPLEFT", 4, yOff)
+        dd:SetWidth(fieldWidth)
+        yOff = yOff - 28
+        return dd
+    end
+
+    panel.originalInfo = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    panel.originalInfo:SetPoint("TOPLEFT", 4, yOff)
+    panel.originalInfo:SetWidth(fieldWidth)
+    panel.originalInfo:SetJustifyH("LEFT")
+    panel.originalInfo:SetTextColor(0.5, 0.5, 0.5)
+    panel.originalInfo:SetWordWrap(true)
+    panel.originalInfo:Hide()
+    panel.originalInfoLabel = AddLabel("THIS REMINDER")
+    panel.originalInfoLabel:Hide()
+
+    editFields.phaseLabel = AddLabel("PHASE")
+    editFields.phase = AddInput()
+    editFields.phase:SetNumeric(true)
+
+    editFields.timeLabel = AddLabel("TIME (PHASE-RELATIVE)")
+    editFields.time = AddInput()
+
+    editFields.whoLabel = AddLabel("WHO")
+    editFields.who = AddInput()
+    editFields.who:SetScript("OnTextChanged", function(self)
+        local tag = self:GetText()
+        local abilities = GetAbilitiesForTag(tag)
+        currentAbilities = abilities
+        editFields.ability:GenerateMenu()
+    end)
+
+    editFields.abilityLabel = AddLabel("ABILITY")
+    editFields.ability = AddDropdown("Ability",
+        function()
+            local items = { { name = "(free text)", value = "" } }
+            for _, ab in ipairs(currentAbilities) do
+                items[#items + 1] = { name = ab.name, value = ab.name }
+            end
+            return items
+        end,
+        function(value)
+            if value and value ~= "" then
+                editFields.abilityText = value
+                editFields.abilitySpellId = nil
+                for _, ab in ipairs(currentAbilities) do
+                    if ab.name == value then
+                        editFields.abilitySpellId = ab.spellId
+                        break
+                    end
+                end
+            else
+                editFields.abilityText = nil
+                editFields.abilitySpellId = nil
+            end
+        end
+    )
+
+    editFields.displayTextLabel = AddLabel("DISPLAY TEXT (OPTIONAL)")
+    editFields.displayText = AddInput()
+
+    editFields.durationLabel = AddLabel("DURATION")
+    editFields.duration = AddInput()
+    editFields.duration:SetNumeric(false)
+
+    editFields.displayTypeLabel = AddLabel("DISPLAY TYPE")
+    editFields.displayType = AddDropdown("Display Type",
+        function() return DISPLAY_TYPE_OPTIONS end,
+        function() end
+    )
+
+    editFields.soundLabel = AddLabel("SOUND")
+    editFields.sound = AddInput()
+
+    editFields.ttsLabel = AddLabel("TTS")
+    editFields.tts = AddInput()
+
+    editFields.ttsTimerLabel = AddLabel("TTS TIMER")
+    editFields.ttsTimer = AddInput()
+    editFields.ttsTimer:SetNumeric(false)
+
+    editFields.countdownLabel = AddLabel("COUNTDOWN")
+    editFields.countdown = AddInput()
+    editFields.countdown:SetNumeric(false)
+
+    editFields.bossSpellLabel = AddLabel("BOSS SPELL ID")
+    editFields.bossSpell = AddInput()
+
+    editFields.colorsLabel = AddLabel("COLORS")
+    editFields.colors = AddInput()
+
+    scrollChild:SetHeight(math.abs(yOff) + 20)
+
+    local footer = CreateFrame("Frame", nil, panel)
+    footer:SetHeight(36)
+    footer:SetPoint("BOTTOMLEFT", 8, 4)
+    footer:SetPoint("BOTTOMRIGHT", -8, 4)
+
+    local deleteBtn = CreateFrame("Button", nil, footer, "UIPanelButtonTemplate")
+    deleteBtn:SetSize(70, 22)
+    deleteBtn:SetPoint("LEFT", 0, 0)
+    deleteBtn:SetText("Delete")
+    deleteBtn:Hide()
+    panel.deleteBtn = deleteBtn
+
+    local saveBtn = CreateFrame("Button", nil, footer, "UIPanelButtonTemplate")
+    saveBtn:SetSize(70, 22)
+    saveBtn:SetPoint("RIGHT", 0, 0)
+    saveBtn:SetText("Save")
+    panel.saveBtn = saveBtn
+
+    local cancelBtn = CreateFrame("Button", nil, footer, "UIPanelButtonTemplate")
+    cancelBtn:SetSize(70, 22)
+    cancelBtn:SetPoint("RIGHT", saveBtn, "LEFT", -6, 0)
+    cancelBtn:SetText("Cancel")
+    cancelBtn:SetScript("OnClick", function()
+        panel:Hide()
+        state.editingReminder = nil
+    end)
+
+    local errorText = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    errorText:SetPoint("BOTTOMLEFT", footer, "TOPLEFT", 0, 2)
+    errorText:SetWidth(EDIT_PANEL_WIDTH - 20)
+    errorText:SetJustifyH("LEFT")
+    errorText:SetTextColor(1, 0.3, 0.3, 1)
+    panel.errorText = errorText
+
+    return panel
+end
+
+--------------------------------------------------------------------------------
+-- Build the main frame
+--------------------------------------------------------------------------------
+
+local function BuildFrame()
+    if frame then
+        return
+    end
+
+    frame = CreateFrame("Frame", "PRT_NotesEditor", UIParent, "ButtonFrameTemplate")
+    ButtonFrameTemplate_HidePortrait(frame)
+    ButtonFrameTemplate_HideButtonBar(frame)
+    frame.Inset:Hide()
+    frame:SetTitle("Note Editor")
+    frame:SetFrameStrata("DIALOG")
+    frame:SetToplevel(true)
+    frame:SetMovable(true)
+    frame:SetClampedToScreen(true)
+    frame:EnableMouse(true)
+    frame:RegisterForDrag("LeftButton")
+    frame:SetScript("OnDragStart", frame.StartMoving)
+    frame:SetScript("OnDragStop", function(self)
+        self:StopMovingOrSizing()
+        self:SetUserPlaced(false)
+        SaveEditorPosition()
+    end)
+    frame:Hide()
+
+    frame:SetScript("OnHide", function()
+        SaveEditorPosition()
+        editPanel:Hide()
+        state = {}
+    end)
+
+    table.insert(UISpecialFrames, "PRT_NotesEditor")
+
+    titleBar = CreateFrame("Frame", nil, frame)
+    titleBar:SetHeight(28)
+    titleBar:SetPoint("TOPLEFT", 8, -28)
+    titleBar:SetPoint("TOPRIGHT", -8, -28)
+
+    titleBar.nameText = titleBar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    titleBar.nameText:SetPoint("LEFT", 8, 0)
+    titleBar.nameText:SetTextColor(0.91, 0.27, 0.37, 1)
+    titleBar.nameText:EnableMouse(true)
+
+    titleBar.nameEdit = CreateFrame("EditBox", nil, titleBar, "InputBoxTemplate")
+    titleBar.nameEdit:SetSize(150, 20)
+    titleBar.nameEdit:SetPoint("LEFT", 4, 0)
+    titleBar.nameEdit:SetAutoFocus(false)
+    titleBar.nameEdit:Hide()
+    titleBar.nameEdit:SetScript("OnEnterPressed", function(self)
+        local newName = self:GetText():match("^%s*(.-)%s*$")
+        if not newName or newName == "" then
+            self:Hide()
+            titleBar.nameText:Show()
+            return
+        end
+        if not state.noteName then
+            local text = PRT.NotesSerializer:Serialize(state.parsedNote)
+            local ok = PRT.Notes:SaveNote(newName, text)
+            if ok then
+                state.noteName = newName
+                NotesEditor:NotifyConfigSaved(newName)
+            end
+        elseif newName ~= state.noteName then
+            if PRT.Notes:RenameNote(state.noteName, newName) then
+                state.noteName = newName
+                NotesEditor:NotifyConfigSaved(newName)
+            end
+        end
+        self:Hide()
+        titleBar.nameText:Show()
+        titleBar.nameText:SetText(state.noteName or "New Note")
+    end)
+    titleBar.nameEdit:SetScript("OnEscapePressed", function(self)
+        self:Hide()
+        titleBar.nameText:Show()
+    end)
+
+    titleBar.nameText:SetScript("OnMouseDown", function()
+        titleBar.nameEdit:SetText(state.noteName or "")
+        titleBar.nameText:Hide()
+        titleBar.nameEdit:Show()
+        titleBar.nameEdit:SetFocus()
+        titleBar.nameEdit:HighlightText()
+    end)
+
+    titleBar.encounterText = titleBar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    titleBar.encounterText:SetPoint("LEFT", titleBar.nameText, "RIGHT", 12, 0)
+    titleBar.encounterText:SetTextColor(0.5, 0.5, 0.5)
+    titleBar.encounterText:EnableMouse(true)
+
+    titleBar.encounterEdit = CreateFrame("EditBox", nil, titleBar, "InputBoxTemplate")
+    titleBar.encounterEdit:SetSize(120, 20)
+    titleBar.encounterEdit:SetPoint("LEFT", titleBar.nameText, "RIGHT", 8, 0)
+    titleBar.encounterEdit:SetAutoFocus(false)
+    titleBar.encounterEdit:Hide()
+    titleBar.encounterEdit:SetScript("OnEnterPressed", function(self)
+        local val = self:GetText():match("^%s*(.-)%s*$")
+        if val and val ~= "" then
+            state.encounterName = val
+            local encId = tonumber(val) or val
+            if state.parsedNote then
+                state.parsedNote.encounterID = encId
+                state.parsedNote.name = val
+            end
+        end
+        self:Hide()
+        titleBar.encounterText:Show()
+        titleBar.encounterText:SetText(state.encounterName or "")
+        NotesEditor:SaveCurrentNote()
+    end)
+    titleBar.encounterEdit:SetScript("OnEscapePressed", function(self)
+        self:Hide()
+        titleBar.encounterText:Show()
+    end)
+
+    titleBar.encounterText:SetScript("OnMouseDown", function()
+        titleBar.encounterEdit:SetText(state.encounterName or "")
+        titleBar.encounterText:Hide()
+        titleBar.encounterEdit:Show()
+        titleBar.encounterEdit:SetFocus()
+        titleBar.encounterEdit:HighlightText()
+    end)
+
+    titleBar.difficultyDropdown = CreateFieldDropdown(titleBar, "Difficulty",
+        function() return DIFFICULTY_OPTIONS end,
+        function(value)
+            if state.parsedNote then
+                state.parsedNote.difficulty = value
+            end
+            state.difficulty = value
+            NotesEditor:SaveCurrentNote()
+        end
+    )
+    titleBar.difficultyDropdown:SetSize(100, 20)
+    titleBar.difficultyDropdown:SetPoint("LEFT", titleBar.encounterText, "RIGHT", 12, 0)
+
+    modeBar = CreateFrame("Frame", nil, frame)
+    modeBar:SetHeight(24)
+    modeBar:SetPoint("TOPLEFT", titleBar, "BOTTOMLEFT", 0, -2)
+    modeBar:SetPoint("TOPRIGHT", titleBar, "BOTTOMRIGHT", 0, -2)
+
+    modeBar.showMineCheck = CreateFrame("CheckButton", nil, modeBar, "SettingsCheckboxTemplate")
+    modeBar.showMineCheck:SetPoint("LEFT", 8, 0)
+    modeBar.showMineCheck:SetText("Show Only Mine")
+    modeBar.showMineCheck:SetNormalFontObject(GameFontNormalSmall)
+    modeBar.showMineCheck:SetScript("OnClick", function(self)
+        state.showOnlyMine = self:GetChecked()
+        NotesEditor:Render()
+    end)
+
+    modeBar.rawBtn = CreateFrame("Button", nil, modeBar, "UIPanelButtonTemplate")
+    modeBar.rawBtn:SetSize(110, 20)
+    modeBar.rawBtn:SetPoint("RIGHT", -8, 0)
+    modeBar.rawBtn:SetText("Show Raw Text")
+    modeBar.rawBtn:SetScript("OnClick", function()
+        state.rawMode = not state.rawMode
+        if state.rawMode then
+            NotesEditor:ShowRawMode()
+        else
+            NotesEditor:HideRawMode()
+        end
+    end)
+
+    -- Phase tabs
+    phaseTabs = CreateFrame("Frame", nil, frame)
+    phaseTabs:SetHeight(24)
+    phaseTabs:SetPoint("TOPLEFT", modeBar, "BOTTOMLEFT", 0, -2)
+    phaseTabs:SetPoint("TOPRIGHT", modeBar, "BOTTOMRIGHT", 0, -2)
+
+    -- Timeline area
+    timelineArea = CreateFrame("Frame", nil, frame)
+    timelineArea:SetPoint("TOPLEFT", phaseTabs, "BOTTOMLEFT", 0, -2)
+    timelineArea:SetPoint("BOTTOMRIGHT", -6, 6)
+    timelineArea:SetClipsChildren(true)
+
+    rulerFrame = CreateFrame("Frame", nil, timelineArea, "BackdropTemplate")
+    rulerFrame:SetWidth(RULER_WIDTH)
+    rulerFrame:SetPoint("TOPLEFT")
+    rulerFrame:SetPoint("BOTTOMLEFT")
+    rulerFrame:SetBackdrop(BACKDROP_INFO)
+    rulerFrame:SetBackdropColor(0, 0, 0, 0.8)
+    rulerFrame:SetBackdropBorderColor(0.3, 0.3, 0.3, 0.8)
+    rulerFrame:SetClipsChildren(true)
+
+    bodyScroll = CreateFrame("ScrollFrame", nil, timelineArea, "UIPanelScrollFrameTemplate")
+    bodyScroll:SetPoint("TOPLEFT", rulerFrame, "TOPRIGHT", 0, 0)
+    bodyScroll:SetPoint("BOTTOMRIGHT", -26, 0)
+
+    canvas = CreateFrame("Frame", nil, bodyScroll)
+    canvas:SetWidth(1)
+    bodyScroll:SetScrollChild(canvas)
+
+    canvas:EnableMouse(true)
+    canvas:SetScript("OnMouseDown", function(self, button)
+        if button ~= "LeftButton" then
+            return
+        end
+        local _, cursorY = GetCursorPosition()
+        local scale = self:GetEffectiveScale()
+        local y = self:GetTop() - (cursorY / scale)
+        local phases = DerivePhases(state.parsedNote)
+        local time, phaseNum = YToTimeAndPhase(y, phases, state.activePhase)
+        NotesEditor:OpenAddPanel(time, phaseNum)
+    end)
+
+    cursorLine = canvas:CreateTexture(nil, "OVERLAY")
+    cursorLine:SetHeight(1)
+    cursorLine:SetColorTexture(0.94, 0.75, 0.25, 0.8)
+    cursorLine:Hide()
+
+    cursorLabel = canvas:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    cursorLabel:SetTextColor(0.94, 0.75, 0.25, 1)
+    cursorLabel:Hide()
+
+    bodyScroll:SetScript("OnScrollRangeChanged", function()
+        NotesEditor:SyncRuler()
+    end)
+
+    bodyScroll:HookScript("OnVerticalScroll", function()
+        NotesEditor:SyncRuler()
+    end)
+
+    canvas:SetScript("OnEnter", function()
+        cursorLine:Show()
+        cursorLabel:Show()
+    end)
+    canvas:SetScript("OnLeave", function()
+        cursorLine:Hide()
+        cursorLabel:Hide()
+    end)
+
+    local cursorUpdateFrame = CreateFrame("Frame", nil, canvas)
+    cursorUpdateFrame:SetScript("OnUpdate", function()
+        if not canvas:IsMouseOver() then
+            cursorLine:Hide()
+            cursorLabel:Hide()
+            return
+        end
+        cursorLine:Show()
+        cursorLabel:Show()
+        local _, cursorY = GetCursorPosition()
+        local scale = canvas:GetEffectiveScale()
+        local y = canvas:GetTop() - (cursorY / scale)
+        local phases = DerivePhases(state.parsedNote)
+        local time, _ = YToTimeAndPhase(y, phases, state.activePhase)
+        cursorLine:SetPoint("TOPLEFT", canvas, "TOPLEFT", 0, -y)
+        cursorLine:SetPoint("TOPRIGHT", canvas, "TOPRIGHT", 0, -y)
+        cursorLabel:SetPoint("TOPLEFT", canvas, "TOPLEFT", 4, -(y + 2))
+        cursorLabel:SetText(FormatTime(time))
+    end)
+
+    -- Raw text panel
+    rawPanel = {}
+
+    local rawScroll = CreateFrame("ScrollFrame", nil, frame, "UIPanelScrollFrameTemplate")
+    rawScroll:SetPoint("TOPLEFT", 12, -80)
+    rawScroll:SetPoint("BOTTOMRIGHT", -32, 30)
+    rawScroll:Hide()
+    rawPanel.scrollFrame = rawScroll
+
+    rawPanel.textBox = CreateFrame("EditBox", nil, rawScroll)
+    rawPanel.textBox:SetMultiLine(true)
+    rawPanel.textBox:SetMaxLetters(0)
+    rawPanel.textBox:SetFontObject(ChatFontNormal)
+    rawPanel.textBox:SetWidth(rawScroll:GetWidth() - 20)
+    rawPanel.textBox:SetAutoFocus(false)
+    rawPanel.textBox:SetScript("OnEscapePressed", function(self)
+        self:ClearFocus()
+    end)
+    rawScroll:SetScrollChild(rawPanel.textBox)
+
+    rawPanel.errorText = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    rawPanel.errorText:SetPoint("BOTTOMLEFT", 12, 10)
+    rawPanel.errorText:SetPoint("RIGHT", -12, 0)
+    rawPanel.errorText:SetJustifyH("LEFT")
+    rawPanel.errorText:SetTextColor(1, 0.3, 0.3, 1)
+    rawPanel.errorText:Hide()
+
+    function rawPanel:Show()
+        self.scrollFrame:Show()
+        self.errorText:Show()
+    end
+    function rawPanel:Hide()
+        self.scrollFrame:Hide()
+        self.errorText:Hide()
+    end
+
+    -- Edit panel
+    editPanel = BuildEditPanel(frame)
+    editPanel:SetPoint("TOPLEFT", timelineArea, "TOPRIGHT", 4, 0)
+    editPanel:SetPoint("BOTTOMLEFT", timelineArea, "BOTTOMRIGHT", 4, 0)
+
+    -- Close on Escape
+    table.insert(UISpecialFrames, "PRT_NotesEditor")
+end
+
+--------------------------------------------------------------------------------
+-- Render
+--------------------------------------------------------------------------------
+
+function NotesEditor:SyncRuler()
+    if not rulerFrame or not bodyScroll then
+        return
+    end
+    local offset = bodyScroll:GetVerticalScroll()
+    rulerFrame.yOffset = offset
+    for _, tick in ipairs(tickPool) do
+        if tick:IsShown() and tick.baseY then
+            tick:SetPoint("TOPRIGHT", rulerFrame, "TOPRIGHT", -4, -(tick.baseY - offset))
+        end
+    end
+end
+
+function NotesEditor:RenderPhaseTabs()
+    RecyclePool(phaseTabPool)
+
+    local phases = DerivePhases(state.parsedNote)
+    if #phases <= 1 then
+        phaseTabs:SetHeight(1)
+        return
+    end
+
+    phaseTabs:SetHeight(24)
+    local xOff = 4
+
+    local allTab = GetFromPool(phaseTabPool, function()
+        return CreatePhaseTab(phaseTabs)
+    end)
+    allTab:SetWidth(80)
+    allTab:SetPoint("TOPLEFT", xOff, -1)
+    allTab.text:SetText("All Phases")
+    if state.activePhase == "all" then
+        allTab.underline:Show()
+        allTab.text:SetTextColor(1, 1, 1)
+    else
+        allTab.underline:Hide()
+        allTab.text:SetTextColor(0.6, 0.6, 0.6)
+    end
+    allTab:SetScript("OnClick", function()
+        state.activePhase = "all"
+        editPanel:Hide()
+        state.editingReminder = nil
+        self:Render()
+    end)
+    allTab:Show()
+    xOff = xOff + 84
+
+    for _, phase in ipairs(phases) do
+        local tab = GetFromPool(phaseTabPool, function()
+            return CreatePhaseTab(phaseTabs)
+        end)
+        tab:SetWidth(80)
+        tab:SetPoint("TOPLEFT", xOff, -1)
+        tab.text:SetText(phase.name)
+        if state.activePhase == phase.num then
+            tab.underline:Show()
+            tab.text:SetTextColor(1, 1, 1)
+        else
+            tab.underline:Hide()
+            tab.text:SetTextColor(0.6, 0.6, 0.6)
+        end
+        tab:SetScript("OnClick", function()
+            state.activePhase = phase.num
+            editPanel:Hide()
+            state.editingReminder = nil
+            self:Render()
+        end)
+        tab:Show()
+        xOff = xOff + 84
+    end
+end
+
+function NotesEditor:RenderTimeline()
+    RecyclePool(blockPool)
+    RecyclePool(gridPool)
+    RecyclePool(tickPool)
+    RecyclePool(phaseDividerPool)
+
+    local phases = DerivePhases(state.parsedNote)
+    local totalDur = TotalDuration(phases, state.activePhase)
+    local canvasHeight = totalDur * VPPS + 20
+    canvas:SetHeight(canvasHeight)
+    canvas:SetWidth(bodyScroll:GetWidth() - 26)
+
+    for t = GRID_INTERVAL, totalDur, GRID_INTERVAL do
+        local y
+        if state.activePhase == "all" then
+            y = t * VPPS
+        else
+            y = t * VPPS
+        end
+        local line = GetFromPool(gridPool, function()
+            return CreateGridLine(canvas)
+        end)
+        line:SetPoint("TOPLEFT", canvas, "TOPLEFT", 0, -y)
+        line:SetPoint("TOPRIGHT", canvas, "TOPRIGHT", 0, -y)
+        line:Show()
+    end
+
+    if state.activePhase == "all" then
+        for i, phase in ipairs(phases) do
+            if i > 1 then
+                local y = phase.start * VPPS
+                local divider = GetFromPool(phaseDividerPool, function()
+                    return CreatePhaseDivider(canvas)
+                end)
+                divider:SetPoint("TOPLEFT", canvas, "TOPLEFT", 0, -y)
+                divider:SetPoint("TOPRIGHT", canvas, "TOPRIGHT", 0, -y)
+                divider.label:SetText(phase.name)
+                divider:Show()
+            end
+        end
+    end
+
+    if state.activePhase == "all" then
+        for _, phase in ipairs(phases) do
+            for t = 0, phase.duration, TICK_INTERVAL do
+                local y = (phase.start + t) * VPPS
+                if t % TICK_LABEL_INTERVAL == 0 then
+                    local tick = GetFromPool(tickPool, function()
+                        return CreateTick(rulerFrame)
+                    end)
+                    tick.baseY = y
+                    tick:SetText(FormatTime(t))
+                    local scrollOffset = bodyScroll:GetVerticalScroll()
+                    tick:SetPoint("TOPRIGHT", rulerFrame, "TOPRIGHT", -4, -(y - scrollOffset))
+                    tick:Show()
+                end
+            end
+        end
+    else
+        local phase
+        for _, p in ipairs(phases) do
+            if p.num == state.activePhase then
+                phase = p
+                break
+            end
+        end
+        local dur = phase and phase.duration or PHASE_PAD
+        for t = 0, dur, TICK_INTERVAL do
+            if t % TICK_LABEL_INTERVAL == 0 then
+                local y = t * VPPS
+                local tick = GetFromPool(tickPool, function()
+                    return CreateTick(rulerFrame)
+                end)
+                tick.baseY = y
+                tick:SetText(FormatTime(t))
+                local scrollOffset = bodyScroll:GetVerticalScroll()
+                tick:SetPoint("TOPRIGHT", rulerFrame, "TOPRIGHT", -4, -(y - scrollOffset))
+                tick:Show()
+            end
+        end
+    end
+
+    local reminders = CollectReminders(state.parsedNote, state.activePhase)
+
+    local playerCtx
+    if state.mode == "annotate" then
+        playerCtx = BuildPlayerCtx()
+    end
+
+    local timeSlots = {}
+    for _, r in ipairs(reminders) do
+        if state.mode == "annotate" and state.showOnlyMine then
+            if not PRT.NotesTags.Matches(r.tag, playerCtx) and not r.isPersonal then
+                -- skip
+            else
+                local y = TimeToY(r.time, r.phase, phases, state.activePhase)
+                local key = tostring(y)
+                if not timeSlots[key] then
+                    timeSlots[key] = 0
+                end
+                local stackIdx = timeSlots[key]
+                timeSlots[key] = stackIdx + 1
+                NotesEditor:RenderBlock(r, y, stackIdx, phases, playerCtx)
+            end
+        else
+            local y = TimeToY(r.time, r.phase, phases, state.activePhase)
+            local key = tostring(y)
+            if not timeSlots[key] then
+                timeSlots[key] = 0
+            end
+            local stackIdx = timeSlots[key]
+            timeSlots[key] = stackIdx + 1
+            NotesEditor:RenderBlock(r, y, stackIdx, phases, playerCtx)
+        end
+    end
+end
+
+function NotesEditor:RenderBlock(reminder, y, stackIdx, phases, playerCtx)
+    local block = GetFromPool(blockPool, function()
+        return CreateBlock(canvas)
+    end)
+
+    block:SetPoint("TOPLEFT", canvas, "TOPLEFT", stackIdx * (BLOCK_WIDTH + BLOCK_GAP), -y)
+    block:SetFrameLevel(canvas:GetFrameLevel() + 5)
+
+    local r, g, b = ClassColorForTag(reminder.tag)
+    block.who:SetText(reminder.tag or "")
+    block.who:SetTextColor(r, g, b)
+
+    local abilityText = reminder.text or ""
+    block.ability:SetText(abilityText)
+
+    block.extra:SetText("")
+    block.extra:Hide()
+
+    if reminder.isPersonal then
+        block.isPersonal = true
+        block:SetBackdropBorderColor(0.94, 0.75, 0.25, 1)
+        block.personalBorder:Show()
+    else
+        block.isPersonal = false
+        block:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
+        block.personalBorder:Hide()
+    end
+
+    block.annotatedDot:Hide()
+
+    local isInteractive = true
+    if state.mode == "annotate" and playerCtx then
+        if not reminder.isPersonal and not PRT.NotesTags.Matches(reminder.tag, playerCtx) then
+            isInteractive = false
+            block:SetAlpha(0.4)
+        else
+            block:SetAlpha(1)
+        end
+    elseif state.mode == "annotate" then
+        block:SetAlpha(1)
+    else
+        block:SetAlpha(1)
+    end
+
+    block:SetScript("OnClick", function()
+        if not isInteractive then
+            return
+        end
+        NotesEditor:OpenEditPanel(reminder)
+    end)
+
+    block:Show()
+end
+
+function NotesEditor:Render()
+    if not frame or not frame:IsShown() then
+        return
+    end
+
+    if state.mode == "annotate" then
+        modeBar.showMineCheck:Show()
+        modeBar.rawBtn:Hide()
+    else
+        modeBar.showMineCheck:Hide()
+        modeBar.rawBtn:Show()
+    end
+
+    titleBar.nameText:SetText(state.noteName or "New Note")
+    titleBar.encounterText:SetText(state.encounterName or "")
+    titleBar.difficultyDropdown:SetValue(state.difficulty)
+
+    self:RenderPhaseTabs()
+    self:RenderTimeline()
+end
+
+--------------------------------------------------------------------------------
+-- Raw text mode
+--------------------------------------------------------------------------------
+
+function NotesEditor:ShowRawMode()
+    state.rawMode = true
+    modeBar.rawBtn:SetText("Show Visual")
+    timelineArea:Hide()
+    editPanel:Hide()
+    phaseTabs:Hide()
+    rawPanel:Show()
+    rawPanel.errorText:SetText("")
+
+    local text = PRT.NotesSerializer:Serialize(state.parsedNote)
+    rawPanel.textBox:SetText(text or "")
+end
+
+function NotesEditor:HideRawMode()
+    local rawText = rawPanel.textBox:GetText()
+    local parsed, err = PRT.NotesParser:Parse(rawText)
+    if err then
+        rawPanel.errorText:SetText(err)
+        return
+    end
+
+    state.rawMode = false
+    state.parsedNote = parsed
+    state.encounterName = parsed.name or (parsed.encounterID and tostring(parsed.encounterID)) or ""
+    state.difficulty = parsed.difficulty
+
+    modeBar.rawBtn:SetText("Show Raw Text")
+    rawPanel:Hide()
+    timelineArea:Show()
+    phaseTabs:Show()
+
+    if state.noteName then
+        local ok, saveErr = PRT.Notes:SaveNote(state.noteName, rawText)
+        if ok then
+            NotesEditor:NotifyConfigSaved(state.noteName)
+        else
+            rawPanel.errorText:SetText(saveErr or "")
+        end
+    end
+
+    self:Render()
+end
+
+--------------------------------------------------------------------------------
+-- Edit panel open/save/delete
+--------------------------------------------------------------------------------
+
+function NotesEditor:OpenAddPanel(time, phaseNum)
+    editPanel:Show()
+    editPanel.headerText:SetText(state.mode == "edit" and "Add Reminder" or "Add Personal Reminder")
+    editPanel.errorText:SetText("")
+    editPanel.deleteBtn:Hide()
+    editPanel.saveBtn:SetText(state.mode == "edit" and "Add" or "Add Personal")
+    editPanel.originalInfo:Hide()
+    editPanel.originalInfoLabel:Hide()
+
+    state.editingReminder = nil
+
+    editFields.phase:SetText(tostring(phaseNum or 1))
+    editFields.time:SetText(FormatTime(time or 0))
+
+    if state.mode == "annotate" then
+        editFields.who:SetText(UnitName("player") or "")
+        editFields.who:Disable()
+        editFields.whoLabel:Hide()
+        editFields.who:Hide()
+        editFields.phaseLabel:Hide()
+        editFields.phase:Hide()
+        currentAbilities = GetLocalPlayerAbilities()
+    else
+        editFields.who:SetText("")
+        editFields.who:Enable()
+        editFields.whoLabel:Show()
+        editFields.who:Show()
+        editFields.phaseLabel:Show()
+        editFields.phase:Show()
+        currentAbilities = {}
+    end
+    editFields.ability:SetValue("")
+    editFields.ability:GenerateMenu()
+    editFields.abilityText = nil
+    editFields.abilitySpellId = nil
+
+    editFields.displayText:SetText("")
+    editFields.duration:SetText("5")
+    editFields.displayType:SetValue("Icon")
+    editFields.sound:SetText("")
+    editFields.tts:SetText("")
+    editFields.ttsTimer:SetText("")
+    editFields.countdown:SetText("")
+    editFields.bossSpell:SetText("")
+    editFields.colors:SetText("")
+
+    if state.mode == "edit" then
+        editFields.abilityLabel:Show()
+        editFields.ability:Show()
+        editFields.displayTextLabel:Show()
+        editFields.displayText:Show()
+    else
+        editFields.abilityLabel:Show()
+        editFields.ability:Show()
+        editFields.displayTextLabel:Show()
+        editFields.displayText:Show()
+    end
+
+    editPanel.saveBtn:SetScript("OnClick", function()
+        NotesEditor:SaveFromPanel()
+    end)
+end
+
+function NotesEditor:OpenEditPanel(reminder)
+    editPanel:Show()
+    editPanel.errorText:SetText("")
+    state.editingReminder = reminder
+
+    if state.mode == "annotate" and not reminder.isPersonal then
+        editPanel.headerText:SetText("Customize Alert")
+        editPanel.deleteBtn:Hide()
+        editPanel.saveBtn:SetText("Save Annotation")
+        editPanel.originalInfoLabel:Show()
+        editPanel.originalInfo:Show()
+        editPanel.originalInfo:SetText(
+            FormatTime(reminder.time) .. " - " .. (reminder.tag or "") .. " - " .. (reminder.text or "")
+        )
+
+        editFields.phaseLabel:Hide()
+        editFields.phase:Hide()
+        editFields.timeLabel:Hide()
+        editFields.time:Hide()
+        editFields.whoLabel:Hide()
+        editFields.who:Hide()
+        editFields.abilityLabel:Hide()
+        editFields.ability:Hide()
+        editFields.displayTextLabel:Hide()
+        editFields.displayText:Hide()
+        editFields.durationLabel:Hide()
+        editFields.duration:Hide()
+        editFields.bossSpellLabel:Hide()
+        editFields.bossSpell:Hide()
+        editFields.colorsLabel:Hide()
+        editFields.colors:Hide()
+
+        editFields.displayType:SetValue(reminder.displayType or "Icon")
+        editFields.sound:SetText(reminder.sound or "")
+        editFields.tts:SetText(reminder.tts == true and "true" or (reminder.tts == false and "false" or (reminder.tts or "")))
+        editFields.countdown:SetText(reminder.countdown and tostring(reminder.countdown) or "")
+
+        editPanel.saveBtn:SetScript("OnClick", function()
+            NotesEditor:SaveAnnotationFromPanel()
+        end)
+        return
+    end
+
+    if state.mode == "annotate" and reminder.isPersonal then
+        editPanel.headerText:SetText("Edit Personal Reminder")
+        editPanel.deleteBtn:Show()
+    else
+        editPanel.headerText:SetText("Edit Reminder")
+        editPanel.deleteBtn:Show()
+    end
+
+    editPanel.originalInfoLabel:Hide()
+    editPanel.originalInfo:Hide()
+    editPanel.saveBtn:SetText("Save")
+
+    editFields.phaseLabel:Show()
+    editFields.phase:Show()
+    editFields.timeLabel:Show()
+    editFields.time:Show()
+    editFields.durationLabel:Show()
+    editFields.duration:Show()
+    editFields.bossSpellLabel:Show()
+    editFields.bossSpell:Show()
+    editFields.colorsLabel:Show()
+    editFields.colors:Show()
+
+    editFields.phase:SetText(tostring(reminder.phase or 1))
+    editFields.time:SetText(FormatTime(reminder.time))
+
+    if state.mode == "annotate" then
+        editFields.who:SetText(UnitName("player") or "")
+        editFields.who:Disable()
+        editFields.whoLabel:Hide()
+        editFields.who:Hide()
+        currentAbilities = GetLocalPlayerAbilities()
+    else
+        editFields.who:SetText(reminder.tag or "")
+        editFields.who:Enable()
+        editFields.whoLabel:Show()
+        editFields.who:Show()
+        local abilities = GetAbilitiesForTag(reminder.tag)
+        currentAbilities = abilities
+    end
+
+    editFields.abilityLabel:Show()
+    editFields.ability:Show()
+    editFields.displayTextLabel:Show()
+    editFields.displayText:Show()
+
+    local abilityName, displayText = SplitAbilityAndText(reminder.text, currentAbilities)
+    editFields.ability:SetValue(abilityName)
+    editFields.abilityText = abilityName
+    editFields.ability:GenerateMenu()
+    editFields.displayText:SetText(displayText)
+
+    editFields.duration:SetText(tostring(reminder.duration or 5))
+    editFields.displayType:SetValue(reminder.displayType or "Icon")
+    editFields.sound:SetText(reminder.sound or "")
+    editFields.tts:SetText(reminder.tts == true and "true" or (reminder.tts == false and "false" or (reminder.tts or "")))
+    editFields.ttsTimer:SetText(reminder.ttsTimer and tostring(reminder.ttsTimer) or "")
+    editFields.countdown:SetText(reminder.countdown and tostring(reminder.countdown) or "")
+    editFields.bossSpell:SetText(reminder.bossSpell and tostring(reminder.bossSpell) or "")
+    editFields.colors:SetText(reminder.colors or "")
+    editFields.abilitySpellId = reminder.spellID
+
+    editPanel.deleteBtn:SetScript("OnClick", function()
+        NotesEditor:DeleteFromPanel()
+    end)
+    editPanel.saveBtn:SetScript("OnClick", function()
+        NotesEditor:SaveFromPanel()
+    end)
+end
+
+function NotesEditor:SaveFromPanel()
+    local timeVal = ParseTimeInput(editFields.time:GetText())
+    if not timeVal then
+        editPanel.errorText:SetText("Invalid time format. Use M:SS or seconds.")
+        return
+    end
+
+    local phaseVal = tonumber(editFields.phase:GetText()) or 1
+    local tag = editFields.who:GetText()
+    if not tag or tag == "" then
+        if state.mode == "annotate" then
+            tag = UnitName("player") or "player"
+        else
+            editPanel.errorText:SetText("Who is required.")
+            return
+        end
+    end
+
+    local abilityName = editFields.abilityText or ""
+    local abilitySpellId = editFields.abilitySpellId
+    local displayText = editFields.displayText:GetText() or ""
+    local combinedText
+    if abilityName ~= "" and displayText ~= "" then
+        combinedText = abilityName .. " " .. displayText
+    elseif abilityName ~= "" then
+        combinedText = abilityName
+    elseif displayText ~= "" then
+        combinedText = displayText
+    else
+        editPanel.errorText:SetText("Ability or text is required.")
+        return
+    end
+
+    local durVal = tonumber(editFields.duration:GetText())
+    local displayTypeVal = editFields.displayType:GetValue() or "Icon"
+    local soundVal = editFields.sound:GetText()
+    if soundVal == "" then soundVal = nil end
+    local ttsRaw = editFields.tts:GetText()
+    local ttsVal
+    if ttsRaw == "true" then
+        ttsVal = true
+    elseif ttsRaw == "false" then
+        ttsVal = false
+    elseif ttsRaw ~= "" then
+        ttsVal = ttsRaw
+    end
+    local ttsTimerVal = tonumber(editFields.ttsTimer:GetText())
+    local countdownVal = tonumber(editFields.countdown:GetText())
+    local bossSpellVal = tonumber(editFields.bossSpell:GetText())
+    local colorsVal = editFields.colors:GetText()
+    if colorsVal == "" then colorsVal = nil end
+
+    if not state.parsedNote then
+        state.parsedNote = {
+            encounterID = tonumber(state.encounterName) or state.encounterName,
+            name = state.encounterName,
+            difficulty = state.difficulty,
+            reminders = {},
+            lines = {},
+        }
+    end
+
+    local newReminder = {
+        time = timeVal,
+        tag = tag,
+        text = combinedText,
+        spellID = abilitySpellId,
+        phase = phaseVal,
+        phaseKey = tostring(phaseVal),
+        duration = durVal or 5,
+        displayType = displayTypeVal,
+        tts = ttsVal,
+        ttsTimer = ttsTimerVal,
+        countdown = countdownVal,
+        sound = soundVal,
+        bossSpell = bossSpellVal,
+        colors = colorsVal,
+    }
+
+    local note = state.parsedNote
+
+    if state.editingReminder then
+        local oldPhaseKey = state.editingReminder.phaseKey
+        local oldBucket = note.reminders[oldPhaseKey]
+        if oldBucket then
+            for i, r in ipairs(oldBucket) do
+                if r == state.editingReminder then
+                    table.remove(oldBucket, i)
+                    break
+                end
+            end
+            if #oldBucket == 0 then
+                note.reminders[oldPhaseKey] = nil
+            end
+        end
+
+        for i, entry in ipairs(note.lines) do
+            if entry.type == "reminder" and entry.reminder == state.editingReminder then
+                table.remove(note.lines, i)
+                break
+            end
+        end
+    end
+
+    local bucket = note.reminders[newReminder.phaseKey]
+    if not bucket then
+        bucket = {}
+        note.reminders[newReminder.phaseKey] = bucket
+    end
+    bucket[#bucket + 1] = newReminder
+    table.sort(bucket, function(a, b)
+        return a.time < b.time
+    end)
+
+    note.lines[#note.lines + 1] = { type = "reminder", reminder = newReminder }
+
+    if state.mode == "annotate" then
+        newReminder.isPersonal = true
+        self:SaveCurrentAnnotation()
+    else
+        self:SaveCurrentNote()
+    end
+
+    editPanel:Hide()
+    state.editingReminder = nil
+    self:Render()
+end
+
+function NotesEditor:SaveAnnotationFromPanel()
+    if not state.editingReminder then
+        return
+    end
+
+    local displayTypeVal = editFields.displayType:GetValue() or "Icon"
+    local soundVal = editFields.sound:GetText()
+    if soundVal == "" then soundVal = nil end
+    local ttsRaw = editFields.tts:GetText()
+    local ttsVal
+    if ttsRaw == "true" then
+        ttsVal = true
+    elseif ttsRaw == "false" then
+        ttsVal = false
+    elseif ttsRaw ~= "" then
+        ttsVal = ttsRaw
+    end
+    local countdownVal = tonumber(editFields.countdown:GetText())
+
+    local annReminder = {
+        time = state.editingReminder.time,
+        tag = state.editingReminder.tag,
+        text = state.editingReminder.text,
+        phase = state.editingReminder.phase,
+        phaseKey = state.editingReminder.phaseKey,
+        duration = state.editingReminder.duration or 5,
+        displayType = displayTypeVal,
+        sound = soundVal,
+        tts = ttsVal,
+        countdown = countdownVal,
+    }
+
+    if not state.annotationNote then
+        state.annotationNote = {
+            encounterID = state.parsedNote and state.parsedNote.encounterID,
+            reminders = {},
+            lines = {},
+        }
+    end
+
+    local annNote = state.annotationNote
+    local bucket = annNote.reminders[annReminder.phaseKey]
+    if not bucket then
+        bucket = {}
+        annNote.reminders[annReminder.phaseKey] = bucket
+    end
+
+    local found = false
+    for i, existing in ipairs(bucket) do
+        if existing.time == annReminder.time and existing.text == annReminder.text then
+            bucket[i] = annReminder
+            found = true
+            break
+        end
+    end
+    if not found then
+        bucket[#bucket + 1] = annReminder
+        table.sort(bucket, function(a, b)
+            return a.time < b.time
+        end)
+        annNote.lines[#annNote.lines + 1] = { type = "reminder", reminder = annReminder }
+    end
+
+    local annText = PRT.NotesSerializer:Serialize(annNote)
+    PRT.Notes:SaveAnnotation(state.noteName, annText)
+
+    editPanel:Hide()
+    state.editingReminder = nil
+    self:ReloadNote()
+    self:Render()
+end
+
+function NotesEditor:DeleteFromPanel()
+    if not state.editingReminder then
+        return
+    end
+
+    local reminder = state.editingReminder
+    local note
+
+    if state.mode == "annotate" and reminder.isPersonal then
+        note = state.annotationNote
+    else
+        note = state.parsedNote
+    end
+
+    if not note then
+        editPanel:Hide()
+        state.editingReminder = nil
+        return
+    end
+
+    local bucket = note.reminders[reminder.phaseKey]
+    if bucket then
+        for i, r in ipairs(bucket) do
+            if r == reminder then
+                table.remove(bucket, i)
+                break
+            end
+        end
+        if #bucket == 0 then
+            note.reminders[reminder.phaseKey] = nil
+        end
+    end
+
+    for i, entry in ipairs(note.lines) do
+        if entry.type == "reminder" and entry.reminder == reminder then
+            table.remove(note.lines, i)
+            break
+        end
+    end
+
+    if state.mode == "annotate" and reminder.isPersonal then
+        self:SaveCurrentAnnotation()
+    else
+        self:SaveCurrentNote()
+    end
+
+    editPanel:Hide()
+    state.editingReminder = nil
+    self:ReloadNote()
+    self:Render()
+end
+
+--------------------------------------------------------------------------------
+-- Save helpers
+--------------------------------------------------------------------------------
+
+function NotesEditor:SaveCurrentNote()
+    if not state.noteName then
+        titleBar.nameText:Hide()
+        titleBar.nameEdit:SetText("")
+        titleBar.nameEdit:Show()
+        titleBar.nameEdit:SetFocus()
+        return
+    end
+    local text = PRT.NotesSerializer:Serialize(state.parsedNote)
+    PRT.Notes:SaveNote(state.noteName, text)
+    NotesEditor:NotifyConfigSaved(state.noteName)
+end
+
+function NotesEditor:SaveCurrentAnnotation()
+    if not state.noteName then
+        return
+    end
+    if not state.annotationNote then
+        return
+    end
+    local text = PRT.NotesSerializer:Serialize(state.annotationNote)
+    PRT.Notes:SaveAnnotation(state.noteName, text)
+    NotesEditor:NotifyConfigSaved(state.noteName)
+end
+
+function NotesEditor:NotifyConfigSaved(savedName)
+    if PRT.NotesConfig and PRT.NotesConfig._refreshAfterSave then
+        PRT.NotesConfig._refreshAfterSave(savedName)
+    end
+end
+
+function NotesEditor:ReloadNote()
+    if not state.noteName then
+        return
+    end
+    local settings = GetSettings()
+    local noteText = settings and settings.savedNotes and settings.savedNotes[state.noteName]
+    if not noteText then
+        return
+    end
+    local parsed, err = PRT.NotesParser:Parse(noteText)
+    if err then
+        return
+    end
+
+    local annText = PRT.Notes:GetAnnotation(state.noteName)
+    if annText then
+        local annParsed = PRT.NotesParser:Parse(annText)
+        if annParsed then
+            state.annotationNote = annParsed
+            parsed = PRT.NotesMerge:Merge(parsed, annParsed)
+        end
+    end
+
+    state.parsedNote = parsed
+    state.encounterName = parsed.name or (parsed.encounterID and tostring(parsed.encounterID)) or ""
+    state.difficulty = parsed.difficulty
+end
+
+--------------------------------------------------------------------------------
+-- Public API
+--------------------------------------------------------------------------------
+
+function NotesEditor:Open(name, text, mode)
+    BuildFrame()
+
+    state = {
+        noteName = name,
+        encounterName = "",
+        difficulty = nil,
+        parsedNote = { encounterID = nil, reminders = {}, lines = {} },
+        annotationNote = nil,
+        mode = mode or "edit",
+        activePhase = "all",
+        rawMode = false,
+        showOnlyMine = false,
+        editingReminder = nil,
+    }
+
+    if name then
+        local parsed, err = PRT.NotesParser:Parse(text or "")
+        if not err and parsed then
+            state.parsedNote = parsed
+        end
+        state.encounterName = state.parsedNote.name
+            or (state.parsedNote.encounterID and tostring(state.parsedNote.encounterID))
+            or ""
+        state.difficulty = state.parsedNote.difficulty
+
+        local annText = PRT.Notes:GetAnnotation(name)
+        if annText then
+            local annParsed = PRT.NotesParser:Parse(annText)
+            if annParsed then
+                state.annotationNote = annParsed
+                state.parsedNote = PRT.NotesMerge:Merge(state.parsedNote, annParsed)
+            end
+        end
+    end
+
+    modeBar.showMineCheck:SetChecked(false)
+    if state.mode == "annotate" then
+        modeBar.showMineCheck:Show()
+        modeBar.rawBtn:Hide()
+        frame:SetTitle("Annotate Note")
+    else
+        modeBar.showMineCheck:Hide()
+        modeBar.rawBtn:Show()
+        frame:SetTitle("Edit Note")
+    end
+
+    rawPanel:Hide()
+    timelineArea:Show()
+    phaseTabs:Show()
+    modeBar.rawBtn:SetText("Show Raw Text")
+
+    RestoreEditorPosition()
+    frame:Show()
+    self:Render()
+
+    if not name then
+        titleBar.nameText:Hide()
+        titleBar.nameEdit:SetText("")
+        titleBar.nameEdit:Show()
+        titleBar.nameEdit:SetFocus()
+    end
+end
+
+function NotesEditor:Close()
+    if not frame then
+        return
+    end
+    frame:Hide()
+end
+
+function NotesEditor:IsOpen()
+    return frame ~= nil and frame:IsShown()
+end

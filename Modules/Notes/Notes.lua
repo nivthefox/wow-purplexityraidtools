@@ -48,6 +48,7 @@ PRT.defaults.notes = {
     -- MergeDefaults. "No active note" is simply the absence of this key.
     savedNotes = {},  -- NEVER seed a sample note here: MergeDefaults would
                       -- deep-copy it into every profile permanently.
+    annotations = {},
     display = {
         showOnlyMine = true,
         hideExpired = true,
@@ -88,6 +89,9 @@ local function GetNotesStore()
     if not profile.notes.savedNotes then
         profile.notes.savedNotes = {}
     end
+    if not profile.notes.annotations then
+        profile.notes.annotations = {}
+    end
     return profile.notes
 end
 
@@ -103,7 +107,32 @@ function Notes:SaveNote(name, text)
         end
     end
     local store = GetNotesStore()
-    store.savedNotes[name] = { text = text }
+    store.savedNotes[name] = text
+    return true
+end
+
+function Notes:SaveAnnotation(name, text)
+    if not name then return false end
+    if PRT.NotesParser then
+        local _, err = PRT.NotesParser:Parse(text or "")
+        if err then
+            return false, err
+        end
+    end
+    local store = GetNotesStore()
+    store.annotations[name] = text
+    return true
+end
+
+function Notes:GetAnnotation(name)
+    local store = GetNotesStore()
+    return store.annotations[name]
+end
+
+function Notes:DeleteAnnotation(name)
+    local store = GetNotesStore()
+    if not store.annotations[name] then return false end
+    store.annotations[name] = nil
     return true
 end
 
@@ -111,6 +140,7 @@ function Notes:DeleteNote(name)
     local store = GetNotesStore()
     if not store.savedNotes[name] then return false end
     store.savedNotes[name] = nil
+    store.annotations[name] = nil
     if store.activeNote == name then
         store.activeNote = nil
     end
@@ -124,6 +154,10 @@ function Notes:RenameNote(oldName, newName)
     if store.savedNotes[newName] then return false end
     store.savedNotes[newName] = store.savedNotes[oldName]
     store.savedNotes[oldName] = nil
+    if store.annotations[oldName] then
+        store.annotations[newName] = store.annotations[oldName]
+        store.annotations[oldName] = nil
+    end
     if store.activeNote == oldName then
         store.activeNote = newName
     end
@@ -500,7 +534,7 @@ function Notes:BroadcastNote(name)
         PRT.NotesFrame:Show()
         return true
     end
-    PRT.Comms:Send(SEND_MSG_TYPE, { name = name, text = note.text }, "RAID")
+    PRT.Comms:Send(SEND_MSG_TYPE, { name = name, text = note }, "RAID")
     return true
 end
 
@@ -570,20 +604,29 @@ function Notes:OnActiveNoteChanged()
     if not (PRT.NotesParser and PRT.NotesTags) then
         return
     end
-    local _, stored = self:GetActiveNote()
+    local name, stored = self:GetActiveNote()
     if not stored then
         activeNote = nil
         PRT.NotesFrame:SetNote(nil)
         return
     end
-    -- Stored notes are pre-validated by SaveNote, so err is theoretical; treat
-    -- it as no note.
-    local parsed, err = PRT.NotesParser:Parse(stored.text or "")
+    local parsed, err = PRT.NotesParser:Parse(stored or "")
     if err then
         activeNote = nil
         PRT.NotesFrame:SetNote(nil)
         return
     end
+
+    if PRT.NotesMerge and name then
+        local annotationText = self:GetAnnotation(name)
+        if annotationText then
+            local parsedAnnotation = PRT.NotesParser:Parse(annotationText)
+            if parsedAnnotation then
+                parsed = PRT.NotesMerge:Merge(parsed, parsedAnnotation)
+            end
+        end
+    end
+
     activeNote = parsed
     PRT.NotesTags.MarkRelevance(activeNote, BuildPlayerCtx())
     PRT.NotesFrame:SetNote(activeNote)

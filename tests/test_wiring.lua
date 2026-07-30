@@ -91,7 +91,7 @@ local CTX_GLOBALS = {
 
 -- Reset the fake profile's notes table to a known-empty state.
 local function resetNotes()
-    PRT.Profiles.current.notes = { savedNotes = {} }
+    PRT.Profiles.current.notes = { savedNotes = {}, annotations = {} }
     return PRT.Profiles.current.notes
 end
 
@@ -470,7 +470,7 @@ tests["receive: privileged sender + valid note stores, activates, and Shows"] = 
 
         local store = PRT.Profiles.current.notes
         assertNotNil(store.savedNotes["Alpha"], "note must be stored")
-        assertEquals(store.savedNotes["Alpha"].text, VALID_NOTE_TEXT)
+        assertEquals(store.savedNotes["Alpha"], VALID_NOTE_TEXT)
         assertEquals(store.activeNote, "Alpha", "received note must be activated")
         assertTrue(frameSpy.showCount >= 1, "frame must be Shown for a received note")
     end)
@@ -544,6 +544,106 @@ tests["receive: clear from an unprivileged sender is ignored (no deactivate, no 
         assertEquals(PRT.Profiles.current.notes.activeNote, "Alpha",
             "an unprivileged clear must not deactivate")
         assertEquals(frameSpy.hideCount, 0, "an unprivileged clear must not Hide the frame")
+    end)
+end
+
+--------------------------------------------------------------------------------
+-- Merge integration: OnActiveNoteChanged merges annotations
+--------------------------------------------------------------------------------
+
+if not PurplexityRaidTools.NotesMerge then
+    dofile("Modules/Notes/NotesMerge.lua")
+end
+
+local CANONICAL_WITH_REMINDER =
+    "EncounterID:3176;Name:Sszorak\ntime:30;tag:everyone;text:Spirit Link"
+
+local ANNOTATION_OVERRIDE =
+    "EncounterID:3176\ntime:30;tag:PlayerOne;text:Spirit Link;displaytype:Bar;sound:RaidWarning"
+
+local ANNOTATION_PERSONAL =
+    "EncounterID:3176\ntime:45;tag:PlayerOne;text:Use Healthstone"
+
+tests["activate note with annotations merges them into the frame note"] = function()
+    withGlobals(RECEIVE_GLOBALS, function()
+        local frameSpy = installReceiveHarness()
+
+        Notes:SaveNote("Alpha", CANONICAL_WITH_REMINDER)
+        Notes:SaveAnnotation("Alpha", ANNOTATION_OVERRIDE)
+        Notes:ActivateNote("Alpha")
+
+        local lastNote = frameSpy.lastNote
+        assertNotNil(lastNote, "SetNote must have been called")
+        assertNotNil(lastNote.reminders, "merged note must have reminders")
+        local bucket = lastNote.reminders["1"]
+        assertNotNil(bucket, "phase 1 bucket must exist")
+        assertEquals(#bucket, 1)
+        assertEquals(bucket[1].displayType, "Bar")
+        assertEquals(bucket[1].sound, "RaidWarning")
+    end)
+end
+
+tests["activate note without annotations uses canonical note directly"] = function()
+    withGlobals(RECEIVE_GLOBALS, function()
+        local frameSpy = installReceiveHarness()
+
+        Notes:SaveNote("Alpha", CANONICAL_WITH_REMINDER)
+        Notes:ActivateNote("Alpha")
+
+        local lastNote = frameSpy.lastNote
+        assertNotNil(lastNote, "SetNote must have been called")
+        local bucket = lastNote.reminders["1"]
+        assertNotNil(bucket, "phase 1 bucket must exist")
+        assertEquals(#bucket, 1)
+        assertEquals(bucket[1].displayType, "Text")
+        assertNil(bucket[1].sound)
+    end)
+end
+
+tests["activate note with personal annotation injects personal reminder"] = function()
+    withGlobals(RECEIVE_GLOBALS, function()
+        local frameSpy = installReceiveHarness()
+
+        Notes:SaveNote("Alpha", CANONICAL_WITH_REMINDER)
+        Notes:SaveAnnotation("Alpha", ANNOTATION_PERSONAL)
+        Notes:ActivateNote("Alpha")
+
+        local lastNote = frameSpy.lastNote
+        assertNotNil(lastNote, "SetNote must have been called")
+        local bucket = lastNote.reminders["1"]
+        assertNotNil(bucket, "phase 1 bucket must exist")
+        assertEquals(#bucket, 2)
+
+        local foundPersonal = false
+        for _, r in ipairs(bucket) do
+            if r.text == "Use Healthstone" then
+                foundPersonal = true
+                assertTrue(r.isPersonal, "personal reminder must have isPersonal flag")
+            end
+        end
+        assertTrue(foundPersonal, "personal reminder must appear in merged result")
+    end)
+end
+
+tests["received note preserves existing annotations after re-broadcast"] = function()
+    withGlobals(RECEIVE_GLOBALS, function()
+        local frameSpy = installReceiveHarness()
+
+        Notes:SaveNote("Alpha", CANONICAL_WITH_REMINDER)
+        Notes:SaveAnnotation("Alpha", ANNOTATION_OVERRIDE)
+
+        local encoded = encode("note", { name = "Alpha", text = CANONICAL_WITH_REMINDER })
+        Comms:Dispatch(encoded, "Niv-Illidan")
+
+        local annotationText = Notes:GetAnnotation("Alpha")
+        assertNotNil(annotationText, "annotations must survive a re-broadcast")
+        assertEquals(annotationText, ANNOTATION_OVERRIDE)
+
+        local lastNote = frameSpy.lastNote
+        assertNotNil(lastNote)
+        local bucket = lastNote.reminders["1"]
+        assertEquals(bucket[1].displayType, "Bar",
+            "annotation override must be applied after re-broadcast activates")
     end)
 end
 

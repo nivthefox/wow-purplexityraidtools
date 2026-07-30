@@ -14,6 +14,7 @@ local GRID_INTERVAL = 30
 local TICK_INTERVAL = 5
 local TICK_LABEL_INTERVAL = 10
 local PHASE_PAD = 10
+local TOP_PAD = 6
 
 local DIFFICULTY_OPTIONS = {
     { name = "Normal",  value = "Normal" },
@@ -247,6 +248,13 @@ local function BuildPlayerCtx()
         specID = GetSpecializationInfo(specIndex)
     end
 
+    if (not role or role == "NONE") and specIndex then
+        local specRole = GetSpecializationRole(specIndex)
+        if specRole and specRole ~= "NONE" then
+            role = specRole
+        end
+    end
+
     local subgroup = 1
     if IsInRaid() then
         for i = 1, GetNumGroupMembers() do
@@ -323,16 +331,16 @@ local function TimeToY(time, phaseNum, phases, activePhase)
     if activePhase == "all" then
         for _, p in ipairs(phases) do
             if p.num == phaseNum then
-                return (p.start + time) * VPPS
+                return (p.start + time) * VPPS + TOP_PAD
             end
         end
-        return time * VPPS
+        return time * VPPS + TOP_PAD
     end
-    return time * VPPS
+    return time * VPPS + TOP_PAD
 end
 
 local function YToTimeAndPhase(y, phases, activePhase)
-    local absTime = y / VPPS
+    local absTime = (y - TOP_PAD) / VPPS
     if activePhase == "all" then
         for i = #phases, 1, -1 do
             if absTime >= phases[i].start then
@@ -368,11 +376,20 @@ local function CollectReminders(parsedNote, activePhase)
     if not parsedNote or not parsedNote.reminders then
         return {}
     end
+
+    local phaseKeys = {}
+    for phaseKey in pairs(parsedNote.reminders) do
+        phaseKeys[#phaseKeys + 1] = phaseKey
+    end
+    table.sort(phaseKeys, function(a, b)
+        return (tonumber(a) or 0) < (tonumber(b) or 0)
+    end)
+
     local result = {}
-    for phaseKey, bucket in pairs(parsedNote.reminders) do
+    for _, phaseKey in ipairs(phaseKeys) do
         local num = tonumber(phaseKey)
         if activePhase == "all" or num == activePhase then
-            for _, r in ipairs(bucket) do
+            for _, r in ipairs(parsedNote.reminders[phaseKey]) do
                 result[#result + 1] = r
             end
         end
@@ -441,7 +458,7 @@ end
 -- Frame creation
 --------------------------------------------------------------------------------
 
-local titleBar, modeBar, phaseTabs, timelineArea, rawPanel, editPanel
+local titleBar, modeBar, phaseTabs, timelineArea, editPanel
 local rulerFrame, bodyScroll, canvas, cursorLine, cursorLabel
 local blockPool = {}
 local gridPool = {}
@@ -625,6 +642,7 @@ local function CreateFieldDropdown(parent, labelText, getItems, onSelect)
 
     function dropdown:SetValue(value)
         self.currentValue = value
+        self:GenerateMenu()
     end
 
     function dropdown:GetValue()
@@ -775,7 +793,37 @@ local function BuildEditPanel(parent)
     editFields.colorsLabel = AddLabel("COLORS")
     editFields.colors = AddInput()
 
-    scrollChild:SetHeight(math.abs(yOff) + 20)
+    panel.fieldRows = {
+        { label = panel.originalInfoLabel, field = panel.originalInfo, fieldHeight = 32 },
+        { label = editFields.phaseLabel, field = editFields.phase },
+        { label = editFields.timeLabel, field = editFields.time },
+        { label = editFields.whoLabel, field = editFields.who },
+        { label = editFields.abilityLabel, field = editFields.ability },
+        { label = editFields.displayTextLabel, field = editFields.displayText },
+        { label = editFields.durationLabel, field = editFields.duration },
+        { label = editFields.displayTypeLabel, field = editFields.displayType },
+        { label = editFields.soundLabel, field = editFields.sound },
+        { label = editFields.ttsLabel, field = editFields.tts },
+        { label = editFields.ttsTimerLabel, field = editFields.ttsTimer },
+        { label = editFields.countdownLabel, field = editFields.countdown },
+        { label = editFields.bossSpellLabel, field = editFields.bossSpell },
+        { label = editFields.colorsLabel, field = editFields.colors },
+    }
+
+    function panel:LayoutFields()
+        local y = 0
+        for _, row in ipairs(self.fieldRows) do
+            if row.label:IsShown() or row.field:IsShown() then
+                row.label:ClearAllPoints()
+                row.label:SetPoint("TOPLEFT", 4, y)
+                y = y - 14
+                row.field:ClearAllPoints()
+                row.field:SetPoint("TOPLEFT", 4, y)
+                y = y - (row.fieldHeight or 28)
+            end
+        end
+        scrollChild:SetHeight(math.abs(y) + 20)
+    end
 
     local footer = CreateFrame("Frame", nil, panel)
     footer:SetHeight(36)
@@ -845,7 +893,9 @@ local function BuildFrame()
     frame:SetScript("OnHide", function()
         SaveEditorPosition()
         editPanel:Hide()
-        state = {}
+        if not state.rawMode then
+            state = {}
+        end
     end)
 
     table.insert(UISpecialFrames, "PRT_NotesEditor")
@@ -905,40 +955,6 @@ local function BuildFrame()
     titleBar.encounterText = titleBar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     titleBar.encounterText:SetPoint("LEFT", titleBar.nameText, "RIGHT", 12, 0)
     titleBar.encounterText:SetTextColor(0.5, 0.5, 0.5)
-    titleBar.encounterText:EnableMouse(true)
-
-    titleBar.encounterEdit = CreateFrame("EditBox", nil, titleBar, "InputBoxTemplate")
-    titleBar.encounterEdit:SetSize(120, 20)
-    titleBar.encounterEdit:SetPoint("LEFT", titleBar.nameText, "RIGHT", 8, 0)
-    titleBar.encounterEdit:SetAutoFocus(false)
-    titleBar.encounterEdit:Hide()
-    titleBar.encounterEdit:SetScript("OnEnterPressed", function(self)
-        local val = self:GetText():match("^%s*(.-)%s*$")
-        if val and val ~= "" then
-            state.encounterName = val
-            local encId = tonumber(val) or val
-            if state.parsedNote then
-                state.parsedNote.encounterID = encId
-                state.parsedNote.name = val
-            end
-        end
-        self:Hide()
-        titleBar.encounterText:Show()
-        titleBar.encounterText:SetText(state.encounterName or "")
-        NotesEditor:SaveCurrentNote()
-    end)
-    titleBar.encounterEdit:SetScript("OnEscapePressed", function(self)
-        self:Hide()
-        titleBar.encounterText:Show()
-    end)
-
-    titleBar.encounterText:SetScript("OnMouseDown", function()
-        titleBar.encounterEdit:SetText(state.encounterName or "")
-        titleBar.encounterText:Hide()
-        titleBar.encounterEdit:Show()
-        titleBar.encounterEdit:SetFocus()
-        titleBar.encounterEdit:HighlightText()
-    end)
 
     titleBar.difficultyDropdown = CreateFieldDropdown(titleBar, "Difficulty",
         function() return DIFFICULTY_OPTIONS end,
@@ -958,26 +974,25 @@ local function BuildFrame()
     modeBar:SetPoint("TOPLEFT", titleBar, "BOTTOMLEFT", 0, -2)
     modeBar:SetPoint("TOPRIGHT", titleBar, "BOTTOMRIGHT", 0, -2)
 
-    modeBar.showMineCheck = CreateFrame("CheckButton", nil, modeBar, "SettingsCheckboxTemplate")
+    modeBar.showMineCheck = CreateFrame("CheckButton", nil, modeBar, "UICheckButtonTemplate")
+    modeBar.showMineCheck:SetSize(20, 20)
     modeBar.showMineCheck:SetPoint("LEFT", 8, 0)
-    modeBar.showMineCheck:SetText("Show Only Mine")
-    modeBar.showMineCheck:SetNormalFontObject(GameFontNormalSmall)
     modeBar.showMineCheck:SetScript("OnClick", function(self)
         state.showOnlyMine = self:GetChecked()
         NotesEditor:Render()
     end)
 
+    modeBar.showMineLabel = modeBar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    modeBar.showMineLabel:SetPoint("LEFT", modeBar.showMineCheck, "RIGHT", 2, 0)
+    modeBar.showMineLabel:SetText("Show Only Mine")
+
     modeBar.rawBtn = CreateFrame("Button", nil, modeBar, "UIPanelButtonTemplate")
     modeBar.rawBtn:SetSize(110, 20)
     modeBar.rawBtn:SetPoint("RIGHT", -8, 0)
-    modeBar.rawBtn:SetText("Show Raw Text")
+    modeBar.rawBtn:SetText("Import")
     modeBar.rawBtn:SetScript("OnClick", function()
-        state.rawMode = not state.rawMode
-        if state.rawMode then
-            NotesEditor:ShowRawMode()
-        else
-            NotesEditor:HideRawMode()
-        end
+        state.rawMode = true
+        NotesEditor:ShowRawMode()
     end)
 
     -- Phase tabs
@@ -990,7 +1005,6 @@ local function BuildFrame()
     timelineArea = CreateFrame("Frame", nil, frame)
     timelineArea:SetPoint("TOPLEFT", phaseTabs, "BOTTOMLEFT", 0, -2)
     timelineArea:SetPoint("BOTTOMRIGHT", -6, 6)
-    timelineArea:SetClipsChildren(true)
 
     rulerFrame = CreateFrame("Frame", nil, timelineArea, "BackdropTemplate")
     rulerFrame:SetWidth(RULER_WIDTH)
@@ -1006,7 +1020,7 @@ local function BuildFrame()
     bodyScroll:SetPoint("BOTTOMRIGHT", -26, 0)
 
     canvas = CreateFrame("Frame", nil, bodyScroll)
-    canvas:SetWidth(1)
+    canvas:SetSize(400, 2000)
     bodyScroll:SetScrollChild(canvas)
 
     canvas:EnableMouse(true)
@@ -1031,21 +1045,12 @@ local function BuildFrame()
     cursorLabel:SetTextColor(0.94, 0.75, 0.25, 1)
     cursorLabel:Hide()
 
-    bodyScroll:SetScript("OnScrollRangeChanged", function()
+    bodyScroll:HookScript("OnScrollRangeChanged", function()
         NotesEditor:SyncRuler()
     end)
 
     bodyScroll:HookScript("OnVerticalScroll", function()
         NotesEditor:SyncRuler()
-    end)
-
-    canvas:SetScript("OnEnter", function()
-        cursorLine:Show()
-        cursorLabel:Show()
-    end)
-    canvas:SetScript("OnLeave", function()
-        cursorLine:Hide()
-        cursorLabel:Hide()
     end)
 
     local cursorUpdateFrame = CreateFrame("Frame", nil, canvas)
@@ -1067,42 +1072,6 @@ local function BuildFrame()
         cursorLabel:SetPoint("TOPLEFT", canvas, "TOPLEFT", 4, -(y + 2))
         cursorLabel:SetText(FormatTime(time))
     end)
-
-    -- Raw text panel
-    rawPanel = {}
-
-    local rawScroll = CreateFrame("ScrollFrame", nil, frame, "UIPanelScrollFrameTemplate")
-    rawScroll:SetPoint("TOPLEFT", 12, -80)
-    rawScroll:SetPoint("BOTTOMRIGHT", -32, 30)
-    rawScroll:Hide()
-    rawPanel.scrollFrame = rawScroll
-
-    rawPanel.textBox = CreateFrame("EditBox", nil, rawScroll)
-    rawPanel.textBox:SetMultiLine(true)
-    rawPanel.textBox:SetMaxLetters(0)
-    rawPanel.textBox:SetFontObject(ChatFontNormal)
-    rawPanel.textBox:SetWidth(rawScroll:GetWidth() - 20)
-    rawPanel.textBox:SetAutoFocus(false)
-    rawPanel.textBox:SetScript("OnEscapePressed", function(self)
-        self:ClearFocus()
-    end)
-    rawScroll:SetScrollChild(rawPanel.textBox)
-
-    rawPanel.errorText = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    rawPanel.errorText:SetPoint("BOTTOMLEFT", 12, 10)
-    rawPanel.errorText:SetPoint("RIGHT", -12, 0)
-    rawPanel.errorText:SetJustifyH("LEFT")
-    rawPanel.errorText:SetTextColor(1, 0.3, 0.3, 1)
-    rawPanel.errorText:Hide()
-
-    function rawPanel:Show()
-        self.scrollFrame:Show()
-        self.errorText:Show()
-    end
-    function rawPanel:Hide()
-        self.scrollFrame:Hide()
-        self.errorText:Hide()
-    end
 
     -- Edit panel
     editPanel = BuildEditPanel(frame)
@@ -1197,17 +1166,13 @@ function NotesEditor:RenderTimeline()
 
     local phases = DerivePhases(state.parsedNote)
     local totalDur = TotalDuration(phases, state.activePhase)
-    local canvasHeight = totalDur * VPPS + 20
+    local canvasHeight = totalDur * VPPS + TOP_PAD + 20
     canvas:SetHeight(canvasHeight)
     canvas:SetWidth(bodyScroll:GetWidth() - 26)
+    bodyScroll:UpdateScrollChildRect()
 
     for t = GRID_INTERVAL, totalDur, GRID_INTERVAL do
-        local y
-        if state.activePhase == "all" then
-            y = t * VPPS
-        else
-            y = t * VPPS
-        end
+        local y = t * VPPS + TOP_PAD
         local line = GetFromPool(gridPool, function()
             return CreateGridLine(canvas)
         end)
@@ -1219,7 +1184,7 @@ function NotesEditor:RenderTimeline()
     if state.activePhase == "all" then
         for i, phase in ipairs(phases) do
             if i > 1 then
-                local y = phase.start * VPPS
+                local y = phase.start * VPPS + TOP_PAD
                 local divider = GetFromPool(phaseDividerPool, function()
                     return CreatePhaseDivider(canvas)
                 end)
@@ -1232,9 +1197,13 @@ function NotesEditor:RenderTimeline()
     end
 
     if state.activePhase == "all" then
-        for _, phase in ipairs(phases) do
+        for pi, phase in ipairs(phases) do
+            local isLast = (pi == #phases)
             for t = 0, phase.duration, TICK_INTERVAL do
-                local y = (phase.start + t) * VPPS
+                if not isLast and t == phase.duration then
+                    -- skip boundary tick; next phase's 0:00 covers it
+                else
+                local y = (phase.start + t) * VPPS + TOP_PAD
                 if t % TICK_LABEL_INTERVAL == 0 then
                     local tick = GetFromPool(tickPool, function()
                         return CreateTick(rulerFrame)
@@ -1244,6 +1213,7 @@ function NotesEditor:RenderTimeline()
                     local scrollOffset = bodyScroll:GetVerticalScroll()
                     tick:SetPoint("TOPRIGHT", rulerFrame, "TOPRIGHT", -4, -(y - scrollOffset))
                     tick:Show()
+                end
                 end
             end
         end
@@ -1258,7 +1228,7 @@ function NotesEditor:RenderTimeline()
         local dur = phase and phase.duration or PHASE_PAD
         for t = 0, dur, TICK_INTERVAL do
             if t % TICK_LABEL_INTERVAL == 0 then
-                local y = t * VPPS
+                local y = t * VPPS + TOP_PAD
                 local tick = GetFromPool(tickPool, function()
                     return CreateTick(rulerFrame)
                 end)
@@ -1278,40 +1248,65 @@ function NotesEditor:RenderTimeline()
         playerCtx = BuildPlayerCtx()
     end
 
-    local timeSlots = {}
+    local columns = {}
+
+    local function blockHeight(reminder)
+        local dur = reminder.duration or 5
+        local h = dur * VPPS
+        if h < BLOCK_HEIGHT then
+            h = BLOCK_HEIGHT
+        end
+
+        if state.activePhase == "all" then
+            for _, p in ipairs(phases) do
+                if p.num == reminder.phase then
+                    local maxH = (p.duration - reminder.time) * VPPS
+                    if maxH > 0 and h > maxH then
+                        h = maxH
+                    end
+                    break
+                end
+            end
+        end
+
+        return h
+    end
+
+    local function findColumn(y, height)
+        local blockBottom = y + height + BLOCK_GAP
+        for col = 1, #columns do
+            if y >= columns[col] then
+                columns[col] = blockBottom
+                return col - 1
+            end
+        end
+        columns[#columns + 1] = blockBottom
+        return #columns - 1
+    end
+
     for _, r in ipairs(reminders) do
+        local shouldRender = true
         if state.mode == "annotate" and state.showOnlyMine then
             if not PRT.NotesTags.Matches(r.tag, playerCtx) and not r.isPersonal then
-                -- skip
-            else
-                local y = TimeToY(r.time, r.phase, phases, state.activePhase)
-                local key = tostring(y)
-                if not timeSlots[key] then
-                    timeSlots[key] = 0
-                end
-                local stackIdx = timeSlots[key]
-                timeSlots[key] = stackIdx + 1
-                NotesEditor:RenderBlock(r, y, stackIdx, phases, playerCtx)
+                shouldRender = false
             end
-        else
+        end
+        if shouldRender then
             local y = TimeToY(r.time, r.phase, phases, state.activePhase)
-            local key = tostring(y)
-            if not timeSlots[key] then
-                timeSlots[key] = 0
-            end
-            local stackIdx = timeSlots[key]
-            timeSlots[key] = stackIdx + 1
-            NotesEditor:RenderBlock(r, y, stackIdx, phases, playerCtx)
+            local h = blockHeight(r)
+            local stackIdx = findColumn(y, h)
+            NotesEditor:RenderBlock(r, y, stackIdx, h, phases, playerCtx)
         end
     end
 end
 
-function NotesEditor:RenderBlock(reminder, y, stackIdx, phases, playerCtx)
+function NotesEditor:RenderBlock(reminder, y, stackIdx, height, phases, playerCtx)
     local block = GetFromPool(blockPool, function()
         return CreateBlock(canvas)
     end)
 
     block:SetPoint("TOPLEFT", canvas, "TOPLEFT", stackIdx * (BLOCK_WIDTH + BLOCK_GAP), -y)
+    block:SetHeight(height)
     block:SetFrameLevel(canvas:GetFrameLevel() + 5)
 
     local r, g, b = ClassColorForTag(reminder.tag)
@@ -1367,9 +1362,11 @@ function NotesEditor:Render()
 
     if state.mode == "annotate" then
         modeBar.showMineCheck:Show()
+        modeBar.showMineLabel:Show()
         modeBar.rawBtn:Hide()
     else
         modeBar.showMineCheck:Hide()
+        modeBar.showMineLabel:Hide()
         modeBar.rawBtn:Show()
     end
 
@@ -1382,28 +1379,106 @@ function NotesEditor:Render()
 end
 
 --------------------------------------------------------------------------------
--- Raw text mode
+-- Raw text frame (separate window, built like NivUI's CreateTextAreaDialog)
 --------------------------------------------------------------------------------
 
-function NotesEditor:ShowRawMode()
-    state.rawMode = true
-    modeBar.rawBtn:SetText("Show Visual")
-    timelineArea:Hide()
-    editPanel:Hide()
-    phaseTabs:Hide()
-    rawPanel:Show()
-    rawPanel.errorText:SetText("")
+local rawFrame
 
-    local text = PRT.NotesSerializer:Serialize(state.parsedNote)
-    rawPanel.textBox:SetText(text or "")
+local function BuildRawFrame()
+    if rawFrame then
+        return
+    end
+
+    rawFrame = CreateFrame("Frame", "PRT_NotesRawEditor", UIParent, "ButtonFrameTemplate")
+    rawFrame:SetSize(600, 450)
+    rawFrame:SetPoint("CENTER")
+    rawFrame:SetFrameStrata("DIALOG")
+    rawFrame:SetToplevel(true)
+    rawFrame:Hide()
+
+    ButtonFrameTemplate_HidePortrait(rawFrame)
+    ButtonFrameTemplate_HideButtonBar(rawFrame)
+    rawFrame.Inset:Hide()
+    rawFrame:SetTitle("Import")
+
+    rawFrame:SetMovable(true)
+    rawFrame:SetClampedToScreen(true)
+    rawFrame:EnableMouse(true)
+    rawFrame:RegisterForDrag("LeftButton")
+    rawFrame:SetScript("OnDragStart", rawFrame.StartMoving)
+    rawFrame:SetScript("OnDragStop", function(self)
+        self:StopMovingOrSizing()
+        self:SetUserPlaced(false)
+    end)
+
+    rawFrame:SetScript("OnHide", function()
+        if not state.switchingToVisual then
+            state = {}
+        end
+    end)
+
+    local scrollFrame = CreateFrame("ScrollFrame", nil, rawFrame, "UIPanelScrollFrameTemplate")
+    scrollFrame:SetPoint("TOPLEFT", 12, -30)
+    scrollFrame:SetPoint("BOTTOMRIGHT", -32, 50)
+
+    local textBg = CreateFrame("Frame", nil, rawFrame, "BackdropTemplate")
+    textBg:SetPoint("TOPLEFT", scrollFrame, -4, 4)
+    textBg:SetPoint("BOTTOMRIGHT", scrollFrame, 26, -4)
+    textBg:SetBackdrop(BACKDROP_INFO)
+    textBg:SetBackdropColor(0, 0, 0, 0.5)
+    textBg:SetBackdropBorderColor(0.3, 0.3, 0.3, 0.8)
+    textBg:SetFrameLevel(rawFrame:GetFrameLevel() + 1)
+    textBg:EnableMouse(false)
+
+    local editBox = CreateFrame("EditBox", nil, scrollFrame)
+    editBox:SetMultiLine(true)
+    editBox:SetAutoFocus(false)
+    editBox:SetFontObject(ChatFontNormal)
+    editBox:SetWidth(scrollFrame:GetWidth() - 20)
+    editBox:SetScript("OnEscapePressed", function() rawFrame:Hide() end)
+    scrollFrame:SetScrollChild(editBox)
+    rawFrame.EditBox = editBox
+
+    rawFrame.errorText = rawFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    rawFrame.errorText:SetPoint("BOTTOMLEFT", 12, 30)
+    rawFrame.errorText:SetPoint("RIGHT", -12, 0)
+    rawFrame.errorText:SetJustifyH("LEFT")
+    rawFrame.errorText:SetTextColor(1, 0.3, 0.3, 1)
+
+    local saveBtn = CreateFrame("Button", nil, rawFrame, "UIPanelButtonTemplate")
+    saveBtn:SetSize(70, 24)
+    saveBtn:SetPoint("BOTTOMRIGHT", -12, 4)
+    saveBtn:SetText("Save")
+    saveBtn:SetScript("OnClick", function()
+        NotesEditor:SaveAndCloseRaw()
+    end)
+
+    local visualBtn = CreateFrame("Button", nil, rawFrame, "UIPanelButtonTemplate")
+    visualBtn:SetSize(70, 24)
+    visualBtn:SetPoint("RIGHT", saveBtn, "LEFT", -8, 0)
+    visualBtn:SetText("Edit")
+    visualBtn:SetScript("OnClick", function()
+        NotesEditor:SwitchToVisual()
+    end)
 end
 
-function NotesEditor:HideRawMode()
-    local rawText = rawPanel.textBox:GetText()
+function NotesEditor:ShowRawMode()
+    BuildRawFrame()
+
+    local text = PRT.NotesSerializer:Serialize(state.parsedNote)
+    rawFrame.EditBox:SetText(text or "")
+    rawFrame.errorText:SetText("")
+
+    frame:Hide()
+    rawFrame:Show()
+end
+
+function NotesEditor:SaveRawText()
+    local rawText = rawFrame.EditBox:GetText()
     local parsed, err = PRT.NotesParser:Parse(rawText)
     if err then
-        rawPanel.errorText:SetText(err)
-        return
+        rawFrame.errorText:SetText(err)
+        return false
     end
 
     state.rawMode = false
@@ -1411,20 +1486,35 @@ function NotesEditor:HideRawMode()
     state.encounterName = parsed.name or (parsed.encounterID and tostring(parsed.encounterID)) or ""
     state.difficulty = parsed.difficulty
 
-    modeBar.rawBtn:SetText("Show Raw Text")
-    rawPanel:Hide()
-    timelineArea:Show()
-    phaseTabs:Show()
-
     if state.noteName then
         local ok, saveErr = PRT.Notes:SaveNote(state.noteName, rawText)
         if ok then
             NotesEditor:NotifyConfigSaved(state.noteName)
         else
-            rawPanel.errorText:SetText(saveErr or "")
+            rawFrame.errorText:SetText(saveErr or "")
+            return false
         end
     end
 
+    return true
+end
+
+function NotesEditor:SaveAndCloseRaw()
+    if not self:SaveRawText() then
+        return
+    end
+    rawFrame:Hide()
+    state = {}
+end
+
+function NotesEditor:SwitchToVisual()
+    if not self:SaveRawText() then
+        return
+    end
+    state.switchingToVisual = true
+    rawFrame:Hide()
+    state.switchingToVisual = nil
+    frame:Show()
     self:Render()
 end
 
@@ -1493,6 +1583,7 @@ function NotesEditor:OpenAddPanel(time, phaseNum)
     editPanel.saveBtn:SetScript("OnClick", function()
         NotesEditor:SaveFromPanel()
     end)
+    editPanel:LayoutFields()
 end
 
 function NotesEditor:OpenEditPanel(reminder)
@@ -1503,7 +1594,7 @@ function NotesEditor:OpenEditPanel(reminder)
     if state.mode == "annotate" and not reminder.isPersonal then
         editPanel.headerText:SetText("Customize Alert")
         editPanel.deleteBtn:Hide()
-        editPanel.saveBtn:SetText("Save Annotation")
+        editPanel.saveBtn:SetText("Save")
         editPanel.originalInfoLabel:Show()
         editPanel.originalInfo:Show()
         editPanel.originalInfo:SetText(
@@ -1535,6 +1626,7 @@ function NotesEditor:OpenEditPanel(reminder)
         editPanel.saveBtn:SetScript("OnClick", function()
             NotesEditor:SaveAnnotationFromPanel()
         end)
+        editPanel:LayoutFields()
         return
     end
 
@@ -1606,6 +1698,7 @@ function NotesEditor:OpenEditPanel(reminder)
     editPanel.saveBtn:SetScript("OnClick", function()
         NotesEditor:SaveFromPanel()
     end)
+    editPanel:LayoutFields()
 end
 
 function NotesEditor:SaveFromPanel()
@@ -1966,18 +2059,21 @@ function NotesEditor:Open(name, text, mode)
     modeBar.showMineCheck:SetChecked(false)
     if state.mode == "annotate" then
         modeBar.showMineCheck:Show()
+        modeBar.showMineLabel:Show()
         modeBar.rawBtn:Hide()
         frame:SetTitle("Annotate Note")
     else
         modeBar.showMineCheck:Hide()
+        modeBar.showMineLabel:Hide()
         modeBar.rawBtn:Show()
         frame:SetTitle("Edit Note")
     end
 
-    rawPanel:Hide()
+    if rawFrame then
+        rawFrame:Hide()
+    end
     timelineArea:Show()
     phaseTabs:Show()
-    modeBar.rawBtn:SetText("Show Raw Text")
 
     RestoreEditorPosition()
     frame:Show()

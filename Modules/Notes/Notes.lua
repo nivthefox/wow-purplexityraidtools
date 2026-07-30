@@ -224,6 +224,13 @@ local function BuildPlayerCtx()
         specID = GetSpecializationInfo(specIndex)
     end
 
+    if (not role or role == "NONE") and specIndex then
+        local specRole = GetSpecializationRole(specIndex)
+        if specRole and specRole ~= "NONE" then
+            role = specRole
+        end
+    end
+
     local subgroup
     if IsInRaid() then
         for i = 1, GetNumGroupMembers() do

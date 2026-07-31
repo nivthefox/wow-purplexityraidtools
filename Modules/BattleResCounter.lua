@@ -77,13 +77,19 @@ local function CreateWidget()
     end
     frame.cooldown = cooldown
 
-    local countText = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    countText:SetPoint("BOTTOMRIGHT", -2, 2)
+    local textOverlay = CreateFrame("Frame", nil, frame)
+    textOverlay:SetAllPoints()
+    textOverlay:SetFrameLevel(cooldown:GetFrameLevel() + 1)
+
+    local countText = textOverlay:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    countText:SetPoint("BOTTOMRIGHT", -5, 5)
+    countText:SetTextColor(1, 1, 1)
     countText:Hide()
     frame.countText = countText
 
-    local timerText = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local timerText = textOverlay:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     timerText:SetPoint("CENTER", 0, 0)
+    timerText:SetTextColor(1, 1, 1)
     timerText:Hide()
     frame.timerText = timerText
 

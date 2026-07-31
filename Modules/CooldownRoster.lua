@@ -121,29 +121,30 @@ local function BarOnUpdate(bar)
     end
 end
 
---- OnUpdate handler for the battle res summary bar. Reads charge state from
---- BattleResCounter rather than CooldownTracker.
 local function BattleResBarOnUpdate(bar)
     local brc = PRT.BattleResCounter
     if not brc then return end
+
     local brCharges, brInEncounter = brc:GetChargeState()
-    if brInEncounter then
-        local label = "Battle Res "
-        if brCharges == 0 then
-            label = label .. "|cffff0000(0)|r"
-        else
-            label = label .. "(" .. brCharges .. ")"
-        end
-        bar.spellText:SetText(label)
-        local timer = brc:GetTimerText()
-        if timer ~= "" then
-            bar.countdownText:SetText(timer)
-            bar.countdownText:Show()
-        else
-            bar.countdownText:Hide()
-        end
-    else
+    if not brInEncounter then
         bar.spellText:SetText("Battle Res")
+        bar.countdownText:Hide()
+        return
+    end
+
+    local label = "Battle Res "
+    if brCharges == 0 then
+        label = label .. "|cffff0000(0)|r"
+    else
+        label = label .. "(" .. brCharges .. ")"
+    end
+    bar.spellText:SetText(label)
+
+    local timer = brc:GetTimerText()
+    if timer ~= "" then
+        bar.countdownText:SetText(timer)
+        bar.countdownText:Show()
+    else
         bar.countdownText:Hide()
     end
 end
@@ -203,7 +204,6 @@ function CooldownRoster:RebuildRoster()
         end
     end
 
-    -- Inject battle res row if BattleResCounter is active and roster row enabled
     if PRT.BattleResCounter and PRT.BattleResCounter.active then
         local brSettings = PRT:GetSetting("battleResCounter")
         if brSettings and brSettings.rosterRowEnabled then
@@ -217,7 +217,6 @@ function CooldownRoster:RebuildRoster()
         end
     end
 
-    -- Sort: category order, then sortBottom last, then spell name, then player name
     table.sort(rosterCooldowns, function(a, b)
         local orderA = CATEGORY_INFO[a.category] and CATEGORY_INFO[a.category].order or 99
         local orderB = CATEGORY_INFO[b.category] and CATEGORY_INFO[b.category].order or 99
@@ -522,7 +521,6 @@ function CooldownRoster:UpdateDisplay()
                 bar.spellText:SetText(entry.name)
 
                 if entry.isBattleRes then
-                    -- Battle res summary row: no player, custom OnUpdate
                     bar.playerText:SetText("")
                     bar.statusBar:Hide()
                     bar.trackerState = nil

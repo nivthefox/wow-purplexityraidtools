@@ -121,6 +121,33 @@ local function BarOnUpdate(bar)
     end
 end
 
+--- OnUpdate handler for the battle res summary bar. Reads charge state from
+--- BattleResCounter rather than CooldownTracker.
+local function BattleResBarOnUpdate(bar)
+    local brc = PRT.BattleResCounter
+    if not brc then return end
+    local brCharges, brInEncounter = brc:GetChargeState()
+    if brInEncounter then
+        local label = "Battle Res "
+        if brCharges == 0 then
+            label = label .. "|cffff0000(0)|r"
+        else
+            label = label .. "(" .. brCharges .. ")"
+        end
+        bar.spellText:SetText(label)
+        local timer = brc:GetTimerText()
+        if timer ~= "" then
+            bar.countdownText:SetText(timer)
+            bar.countdownText:Show()
+        else
+            bar.countdownText:Hide()
+        end
+    else
+        bar.spellText:SetText("Battle Res")
+        bar.countdownText:Hide()
+    end
+end
+
 --- Return the display category for an ability based on its flags, or nil if it
 --- does not belong in any CooldownRoster category.
 local function GetAbilityCategory(ability)
@@ -176,13 +203,28 @@ function CooldownRoster:RebuildRoster()
         end
     end
 
-    -- Sort: category order, then spell name, then player name
+    -- Inject battle res row if BattleResCounter is active and roster row enabled
+    if PRT.BattleResCounter and PRT.BattleResCounter.active then
+        local brSettings = PRT:GetSetting("battleResCounter")
+        if brSettings and brSettings.rosterRowEnabled then
+            table.insert(rosterCooldowns, {
+                spellId = 20484,
+                name = "Battle Res",
+                category = "external",
+                isBattleRes = true,
+                sortBottom = true,
+            })
+        end
+    end
+
+    -- Sort: category order, then sortBottom last, then spell name, then player name
     table.sort(rosterCooldowns, function(a, b)
         local orderA = CATEGORY_INFO[a.category] and CATEGORY_INFO[a.category].order or 99
         local orderB = CATEGORY_INFO[b.category] and CATEGORY_INFO[b.category].order or 99
         if orderA ~= orderB then return orderA < orderB end
+        if a.sortBottom ~= b.sortBottom then return not a.sortBottom end
         if a.name ~= b.name then return a.name < b.name end
-        return a.playerName < b.playerName
+        return (a.playerName or "") < (b.playerName or "")
     end)
 
     -- Build a talent map compatible with CooldownTracker:OnRosterChanged
@@ -479,27 +521,36 @@ function CooldownRoster:UpdateDisplay()
                 bar.icon:SetTexture(C_Spell.GetSpellTexture(entry.spellId))
                 bar.spellText:SetText(entry.name)
 
-                local classColor = RAID_CLASS_COLORS[entry.playerClass]
-                if classColor then
-                    bar.playerText:SetText(classColor:WrapTextInColorCode(entry.playerName))
-                else
-                    bar.playerText:SetText(entry.playerName)
-                end
-
-                -- For trackable abilities with usage tracking enabled, always
-                -- attach OnUpdate so we pick up state changes from the tracker
-                -- in real time. BarOnUpdate handles show/hide based on state.
-                local trackingEnabled = settings and settings.usageTracking
-                    and settings.usageTracking.enabled
-                if trackingEnabled and PRT.CooldownTracker:IsTrackable(entry.spellId) then
-                    bar.trackerState = nil  -- force a visual refresh on next OnUpdate
-                    bar:SetScript("OnUpdate", BarOnUpdate)
-                else
+                if entry.isBattleRes then
+                    -- Battle res summary row: no player, custom OnUpdate
+                    bar.playerText:SetText("")
                     bar.statusBar:Hide()
-                    bar.countdownText:Hide()
                     bar.trackerState = nil
                     bar.lastCountdown = nil
-                    bar:SetScript("OnUpdate", nil)
+                    bar:SetScript("OnUpdate", BattleResBarOnUpdate)
+                else
+                    local classColor = RAID_CLASS_COLORS[entry.playerClass]
+                    if classColor then
+                        bar.playerText:SetText(classColor:WrapTextInColorCode(entry.playerName))
+                    else
+                        bar.playerText:SetText(entry.playerName)
+                    end
+
+                    -- For trackable abilities with usage tracking enabled, always
+                    -- attach OnUpdate so we pick up state changes from the tracker
+                    -- in real time. BarOnUpdate handles show/hide based on state.
+                    local trackingEnabled = settings and settings.usageTracking
+                        and settings.usageTracking.enabled
+                    if trackingEnabled and PRT.CooldownTracker:IsTrackable(entry.spellId) then
+                        bar.trackerState = nil  -- force a visual refresh on next OnUpdate
+                        bar:SetScript("OnUpdate", BarOnUpdate)
+                    else
+                        bar.statusBar:Hide()
+                        bar.countdownText:Hide()
+                        bar.trackerState = nil
+                        bar.lastCountdown = nil
+                        bar:SetScript("OnUpdate", nil)
+                    end
                 end
 
                 bar:ClearAllPoints()

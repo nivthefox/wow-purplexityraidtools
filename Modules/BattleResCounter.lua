@@ -140,7 +140,7 @@ local function UpdateWidget()
     if not widgetFrame then return end
 
     local settings = PRT:GetSetting("battleResCounter")
-    if not settings or not settings.widgetEnabled or not IsInRaid() then
+    if not settings or not settings.widgetEnabled or not (IsInGroup() or IsInRaid()) then
         widgetFrame:Hide()
         return
     end
@@ -164,10 +164,12 @@ local function SaveWidgetPosition()
         profile.battleResCounter = {}
     end
 
+    local point, _, relativePoint, x, y = widgetFrame:GetPoint(1)
     profile.battleResCounter.widgetPosition = {
-        point = "TOPLEFT",
-        x = widgetFrame:GetLeft(),
-        y = widgetFrame:GetTop() - UIParent:GetTop(),
+        point = point,
+        relativePoint = relativePoint,
+        x = x,
+        y = y,
     }
 end
 
@@ -179,7 +181,7 @@ local function RestoreWidgetPosition()
 
     local pos = settings and settings.widgetPosition
     if pos then
-        widgetFrame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", pos.x or 0, pos.y or 0)
+        widgetFrame:SetPoint(pos.point, UIParent, pos.relativePoint, pos.x or 0, pos.y or 0)
         return
     end
 
@@ -251,7 +253,7 @@ function BattleResCounter:GetEnabledSetting()
 end
 
 function BattleResCounter:IsActivatable()
-    return IsInRaid()
+    return IsInGroup() or IsInRaid()
 end
 
 function BattleResCounter:Initialize()

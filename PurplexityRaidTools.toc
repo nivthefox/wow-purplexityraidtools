@@ -21,6 +21,7 @@ Modules/GroupInspect.lua
 Modules/DontRelease.lua
 Modules/ReadyCheck.lua
 Modules/ReadyScreen.lua
+Modules/ReadyScreenFrame.lua
 Modules/AutoInvite.lua
 Modules/CooldownTracker.lua
 Modules/BattleResCounter.lua

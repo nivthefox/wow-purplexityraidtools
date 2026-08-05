@@ -6,12 +6,14 @@ PRT:RegisterModule("readyScreen", ReadyScreen)
 PRT.defaults.readyScreen = {
     enabled = true,
     autoDismiss = false,
+    position = nil,
 }
 
 local mode = "hidden"
 local responses = {}
 local autoDismissTimer = nil
 local readyCheckActive = false
+local auraRefreshPending = false
 
 function ReadyScreen.GetDisplayedState(isOffline, isDead, responseState)
     if isOffline then
@@ -175,6 +177,7 @@ function ReadyScreen:OnEnable()
     self.eventFrame:RegisterEvent("READY_CHECK_CONFIRM")
     self.eventFrame:RegisterEvent("READY_CHECK_FINISHED")
     self.eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
+    self.eventFrame:RegisterEvent("UNIT_AURA")
     self.eventFrame:SetScript("OnEvent", function(_, event, ...)
         if event == "READY_CHECK" then
             local settings = PRT:GetSetting("readyScreen")
@@ -188,6 +191,16 @@ function ReadyScreen:OnEnable()
         elseif event == "READY_CHECK_FINISHED" then
             if readyCheckActive then
                 ReadyScreen:OnReadyCheckFinished()
+            end
+        elseif event == "UNIT_AURA" then
+            if mode ~= "hidden" and not auraRefreshPending then
+                auraRefreshPending = true
+                C_Timer.After(0.1, function()
+                    auraRefreshPending = false
+                    if mode ~= "hidden" and PRT.ReadyScreenFrame and PRT.ReadyScreenFrame:IsShown() then
+                        PRT.ReadyScreenFrame:Refresh()
+                    end
+                end)
             end
         elseif event == "PLAYER_REGEN_DISABLED" then
             if mode ~= "hidden" then

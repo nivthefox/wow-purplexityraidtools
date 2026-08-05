@@ -15,11 +15,17 @@ local ROLE_ATLASES = {
     DAMAGER = "groupfinder-icon-role-large-dps",
 }
 
+-- Texture paths or verified atlas names. The old table passed the NAMES of
+-- Blizzard's READY_CHECK_*_TEXTURE Lua constants to SetAtlas, which threw
+-- "invalid atlas" and aborted Refresh before the ready column ever rendered.
 local READY_ICONS = {
-    ready = { atlas = "READY_CHECK_READY_TEXTURE" },
-    notready = { atlas = "READY_CHECK_NOT_READY_TEXTURE" },
-    dead = { texture = "Interface\\TargetingFrame\\UI-TargetingFrame-Skull" },
-    offline = { atlas = "disconnected" },
+    ready = { texture = "Interface\\RaidFrame\\ReadyCheck-Ready" },
+    notready = { texture = "Interface\\RaidFrame\\ReadyCheck-NotReady" },
+    pending = { texture = "Interface\\RaidFrame\\ReadyCheck-Waiting" },
+    dead = { atlas = "poi-graveyard-neutral" },
+    -- Disconnect-Icon's art is small inside a padded canvas; oversize it so the
+    -- visible plug matches the other icons. The padding overflow is transparent.
+    offline = { texture = "Interface\\CharacterFrame\\Disconnect-Icon", scale = 1.6 },
 }
 
 -- Question-mark icon shown when spell data has not loaded yet. A nil texture
@@ -142,7 +148,9 @@ local function LayoutRowColumns(row, showReady, buffCount)
 
     if showReady then
         row.readyIcon:ClearAllPoints()
-        row.readyIcon:SetPoint("LEFT", row, "LEFT", x + 2, 0)
+        -- Anchor by center so oversized entries (see READY_ICONS scale) stay
+        -- aligned with the column instead of growing rightward off the anchor.
+        row.readyIcon:SetPoint("CENTER", row, "LEFT", x + 2 + (COL_ICON_WIDTH - 4) / 2, 0)
         x = x + COL_ICON_WIDTH + COLUMN_PADDING
     end
 
@@ -496,6 +504,8 @@ function ReadyScreenFrame:Refresh()
                 else
                     row.readyIcon:SetTexture(iconInfo.texture)
                 end
+                local size = (COL_ICON_WIDTH - 4) * (iconInfo.scale or 1)
+                row.readyIcon:SetSize(size, size)
                 row.readyIcon:Show()
             else
                 row.readyIcon:Hide()

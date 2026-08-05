@@ -8,8 +8,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- **Battle Res Counter** with a standalone draggable icon widget (cooldown sweep, charge count, accrual timer) and a summary row at the bottom of the Cooldown Roster's Externals category. Active in any group.
-- **Addon Detection** that identifies which group members are also running PRT and what version they have, surfaced on GroupInspect's member data.
+- Battle Res Counter with a standalone draggable icon widget (cooldown sweep, charge count, accrual timer) and a summary row at the bottom of the Cooldown Roster's Externals category. Active in any group.
+- Addon Detection that identifies which group members are also running PRT and what version they have, surfaced on GroupInspect's member data.
+- Ready Screen that displays a table of group members with their spec, role, PRT version, ready check responses, raid buff coverage, and soulstone status. Works in any group size, polls live during active ready checks, and detects disconnects in real time.
+
+### Changed
+
+- Cooldown Tracker has been removed. Patch 12.1's aura secrecy makes tracking other players' cooldown usage impossible; the Cooldown Roster still shows available cooldowns but no longer displays live usage status bars.
+- Now compatible with both Patch 12.0 and Patch 12.1.
+
+### Fixed
+
+- Note broadcast and clear messages received during combat are now silently dropped.
+- Group roster now refreshes immediately on /reload instead of showing empty data until the next scan cycle.
+- Group members who reconnect now have their spec and version detected immediately instead of waiting up to 60 seconds.
 
 ## [1.0.0-beta-2] - 2026-07-30
 

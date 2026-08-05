@@ -16,6 +16,10 @@ local readyCheckActive = false
 local auraRefreshPending = false
 local readyCheckTicker = nil
 
+local function IsGroupUnit(unit)
+    return unit:match("^raid") or unit:match("^party") or unit == "player"
+end
+
 function ReadyScreen.GetDisplayedState(isOffline, isDead, responseState)
     if isOffline then
         return "offline"
@@ -226,7 +230,7 @@ function ReadyScreen:OnEnable()
             end
         elseif event == "UNIT_AURA" or event == "UNIT_FLAGS" then
             local unit = ...
-            if mode ~= "hidden" and unit and (unit:match("^raid") or unit:match("^party") or unit == "player") and not auraRefreshPending then
+            if mode ~= "hidden" and unit and IsGroupUnit(unit) and not auraRefreshPending then
                 auraRefreshPending = true
                 C_Timer.After(0.1, function()
                     auraRefreshPending = false

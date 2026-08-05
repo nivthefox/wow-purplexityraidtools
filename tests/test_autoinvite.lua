@@ -8,15 +8,11 @@
 -- (accepted members), which stayed low during the burst, so every invite went
 -- out as a party invite. The first four filled the party; the rest bounced.
 --
--- The fix (mirroring MRT's InviteTool): when a mass invite would exceed a party,
+-- The fix: when a mass invite would exceed a party,
 -- invite only enough to fill the party, flag for conversion, and flush the rest
 -- once GROUP_ROSTER_UPDATE reports the group is a raid.
 
 local tests = {}
-
---------------------------------------------------------------------------------
--- Load the module under test
---------------------------------------------------------------------------------
 
 if not PurplexityRaidTools.AutoInvite then
     dofile("Modules/AutoInvite.lua")
@@ -25,9 +21,6 @@ end
 local PRT = PurplexityRaidTools
 local AutoInvite = PRT.AutoInvite
 
---------------------------------------------------------------------------------
--- Simulation state
---------------------------------------------------------------------------------
 -- A tiny model of the WoW group/raid lifecycle. Invites are recorded rather
 -- than delivered; acceptance and party->raid conversion are driven explicitly
 -- by each test so timing is deterministic.
@@ -63,10 +56,6 @@ local function flushTimers()
     end
     sim.scheduled = {}
 end
-
---------------------------------------------------------------------------------
--- WoW API stubs for this suite
---------------------------------------------------------------------------------
 
 local function buildGuildRoster(count)
     local roster = {}
@@ -130,10 +119,6 @@ function PRT:IterateGroup()
     end
 end
 
---------------------------------------------------------------------------------
--- Harness
---------------------------------------------------------------------------------
-
 local function withGlobals(overrides, body)
     local saved = {}
     for k, v in pairs(overrides) do
@@ -170,10 +155,6 @@ local function accept(name)
     table.insert(sim.members, name)
     AutoInvite:OnGroupRosterUpdate()
 end
-
---------------------------------------------------------------------------------
--- Tests
---------------------------------------------------------------------------------
 
 -- The headline case: solo leader mass-invites more people than a party holds.
 -- The party must fill, convert to a raid, and then invite everyone else.

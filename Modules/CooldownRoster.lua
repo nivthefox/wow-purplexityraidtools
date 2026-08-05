@@ -1,12 +1,7 @@
--- CooldownRoster: Shows available raid cooldowns based on group composition
 local PRT = PurplexityRaidTools
 local CooldownRoster = {}
 PRT.CooldownRoster = CooldownRoster
 PRT:RegisterModule("cooldownRoster", CooldownRoster)
-
---------------------------------------------------------------------------------
--- Default Settings
---------------------------------------------------------------------------------
 
 PRT.defaults.cooldownRoster = {
     enabled = true,
@@ -24,28 +19,16 @@ PRT.defaults.cooldownRoster = {
     },
 }
 
---------------------------------------------------------------------------------
--- Flag-to-Category Mapping
---------------------------------------------------------------------------------
-
 local FLAG_TO_CATEGORY = {
     RAID_COOLDOWN       = "defensive",
     EXTERNAL_DEFENSIVE  = "external",
     RAID_MOVEMENT       = "movement",
 }
 
---------------------------------------------------------------------------------
--- Local State
---------------------------------------------------------------------------------
+local BATTLE_RES_SPELL_ID = 20484
 
 local rosterCooldowns = {}  -- computed array of {spellId, name, category, playerName, playerClass}
-
--- Display frames
-local categoryFrames = {}   -- keyed by category name
-
---------------------------------------------------------------------------------
--- Category Display Names
---------------------------------------------------------------------------------
+local categoryFrames = {}
 
 local CATEGORY_INFO = {
     defensive = { label = "Defensives", order = 1 },
@@ -53,9 +36,16 @@ local CATEGORY_INFO = {
     movement  = { label = "Movement",   order = 3 },
 }
 
---------------------------------------------------------------------------------
--- Helpers
---------------------------------------------------------------------------------
+local function OrderedCategoryKeys()
+    local keys = {}
+    for key in pairs(CATEGORY_INFO) do
+        table.insert(keys, key)
+    end
+    table.sort(keys, function(a, b)
+        return CATEGORY_INFO[a].order < CATEGORY_INFO[b].order
+    end)
+    return keys
+end
 
 local function BattleResBarOnUpdate(bar)
     local brc = PRT.BattleResCounter
@@ -100,50 +90,45 @@ local function GetAbilityCategory(ability)
     return nil
 end
 
---------------------------------------------------------------------------------
--- Roster Building
---------------------------------------------------------------------------------
+local function AddMemberCooldowns(member)
+    if not member.specId then
+        return
+    end
+
+    local specData = PRT.SpellData[member.specId]
+    if not specData or not specData.abilities then
+        return
+    end
+
+    for spellId, ability in pairs(specData.abilities) do
+        local category = GetAbilityCategory(ability)
+        -- With talent data, only show abilities in the player's talent set.
+        -- Before talents load, fall back to showing everything for the spec.
+        local known = not member.talents or member.talents[spellId]
+        if category and known then
+            table.insert(rosterCooldowns, {
+                spellId = spellId,
+                name = ability.name,
+                category = category,
+                playerName = member.name,
+                playerClass = member.class,
+            })
+        end
+    end
+end
 
 function CooldownRoster:RebuildRoster()
     rosterCooldowns = {}
 
-    for guid, member in pairs(PRT.GroupInspect.members) do
-        local specId = member.specId
-        if specId then
-            local specData = PRT.SpellData[specId]
-            if specData and specData.abilities then
-                for spellId, ability in pairs(specData.abilities) do
-                    local category = GetAbilityCategory(ability)
-                    if category then
-                        -- When talent data is available, only show the ability
-                        -- if its spellId appears in the player's talent set.
-                        -- If talents haven't loaded yet, fall back to showing
-                        -- everything for the spec.
-                        local show = true
-                        if member.talents then
-                            show = member.talents[spellId] or false
-                        end
-
-                        if show then
-                            table.insert(rosterCooldowns, {
-                                spellId = spellId,
-                                name = ability.name,
-                                category = category,
-                                playerName = member.name,
-                                playerClass = member.class,
-                            })
-                        end
-                    end
-                end
-            end
-        end
+    for _, member in pairs(PRT.GroupInspect.members) do
+        AddMemberCooldowns(member)
     end
 
     if PRT.BattleResCounter and PRT.BattleResCounter.active then
         local brSettings = PRT:GetSetting("battleResCounter")
         if brSettings and brSettings.rosterRowEnabled then
             table.insert(rosterCooldowns, {
-                spellId = 20484,
+                spellId = BATTLE_RES_SPELL_ID,
                 name = "Battle Res",
                 category = "external",
                 isBattleRes = true,
@@ -160,12 +145,7 @@ function CooldownRoster:RebuildRoster()
         if a.name ~= b.name then return a.name < b.name end
         return (a.playerName or "") < (b.playerName or "")
     end)
-
 end
-
---------------------------------------------------------------------------------
--- Display
---------------------------------------------------------------------------------
 
 local BAR_HEIGHT = 20
 local BAR_WIDTH = 200
@@ -190,14 +170,13 @@ local function CreateBar(parent)
     spellText:SetJustifyH("LEFT")
     bar.spellText = spellText
 
-    -- Countdown text (right side, used by the battle res row's recharge timer)
+    -- Right-aligned; used by the battle res row's recharge timer.
     local countdownText = bar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     countdownText:SetPoint("RIGHT", bar, "RIGHT", -4, 0)
     countdownText:SetJustifyH("RIGHT")
     countdownText:Hide()
     bar.countdownText = countdownText
 
-    -- Player text sits between spell and countdown
     local playerText = bar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     playerText:SetPoint("LEFT", spellText, "RIGHT", 4, 0)
     playerText:SetPoint("RIGHT", countdownText, "LEFT", -4, 0)
@@ -242,7 +221,6 @@ local function CreateCategoryFrame(categoryKey)
     header:SetText(info.label)
     frame.header = header
 
-    -- Resize handle on the right edge
     local resizeHandle = CreateFrame("Frame", nil, frame)
     resizeHandle:SetWidth(6)
     resizeHandle:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
@@ -321,7 +299,6 @@ local function SetupDragging(frame, categoryKey)
     end)
 
     frame:SetScript("OnSizeChanged", function(self)
-        -- Clamp to minimum width
         local minWidth = MIN_BAR_WIDTH + BACKDROP_PADDING * 2
         if self:GetWidth() < minWidth then
             self:SetWidth(minWidth)
@@ -388,74 +365,77 @@ function CooldownRoster:UpdateDragging()
     self:UpdateVisibility()
 end
 
+local function GatherCategoryEntries(categoryKey, categoryEnabled)
+    local entries = {}
+    if not categoryEnabled then
+        return entries
+    end
+    for _, entry in ipairs(rosterCooldowns) do
+        if entry.category == categoryKey then
+            table.insert(entries, entry)
+        end
+    end
+    return entries
+end
+
+local function ConfigureBar(bar, entry)
+    bar.spellId = entry.spellId
+    bar.icon:SetTexture(C_Spell.GetSpellTexture(entry.spellId))
+    bar.spellText:SetText(entry.name)
+
+    if entry.isBattleRes then
+        bar.playerText:SetText("")
+        bar:SetScript("OnUpdate", BattleResBarOnUpdate)
+        return
+    end
+
+    local classColor = RAID_CLASS_COLORS[entry.playerClass]
+    if classColor then
+        bar.playerText:SetText(classColor:WrapTextInColorCode(entry.playerName))
+    else
+        bar.playerText:SetText(entry.playerName)
+    end
+    bar.countdownText:Hide()
+    bar:SetScript("OnUpdate", nil)
+end
+
+local function ShowCategoryFrame(frame, entries)
+    while #frame.bars < #entries do
+        table.insert(frame.bars, CreateBar(frame))
+    end
+
+    for i, entry in ipairs(entries) do
+        local bar = frame.bars[i]
+        ConfigureBar(bar, entry)
+        bar:ClearAllPoints()
+        bar:SetPoint("TOPLEFT", frame, "TOPLEFT", BACKDROP_PADDING, -(HEADER_HEIGHT + BACKDROP_PADDING + (i - 1) * (BAR_HEIGHT + BAR_SPACING)))
+        bar:Show()
+    end
+
+    for i = #entries + 1, #frame.bars do
+        frame.bars[i]:Hide()
+    end
+
+    frame:SetHeight(HEADER_HEIGHT + #entries * (BAR_HEIGHT + BAR_SPACING) + BACKDROP_PADDING * 2)
+    UpdateBarWidths(frame)
+    frame:Show()
+end
+
 function CooldownRoster:UpdateDisplay()
     local settings = PRT:GetSetting("cooldownRoster")
+    local unlocked = settings and not settings.lockFrames
 
     for categoryKey, frame in pairs(categoryFrames) do
         local categoryEnabled = settings and settings.categories and settings.categories[categoryKey]
+        local entries = GatherCategoryEntries(categoryKey, categoryEnabled)
 
-        -- Gather entries for this category
-        local entries = {}
-        if categoryEnabled then
-            for _, entry in ipairs(rosterCooldowns) do
-                if entry.category == categoryKey then
-                    table.insert(entries, entry)
-                end
-            end
-        end
-
-        local unlocked = settings and not settings.lockFrames
         if not unlocked and (#entries == 0 or not self:ShouldDisplay()) then
             frame:Hide()
         else
-            -- Ensure we have enough bars
-            while #frame.bars < #entries do
-                table.insert(frame.bars, CreateBar(frame))
-            end
-
-            -- Configure and show bars
-            for i, entry in ipairs(entries) do
-                local bar = frame.bars[i]
-                bar.spellId = entry.spellId
-                bar.icon:SetTexture(C_Spell.GetSpellTexture(entry.spellId))
-                bar.spellText:SetText(entry.name)
-
-                if entry.isBattleRes then
-                    bar.playerText:SetText("")
-                    bar:SetScript("OnUpdate", BattleResBarOnUpdate)
-                else
-                    local classColor = RAID_CLASS_COLORS[entry.playerClass]
-                    if classColor then
-                        bar.playerText:SetText(classColor:WrapTextInColorCode(entry.playerName))
-                    else
-                        bar.playerText:SetText(entry.playerName)
-                    end
-                    bar.countdownText:Hide()
-                    bar:SetScript("OnUpdate", nil)
-                end
-
-                bar:ClearAllPoints()
-                bar:SetPoint("TOPLEFT", frame, "TOPLEFT", BACKDROP_PADDING, -(HEADER_HEIGHT + BACKDROP_PADDING + (i - 1) * (BAR_HEIGHT + BAR_SPACING)))
-                bar:Show()
-            end
-
-            -- Hide excess bars
-            for i = #entries + 1, #frame.bars do
-                frame.bars[i]:Hide()
-            end
-
-            -- Resize frame height to fit content, preserving current width
-            local contentHeight = HEADER_HEIGHT + #entries * (BAR_HEIGHT + BAR_SPACING) + BACKDROP_PADDING * 2
-            frame:SetHeight(contentHeight)
-            UpdateBarWidths(frame)
-            frame:Show()
+            ShowCategoryFrame(frame, entries)
         end
     end
 end
-
---------------------------------------------------------------------------------
--- Visibility Logic
---------------------------------------------------------------------------------
 
 function CooldownRoster:ShouldDisplay()
     local settings = PRT:GetSetting("cooldownRoster")
@@ -484,10 +464,6 @@ function CooldownRoster:UpdateVisibility()
     self:UpdateDisplay()
 end
 
---------------------------------------------------------------------------------
--- Event Handling
---------------------------------------------------------------------------------
-
 local function OnEvent(_, event)
     if event == "GROUP_ROSTER_UPDATE"
         or event == "ZONE_CHANGED_NEW_AREA"
@@ -496,21 +472,30 @@ local function OnEvent(_, event)
     end
 end
 
---------------------------------------------------------------------------------
--- Config UI
---------------------------------------------------------------------------------
-
 PRT:RegisterTab("Cooldown Roster", function(parent)
     local function GetSettings()
         return PRT:GetSetting("cooldownRoster")
     end
 
+    local function GetContentValue(settings, path)
+        local value = settings
+        for _, key in ipairs(path) do
+            value = value[key]
+        end
+        return value
+    end
+
+    local function SetContentValue(settings, path, value)
+        local node = settings
+        for i = 1, #path - 1 do
+            node = node[path[i]]
+        end
+        node[path[#path]] = value
+    end
+
     local ROW_HEIGHT = 24
 
     return PRT.Components.GetSubTabGroup(parent, {
-        -----------------------------------------------------------------
-        -- General sub-tab
-        -----------------------------------------------------------------
         {
             name = "General",
             setup = function(panel)
@@ -525,7 +510,6 @@ PRT:RegisterTab("Cooldown Roster", function(parent)
 
                 local yOffset = 0
 
-                -- General Section
                 local generalHeader = PRT.Components.GetHeader(scrollChild, "General")
                 generalHeader:SetPoint("TOPLEFT", 0, yOffset)
                 yOffset = yOffset - 28
@@ -546,7 +530,6 @@ PRT:RegisterTab("Cooldown Roster", function(parent)
                 lockCheckbox:SetValue(GetSettings().lockFrames)
                 yOffset = yOffset - ROW_HEIGHT
 
-                -- Categories Section
                 yOffset = yOffset - 10
                 local catHeader = PRT.Components.GetHeader(scrollChild, "Categories")
                 catHeader:SetPoint("TOPLEFT", 0, yOffset)
@@ -554,26 +537,19 @@ PRT:RegisterTab("Cooldown Roster", function(parent)
 
                 local categoryCheckboxes = {}
 
-                local catDefs = {
-                    { label = "Defensives", key = "defensive" },
-                    { label = "Externals",  key = "external" },
-                    { label = "Movement",   key = "movement" },
-                }
-
-                for _, def in ipairs(catDefs) do
-                    local checkbox = PRT.Components.GetCheckbox(scrollChild, def.label, function(value)
+                for _, key in ipairs(OrderedCategoryKeys()) do
+                    local checkbox = PRT.Components.GetCheckbox(scrollChild, CATEGORY_INFO[key].label, function(value)
                         local s = GetSettings()
                         if not s.categories then s.categories = {} end
-                        s.categories[def.key] = value
+                        s.categories[key] = value
                         PRT:ApplySettings("cooldownRoster")
                     end)
                     checkbox:SetPoint("TOPLEFT", 0, yOffset)
-                    checkbox:SetValue(GetSettings().categories[def.key])
-                    table.insert(categoryCheckboxes, { widget = checkbox, key = def.key })
+                    checkbox:SetValue(GetSettings().categories[key])
+                    table.insert(categoryCheckboxes, { widget = checkbox, key = key })
                     yOffset = yOffset - ROW_HEIGHT
                 end
 
-                -- Content Types Section
                 yOffset = yOffset - 10
                 local contentHeader = PRT.Components.GetHeader(scrollChild, "Show In")
                 contentHeader:SetPoint("TOPLEFT", 0, yOffset)
@@ -595,30 +571,16 @@ PRT:RegisterTab("Cooldown Roster", function(parent)
 
                 for i, info in ipairs(contentCheckboxes) do
                     local checkbox = PRT.Components.GetCheckbox(scrollChild, info.label, function(value)
-                        local settings = GetSettings()
-                        if #info.path == 2 then
-                            settings[info.path[1]][info.path[2]] = value
-                        else
-                            settings[info.path[1]][info.path[2]][info.path[3]] = value
-                        end
+                        SetContentValue(GetSettings(), info.path, value)
                         PRT:ApplySettings("cooldownRoster")
                     end)
                     checkbox:SetPoint("TOPLEFT", 0, yOffset)
                     contentCheckboxes[i].widget = checkbox
-
-                    local settings = GetSettings()
-                    local currentValue
-                    if #info.path == 2 then
-                        currentValue = settings[info.path[1]][info.path[2]]
-                    else
-                        currentValue = settings[info.path[1]][info.path[2]][info.path[3]]
-                    end
-                    checkbox:SetValue(currentValue)
+                    checkbox:SetValue(GetContentValue(GetSettings(), info.path))
 
                     yOffset = yOffset - ROW_HEIGHT
                 end
 
-                -- Refresh all widget values on show
                 panel:SetScript("OnShow", function()
                     local settings = GetSettings()
                     enabledCheckbox:SetValue(settings.enabled)
@@ -629,13 +591,7 @@ PRT:RegisterTab("Cooldown Roster", function(parent)
                     end
 
                     for _, info in ipairs(contentCheckboxes) do
-                        local currentValue
-                        if #info.path == 2 then
-                            currentValue = settings[info.path[1]][info.path[2]]
-                        else
-                            currentValue = settings[info.path[1]][info.path[2]][info.path[3]]
-                        end
-                        info.widget:SetValue(currentValue)
+                        info.widget:SetValue(GetContentValue(settings, info.path))
                     end
                 end)
             end,
@@ -643,31 +599,21 @@ PRT:RegisterTab("Cooldown Roster", function(parent)
     })
 end)
 
---------------------------------------------------------------------------------
--- Apply Callback
---------------------------------------------------------------------------------
-
 PRT:RegisterApplyCallback("cooldownRoster", function()
     CooldownRoster:UpdateVisibility()
 end)
 
---------------------------------------------------------------------------------
--- Initialization
---------------------------------------------------------------------------------
-
 function CooldownRoster:Initialize()
-    -- Clean up stale CooldownPrototype data
+    -- Clean up stale CooldownPrototype data left behind by removed versions.
     local profile = PRT.Profiles:GetCurrent()
     profile.cooldownPrototype = nil
 
-    -- Create category frames
-    for _, categoryKey in ipairs({"defensive", "external", "movement"}) do
+    for _, categoryKey in ipairs(OrderedCategoryKeys()) do
         categoryFrames[categoryKey] = CreateCategoryFrame(categoryKey)
         self:RestoreFramePosition(categoryKey)
         SetupDragging(categoryFrames[categoryKey], categoryKey)
     end
 
-    -- Listen for GroupInspect data changes
     PRT.GroupInspect:Listen(function()
         if CooldownRoster.active then
             CooldownRoster:RebuildRoster()

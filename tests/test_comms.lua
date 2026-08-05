@@ -42,14 +42,9 @@ dofile("Comms.lua")
 local PRT = PurplexityRaidTools
 local Comms = PRT.Comms
 
---------------------------------------------------------------------------------
--- Helpers
---------------------------------------------------------------------------------
-
 -- Build a raw ~10KB note string that contains UTF-8 multibyte sequences and the
--- pipe character "|", which WoW uses for color/texture escapes and which the
--- NSRT-format note syntax uses as a field delimiter. The encode pipeline must
--- survive both.
+-- pipe character "|", which WoW uses for color/texture escapes and which note
+-- text can contain. The encode pipeline must survive both.
 local function makeLargeNote()
     local parts = {}
     -- "héllo|wörld" is 13 bytes: h, é(2), l, l, o, |, w, ö(2), r, l, d.
@@ -80,10 +75,6 @@ local function withGlobals(overrides, body)
     end
 end
 
---------------------------------------------------------------------------------
--- Load safety (AceComm absent)
---------------------------------------------------------------------------------
-
 -- Comms.lua must have loaded above without AceComm-3.0 registered. Prove that
 -- LibStub genuinely has no AceComm instance in this environment, so the fact
 -- that dofile("Comms.lua") did not throw is meaningful.
@@ -94,10 +85,6 @@ tests["Comms loads headless without an AceComm-3.0 instance"] = function()
     assertNotNil(Comms.Encode)
     assertNotNil(Comms.Decode)
 end
-
---------------------------------------------------------------------------------
--- Encode / Decode round-trip
---------------------------------------------------------------------------------
 
 tests["encode then decode round-trips a table (deep equal)"] = function()
     local payload = {
@@ -129,10 +116,6 @@ tests["round-trips a large UTF-8 note containing pipe characters"] = function()
     assertEquals(decoded.data.text, big, "large note text must survive the round-trip byte-for-byte")
 end
 
---------------------------------------------------------------------------------
--- Versioning
---------------------------------------------------------------------------------
-
 tests["encoded payload carries version field v = 1"] = function()
     local encoded = Comms:Encode({ type = "note", data = "x" })
     local ok, decoded = Comms:Decode(encoded)
@@ -153,10 +136,6 @@ tests["decode of a payload with the wrong version is rejected"] = function()
     assertFalse(ok, "Decode must reject a payload whose version is not 1")
     -- No throw is implied by reaching this line.
 end
-
---------------------------------------------------------------------------------
--- Malformed input (Decode must never throw)
---------------------------------------------------------------------------------
 
 tests["decode of corrupted input returns ok=false without throwing"] = function()
     local good = Comms:Encode({ type = "note", data = "hello" })
@@ -191,10 +170,6 @@ tests["decode of a non-string returns ok=false without throwing"] = function()
     local okNil = Comms:Decode(nil)
     assertFalse(okNil, "Decode of nil must return ok=false")
 end
-
---------------------------------------------------------------------------------
--- Handler registration and dispatch
---------------------------------------------------------------------------------
 
 -- Decode+dispatch: the implementer decodes an incoming string, then routes the
 -- payload to the handler registered for payload.type, calling it with
@@ -257,10 +232,6 @@ tests["dispatch of corrupted input does not throw or call a handler"] = function
     Comms:Dispatch("!!!not a real payload!!!", "Niv-Illidan")
     assertFalse(called)
 end
-
---------------------------------------------------------------------------------
--- Send via injected transport
---------------------------------------------------------------------------------
 
 -- Transport must be injectable so it is testable without AceComm. Send encodes
 -- {v=1, type=msgType, data=data} and hands the encoded string to the injected
@@ -326,10 +297,6 @@ tests["Send round-trips through inject transport into a registered handler"] = f
     assertEquals(received.data.text, "big|note")
     assertEquals(received.sender, "Sender-Realm")
 end
-
---------------------------------------------------------------------------------
--- IsSenderPrivileged (spec 10.2.1)
---------------------------------------------------------------------------------
 
 -- Privileged = the sender is the raid leader / raid assistant (in a raid) or the
 -- party leader (in a party). The check must Ambiguate cross-realm "Name-Realm"

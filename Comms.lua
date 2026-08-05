@@ -22,10 +22,6 @@ Comms.handlers = {}
 -- tests replace this with a capturing function.
 Comms.sendFunc = nil
 
---------------------------------------------------------------------------------
--- Encode / Decode
---------------------------------------------------------------------------------
-
 function Comms:Encode(tbl)
     tbl.v = VERSION
     local serialized = LibSerialize:Serialize(tbl)
@@ -62,10 +58,6 @@ function Comms:Decode(str)
     return true, result
 end
 
---------------------------------------------------------------------------------
--- Handler registration and dispatch
---------------------------------------------------------------------------------
-
 function Comms:RegisterHandler(msgType, fn)
     self.handlers[msgType] = fn
 end
@@ -82,10 +74,6 @@ function Comms:Dispatch(encodedStr, sender)
     end
 end
 
---------------------------------------------------------------------------------
--- Send via injected transport
---------------------------------------------------------------------------------
-
 function Comms:Send(msgType, data, channel, target)
     local encoded = self:Encode({ type = msgType, data = data })
     if self.sendFunc then
@@ -93,11 +81,7 @@ function Comms:Send(msgType, data, channel, target)
     end
 end
 
---------------------------------------------------------------------------------
--- Privileged-sender check (spec 10.2.1)
---------------------------------------------------------------------------------
-
--- A sender is privileged when, in a raid, they are the raid leader or a raid
+-- Spec 10.2.1: a sender is privileged when, in a raid, they are the raid leader or a raid
 -- assistant; or, in a non-raid party, they are the party leader. The WoW
 -- group-leader APIs key on the ambiguated (realm-stripped) unit name, so strip
 -- the realm FIRST and pass the bare name to those APIs.
@@ -112,10 +96,6 @@ function Comms:IsSenderPrivileged(sender)
 
     return false
 end
-
---------------------------------------------------------------------------------
--- In-game AceComm wiring (gated behind AceComm's presence)
---------------------------------------------------------------------------------
 
 -- Silent lookup: absent under the headless harness, present in-game.
 local AceComm = LibStub("AceComm-3.0", true)

@@ -10,10 +10,6 @@ local PRT = PurplexityRaidTools
 local NotesFrame = {}
 PRT.NotesFrame = NotesFrame
 
---------------------------------------------------------------------------------
--- Constants
---------------------------------------------------------------------------------
-
 local FRAME_WIDTH = 280
 local FRAME_HEIGHT = 320
 local MIN_WIDTH = 160
@@ -34,20 +30,12 @@ local MARKER_SYMBOLS = {
 -- Countdown color-state thresholds (spec 7.1).
 local WARN_THRESHOLD = 10      -- 1..10s remaining uses the configurable countdown color
 
---------------------------------------------------------------------------------
--- Local state
---------------------------------------------------------------------------------
-
 local frame
 local rows = {}
 local rowCount = 0
 local nameColorMap = {}        -- lower-cased player name -> classFile
 local currentNote = nil
 local fadeTicker = nil
-
---------------------------------------------------------------------------------
--- Settings access
---------------------------------------------------------------------------------
 
 local function GetSettings()
     return PRT:GetSetting("notes")
@@ -69,10 +57,6 @@ local function ResolveFont(display)
     end
     return "Fonts\\FRIZQT__.TTF"
 end
-
---------------------------------------------------------------------------------
--- Roster / name coloring
---------------------------------------------------------------------------------
 
 -- Always includes the local player so coloring works outside a group.
 function NotesFrame:RebuildRoster()
@@ -132,10 +116,6 @@ local function FormatText(text)
     return ColorNames(ReplaceMarkers(text))
 end
 
---------------------------------------------------------------------------------
--- Time formatting
---------------------------------------------------------------------------------
-
 local function FormatTime(seconds)
     if not seconds or seconds < 0 then
         seconds = 0
@@ -145,10 +125,6 @@ local function FormatTime(seconds)
     local s = total % 60
     return string.format("%d:%02d", m, s)
 end
-
---------------------------------------------------------------------------------
--- Row pool
---------------------------------------------------------------------------------
 
 local function CreateRow(parent)
     local row = CreateFrame("Frame", nil, parent)
@@ -192,10 +168,6 @@ local function HideRowsFrom(from)
     end
 end
 
---------------------------------------------------------------------------------
--- Row styling / layout
---------------------------------------------------------------------------------
-
 local function SafeSetFont(fontString, fontPath, fontSize, outline)
     fontString:SetFont(fontPath, fontSize, outline)
     if not fontString:GetFont() then
@@ -218,10 +190,6 @@ local function LayoutRowBody(row, hasIcon, contentWidth)
         row.bodyText:SetWidth(contentWidth - TIME_WIDTH - 4)
     end
 end
-
---------------------------------------------------------------------------------
--- Countdown color state (spec 7.1)
---------------------------------------------------------------------------------
 
 -- referenceKnown false means the phase has not begun: show a static time in the
 -- normal color with no countdown.
@@ -260,10 +228,6 @@ local function ApplyCountdownState(row, remaining, referenceKnown, display, hide
     end
     return true
 end
-
---------------------------------------------------------------------------------
--- Content building
---------------------------------------------------------------------------------
 
 -- player spellID first, then bossSpell.
 local function ReminderIconTexture(reminder)
@@ -399,10 +363,6 @@ local function SizeScrollChild(contentHeight)
     child:SetHeight(math.max(contentHeight, minHeight))
 end
 
---------------------------------------------------------------------------------
--- Position persistence
---------------------------------------------------------------------------------
-
 local function EnsurePositions()
     local profile = PRT.Profiles:GetCurrent()
     if not profile.notes then
@@ -448,10 +408,6 @@ function NotesFrame:RestoreFramePosition()
     end
 end
 
---------------------------------------------------------------------------------
--- Lock / drag / resize
---------------------------------------------------------------------------------
-
 local function ApplyLockState()
     if not frame then return end
     local settings = GetSettings()
@@ -473,10 +429,6 @@ local function ApplyLockState()
     end
 end
 
---------------------------------------------------------------------------------
--- Appearance (background, font applied on next render)
---------------------------------------------------------------------------------
-
 local function ApplyBackground()
     if not frame then return end
     local display = GetDisplay()
@@ -488,10 +440,6 @@ local function ApplyBackground()
     local b = (bg and bg.b) or 0
     frame:SetBackdropColor(r, g, b, opacity)
 end
-
---------------------------------------------------------------------------------
--- Frame construction
---------------------------------------------------------------------------------
 
 local function CancelFade()
     if fadeTicker then
@@ -584,10 +532,6 @@ function NotesFrame:Init()
     ApplyBackground()
 end
 
---------------------------------------------------------------------------------
--- Rendering entry points
---------------------------------------------------------------------------------
-
 function NotesFrame:Refresh()
     if not frame or not frame:IsShown() then
         return
@@ -619,10 +563,6 @@ function NotesFrame:Show()
     frame:Show()
     self:Refresh()
 end
-
---------------------------------------------------------------------------------
--- Per-second tick
---------------------------------------------------------------------------------
 
 -- A reminder row whose phase matches currentPhase has a known reference and
 -- counts down; otherwise it shows a static time.
@@ -681,10 +621,6 @@ function NotesFrame:Relayout()
     SizeScrollChild(y)
 end
 
---------------------------------------------------------------------------------
--- Encounter end / visibility
---------------------------------------------------------------------------------
-
 function NotesFrame:OnEncounterEnd(hideMode)
     if not frame then return end
     hideMode = hideMode or "Immediately"
@@ -733,10 +669,6 @@ function NotesFrame:Toggle()
         self:Show()
     end
 end
-
---------------------------------------------------------------------------------
--- Settings application
---------------------------------------------------------------------------------
 
 function NotesFrame:ApplySettings()
     if not frame then

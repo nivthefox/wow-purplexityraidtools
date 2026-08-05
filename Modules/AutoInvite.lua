@@ -1,12 +1,7 @@
--- AutoInvite: Whisper-keyword invites, guild rank mass invites, auto-promote
 local PRT = PurplexityRaidTools
 local AutoInvite = {}
 PRT.AutoInvite = AutoInvite
 PRT:RegisterModule("autoInvite", AutoInvite)
-
---------------------------------------------------------------------------------
--- Default Settings
---------------------------------------------------------------------------------
 
 PRT.defaults.autoInvite = {
     whisperInviteEnabled = true,
@@ -17,10 +12,6 @@ PRT.defaults.autoInvite = {
     promoteNames = "",
 }
 
---------------------------------------------------------------------------------
--- Local State
---------------------------------------------------------------------------------
-
 local pendingInvites = {}
 local knownMembers = {}
 local pendingMassInvite = false
@@ -30,9 +21,9 @@ local massInviteRanks = {}
 -- queued invites are held until it clears (i.e. until IsInRaid() is true).
 local convertPending = false
 
---------------------------------------------------------------------------------
--- Helper Functions
---------------------------------------------------------------------------------
+local function Trim(str)
+    return string.match(str, "^%s*(.-)%s*$")
+end
 
 local function ParseKeywords(str)
     local keywords = {}
@@ -45,7 +36,7 @@ end
 local function SplitNames(str)
     local names = {}
     for name in string.gmatch(str, "[^,]+") do
-        local trimmed = string.match(name, "^%s*(.-)%s*$")
+        local trimmed = Trim(name)
         if trimmed and trimmed ~= "" then
             table.insert(names, trimmed)
         end
@@ -144,17 +135,13 @@ local function FindBNetGameAccount(bnSenderID)
     return nil, nil
 end
 
---------------------------------------------------------------------------------
--- Event Handlers
---------------------------------------------------------------------------------
-
 function AutoInvite:OnWhisper(message, senderName)
     local settings = PRT:GetSetting("autoInvite")
     if not settings or not settings.whisperInviteEnabled then
         return
     end
 
-    local trimmed = string.match(message, "^%s*(.-)%s*$")
+    local trimmed = Trim(message)
     if not trimmed then
         return
     end
@@ -187,7 +174,7 @@ function AutoInvite:OnBNetWhisper(message, senderName, bnSenderID)
         return
     end
 
-    local trimmed = string.match(message, "^%s*(.-)%s*$")
+    local trimmed = Trim(message)
     if not trimmed then
         return
     end
@@ -230,7 +217,6 @@ function AutoInvite:OnGroupRosterUpdate()
         C_PartyInfo.ConvertToRaid()
     end
 
-    -- Build current roster snapshot
     local currentRoster = {}
     if IsInRaid() then
         for unit in PRT:IterateGroup() do
@@ -241,7 +227,6 @@ function AutoInvite:OnGroupRosterUpdate()
         end
     end
 
-    -- Determine new members (in current but not in knownMembers)
     local newMemberSet = {}
     local hasNew = false
     for short in pairs(currentRoster) do
@@ -251,7 +236,6 @@ function AutoInvite:OnGroupRosterUpdate()
         end
     end
 
-    -- Promote only new members
     if hasNew then
         local settings = PRT:GetSetting("autoInvite")
         if settings and settings.promoteEnabled and IsInRaid() and UnitIsGroupLeader("player") then
@@ -272,7 +256,6 @@ function AutoInvite:OnGroupRosterUpdate()
         end
     end
 
-    -- Update snapshot
     knownMembers = currentRoster
 end
 
@@ -285,8 +268,6 @@ function AutoInvite:OnGuildRosterUpdate()
     local ranks = massInviteRanks
     massInviteRanks = {}
 
-    -- Collect every online guild member of a selected rank who is not already in
-    -- the group or waiting on an invite.
     local candidates = {}
     for i = 1, GetNumGuildMembers() do
         local name, _, rankIndex, _, _, _, _, _, online = GetGuildRosterInfo(i)
@@ -310,25 +291,23 @@ function AutoInvite:OnGuildRosterUpdate()
     end
 
     if IsInRaid() or (groupSize + #candidates) <= 5 then
-        -- Already a raid, or everyone fits in a party: just invite them all.
         for index, name in ipairs(candidates) do
             StaggerInvite(index, name)
         end
     else
         -- More people than a party holds. Invite enough to fill the party, then
         -- convert to a raid and queue the rest to go out once the conversion
-        -- completes (GROUP_ROSTER_UPDATE flushes the queue). This mirrors MRT's
-        -- InviteTool behaviour and avoids invites bouncing off a full party.
+        -- completes (GROUP_ROSTER_UPDATE flushes the queue). This avoids
+        -- invites bouncing off a full party.
         local partySlots = 5 - groupSize
         for index, name in ipairs(candidates) do
             if index <= partySlots then
                 StaggerInvite(index, name)
             else
-                local inviteName = name
                 table.insert(pendingInvites, {
-                    name = inviteName,
+                    name = name,
                     inviteFunc = function()
-                        C_PartyInfo.InviteUnit(inviteName)
+                        C_PartyInfo.InviteUnit(name)
                     end,
                 })
             end
@@ -343,10 +322,6 @@ function AutoInvite:OnGuildRosterUpdate()
         end
     end
 end
-
---------------------------------------------------------------------------------
--- Public Actions
---------------------------------------------------------------------------------
 
 function AutoInvite:InviteByRank()
     local settings = PRT:GetSetting("autoInvite")
@@ -372,10 +347,6 @@ function AutoInvite:InviteByRank()
     C_GuildInfo.GuildRoster()
 end
 
---------------------------------------------------------------------------------
--- Config UI
---------------------------------------------------------------------------------
-
 PRT:RegisterTab("Auto-Invite", function(parent)
     local ROW_HEIGHT = 32
     local LABEL_WIDTH = 200
@@ -384,10 +355,6 @@ PRT:RegisterTab("Auto-Invite", function(parent)
     local function GetSettings()
         return PRT:GetSetting("autoInvite")
     end
-
-    --------------------------------------------------------------------
-    -- Sub-tab: Whispers
-    --------------------------------------------------------------------
 
     local function SetupWhispers(panel)
         local yOffset = -10
@@ -398,7 +365,6 @@ PRT:RegisterTab("Auto-Invite", function(parent)
         whisperEnabledCB:SetPoint("TOPLEFT", 0, yOffset)
         yOffset = yOffset - ROW_HEIGHT
 
-        -- Keywords edit box
         local keywordsRow = CreateFrame("Frame", nil, panel)
         keywordsRow:SetHeight(ROW_HEIGHT)
         keywordsRow:SetPoint("TOPLEFT", 0, yOffset)
@@ -427,7 +393,7 @@ PRT:RegisterTab("Auto-Invite", function(parent)
         end
 
         keywordsEditBox:SetScript("OnEnterPressed", function(self)
-            local text = string.match(self:GetText(), "^%s*(.-)%s*$") or ""
+            local text = Trim(self:GetText()) or ""
             GetSettings().keywords = text
             self:SetText(text)
             self:ClearFocus()
@@ -438,7 +404,7 @@ PRT:RegisterTab("Auto-Invite", function(parent)
         end)
 
         keywordsEditBox:SetScript("OnEditFocusLost", function(self)
-            local text = string.match(self:GetText(), "^%s*(.-)%s*$") or ""
+            local text = Trim(self:GetText()) or ""
             GetSettings().keywords = text
             self:SetText(text)
         end)
@@ -458,10 +424,6 @@ PRT:RegisterTab("Auto-Invite", function(parent)
         end)
     end
 
-    --------------------------------------------------------------------
-    -- Sub-tab: Guild
-    --------------------------------------------------------------------
-
     local function SetupGuild(panel)
         local infoLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontDisable")
         infoLabel:SetPoint("TOPLEFT", 20, -10)
@@ -469,7 +431,6 @@ PRT:RegisterTab("Auto-Invite", function(parent)
         infoLabel:SetJustifyH("LEFT")
         infoLabel:SetText("Select ranks below, then press the button to invite all online members of those ranks.")
 
-        -- Track dynamic rank checkboxes for cleanup
         local rankCheckboxes = {}
 
         local inviteButton = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
@@ -483,7 +444,6 @@ PRT:RegisterTab("Auto-Invite", function(parent)
         panel:SetScript("OnShow", function()
             local settings = GetSettings()
 
-            -- Hide old rank checkboxes
             for _, cb in ipairs(rankCheckboxes) do
                 cb:Hide()
             end
@@ -505,15 +465,10 @@ PRT:RegisterTab("Auto-Invite", function(parent)
                 dynY = dynY - ROW_HEIGHT
             end
 
-            -- Position invite button below ranks
             inviteButton:ClearAllPoints()
             inviteButton:SetPoint("TOPLEFT", 20, dynY - 4)
         end)
     end
-
-    --------------------------------------------------------------------
-    -- Sub-tab: Auto Promote
-    --------------------------------------------------------------------
 
     local function SetupAutoPromote(panel)
         local yOffset = -10
@@ -524,7 +479,6 @@ PRT:RegisterTab("Auto-Invite", function(parent)
         promoteEnabledCB:SetPoint("TOPLEFT", 0, yOffset)
         yOffset = yOffset - ROW_HEIGHT
 
-        -- Promote names edit box
         local promoteRow = CreateFrame("Frame", nil, panel)
         promoteRow:SetHeight(ROW_HEIGHT)
         promoteRow:SetPoint("TOPLEFT", 0, yOffset)
@@ -553,7 +507,7 @@ PRT:RegisterTab("Auto-Invite", function(parent)
         end
 
         promoteEditBox:SetScript("OnEnterPressed", function(self)
-            local text = string.match(self:GetText(), "^%s*(.-)%s*$") or ""
+            local text = Trim(self:GetText()) or ""
             GetSettings().promoteNames = text
             self:SetText(text)
             self:ClearFocus()
@@ -564,7 +518,7 @@ PRT:RegisterTab("Auto-Invite", function(parent)
         end)
 
         promoteEditBox:SetScript("OnEditFocusLost", function(self)
-            local text = string.match(self:GetText(), "^%s*(.-)%s*$") or ""
+            local text = Trim(self:GetText()) or ""
             GetSettings().promoteNames = text
             self:SetText(text)
         end)
@@ -582,10 +536,6 @@ PRT:RegisterTab("Auto-Invite", function(parent)
         { name = "Auto Promote", setup = SetupAutoPromote },
     })
 end)
-
---------------------------------------------------------------------------------
--- Initialization
---------------------------------------------------------------------------------
 
 function AutoInvite:GetEnabledSetting()
     local settings = PRT:GetSetting("autoInvite")

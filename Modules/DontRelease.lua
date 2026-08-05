@@ -1,12 +1,7 @@
--- DontRelease: Prevents accidental spirit releases in configurable content
 local PRT = PurplexityRaidTools
 local DontRelease = {}
 PRT.DontRelease = DontRelease
 PRT:RegisterModule("dontRelease", DontRelease)
-
---------------------------------------------------------------------------------
--- Default Settings
---------------------------------------------------------------------------------
 
 PRT.defaults.dontRelease = {
     enabled = true,
@@ -21,28 +16,16 @@ PRT.defaults.dontRelease = {
     },
 }
 
---------------------------------------------------------------------------------
--- State
---------------------------------------------------------------------------------
-
 local delayAccumulated = 0
 local requiredModifier = nil
 local overlayButton = nil
 local blockingActive = false
-
---------------------------------------------------------------------------------
--- Modifier Keys
---------------------------------------------------------------------------------
 
 local MODIFIERS = {
     { name = "Ctrl", check = IsControlKeyDown },
     { name = "Alt", check = IsAltKeyDown },
     { name = "Shift", check = IsShiftKeyDown },
 }
-
---------------------------------------------------------------------------------
--- Content Detection
---------------------------------------------------------------------------------
 
 function DontRelease:IsBlockingEnabled()
     local settings = PRT:GetSetting("dontRelease")
@@ -51,10 +34,6 @@ function DontRelease:IsBlockingEnabled()
     end
     return PRT.IsContentTypeEnabled(settings.contentTypes)
 end
-
---------------------------------------------------------------------------------
--- Delay and Modifier Logic
---------------------------------------------------------------------------------
 
 function DontRelease:GetDelayRemaining()
     local settings = PRT:GetSetting("dontRelease")
@@ -97,10 +76,6 @@ function DontRelease:ShouldBlockRelease()
     end
     return false
 end
-
---------------------------------------------------------------------------------
--- Overlay Button
---------------------------------------------------------------------------------
 
 local function CreateOverlayButton()
     local button = CreateFrame("Button", "PRT_DontReleaseOverlay", UIParent, "UIPanelButtonTemplate")
@@ -167,10 +142,6 @@ local function PositionOverlay(dialog)
     overlayButton:SetSize(button1:GetSize())
 end
 
---------------------------------------------------------------------------------
--- Hook Handlers
---------------------------------------------------------------------------------
-
 function DontRelease:OnDeathPopupShow(dialog)
     if not self:IsBlockingEnabled() then
         blockingActive = false
@@ -206,7 +177,7 @@ function DontRelease:OnDeathPopupShow(dialog)
     overlayButton:Show()
 end
 
-function DontRelease:OnDeathPopupHide(dialog)
+function DontRelease:OnDeathPopupHide()
     blockingActive = false
     delayAccumulated = 0
     if overlayButton then
@@ -215,10 +186,6 @@ function DontRelease:OnDeathPopupHide(dialog)
         overlayButton:SetAlpha(1)
     end
 end
-
---------------------------------------------------------------------------------
--- Hook Installation
---------------------------------------------------------------------------------
 
 function DontRelease:Initialize()
     local deathDialog = StaticPopupDialogs["DEATH"]
@@ -237,16 +204,12 @@ function DontRelease:Initialize()
     end
 
     deathDialog.OnHide = function(dialog, data)
-        DontRelease:OnDeathPopupHide(dialog)
+        DontRelease:OnDeathPopupHide()
         if originalOnHide then
             originalOnHide(dialog, data)
         end
     end
 end
-
---------------------------------------------------------------------------------
--- Config UI
---------------------------------------------------------------------------------
 
 PRT:RegisterTab("Don't Release", function(parent)
     local container = CreateFrame("Frame", nil, parent)
@@ -269,8 +232,22 @@ PRT:RegisterTab("Don't Release", function(parent)
         return PRT:GetSetting("dontRelease")
     end
 
+    local function GetContentValue(settings, path)
+        local value = settings
+        for _, key in ipairs(path) do
+            value = value[key]
+        end
+        return value
+    end
 
-    -- General Section
+    local function SetContentValue(settings, path, value)
+        local node = settings
+        for i = 1, #path - 1 do
+            node = node[path[i]]
+        end
+        node[path[#path]] = value
+    end
+
     local generalHeader = PRT.Components.GetHeader(scrollChild, "General")
     generalHeader:SetPoint("TOPLEFT", 0, yOffset)
     yOffset = yOffset - 28
@@ -289,13 +266,11 @@ PRT:RegisterTab("Don't Release", function(parent)
     delaySlider:SetValue(GetSettings().delay)
     yOffset = yOffset - ROW_HEIGHT
 
-    -- Content Types Section
     yOffset = yOffset - 10
     local contentHeader = PRT.Components.GetHeader(scrollChild, "Block Release In")
     contentHeader:SetPoint("TOPLEFT", 0, yOffset)
     yOffset = yOffset - 28
 
-    -- Flat list of all content types
     local contentCheckboxes = {
         { label = "Open World", path = {"contentTypes", "openWorld"} },
         { label = "Dungeon (Normal)", path = {"contentTypes", "dungeon", "normal"} },
@@ -312,46 +287,38 @@ PRT:RegisterTab("Don't Release", function(parent)
 
     for i, info in ipairs(contentCheckboxes) do
         local checkbox = PRT.Components.GetCheckbox(scrollChild, info.label, function(value)
-            local settings = GetSettings()
-            if #info.path == 2 then
-                settings[info.path[1]][info.path[2]] = value
-            else
-                settings[info.path[1]][info.path[2]][info.path[3]] = value
-            end
+            SetContentValue(GetSettings(), info.path, value)
         end)
         checkbox:SetPoint("TOPLEFT", 0, yOffset)
         contentCheckboxes[i].widget = checkbox
-
-        local settings = GetSettings()
-        local currentValue
-        if #info.path == 2 then
-            currentValue = settings[info.path[1]][info.path[2]]
-        else
-            currentValue = settings[info.path[1]][info.path[2]][info.path[3]]
-        end
-        checkbox:SetValue(currentValue)
+        checkbox:SetValue(GetContentValue(GetSettings(), info.path))
 
         yOffset = yOffset - ROW_HEIGHT
     end
 
-    -- Modifier Key Section
     yOffset = yOffset - 10
     local modifierHeader = PRT.Components.GetHeader(scrollChild, "Modifier Key")
     modifierHeader:SetPoint("TOPLEFT", 0, yOffset)
     yOffset = yOffset - 28
 
     local randomizeCheckbox
+
+    local function UpdateRandomizeState(enabled)
+        if not randomizeCheckbox then
+            return
+        end
+        if enabled then
+            randomizeCheckbox:SetAlpha(1)
+            randomizeCheckbox:EnableMouse(true)
+        else
+            randomizeCheckbox:SetAlpha(0.5)
+            randomizeCheckbox:EnableMouse(false)
+        end
+    end
+
     local requireModifierCheckbox = PRT.Components.GetCheckbox(scrollChild, "Required", function(value)
         GetSettings().requireModifier = value
-        if randomizeCheckbox then
-            if value then
-                randomizeCheckbox:SetAlpha(1)
-                randomizeCheckbox:EnableMouse(true)
-            else
-                randomizeCheckbox:SetAlpha(0.5)
-                randomizeCheckbox:EnableMouse(false)
-            end
-        end
+        UpdateRandomizeState(value)
     end)
     requireModifierCheckbox:SetPoint("TOPLEFT", 0, yOffset)
     requireModifierCheckbox:SetValue(GetSettings().requireModifier)
@@ -362,35 +329,19 @@ PRT:RegisterTab("Don't Release", function(parent)
     end)
     randomizeCheckbox:SetPoint("TOPLEFT", 0, yOffset)
     randomizeCheckbox:SetValue(GetSettings().randomizeModifier)
-    if not GetSettings().requireModifier then
-        randomizeCheckbox:SetAlpha(0.5)
-        randomizeCheckbox:EnableMouse(false)
-    end
+    UpdateRandomizeState(GetSettings().requireModifier)
     yOffset = yOffset - ROW_HEIGHT
 
-    -- Refresh all widget values from saved settings on show
     container:SetScript("OnShow", function()
         local settings = GetSettings()
         enabledCheckbox:SetValue(settings.enabled)
         delaySlider:SetValue(settings.delay)
         for _, info in ipairs(contentCheckboxes) do
-            local currentValue
-            if #info.path == 2 then
-                currentValue = settings[info.path[1]][info.path[2]]
-            else
-                currentValue = settings[info.path[1]][info.path[2]][info.path[3]]
-            end
-            info.widget:SetValue(currentValue)
+            info.widget:SetValue(GetContentValue(settings, info.path))
         end
         requireModifierCheckbox:SetValue(settings.requireModifier)
         randomizeCheckbox:SetValue(settings.randomizeModifier)
-        if settings.requireModifier then
-            randomizeCheckbox:SetAlpha(1)
-            randomizeCheckbox:EnableMouse(true)
-        else
-            randomizeCheckbox:SetAlpha(0.5)
-            randomizeCheckbox:EnableMouse(false)
-        end
+        UpdateRandomizeState(settings.requireModifier)
     end)
 
     return container

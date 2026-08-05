@@ -13,10 +13,6 @@ local PRT = PurplexityRaidTools
 local NotesTimer = {}
 PRT.NotesTimer = NotesTimer
 
---------------------------------------------------------------------------------
--- Internal state
---------------------------------------------------------------------------------
-
 -- Per-reminder tracking keyed by the reminder table. lastRemaining seeds to
 -- reminder.time so the first tick's countdown crossing is measured from the
 -- phase's nominal lead, not from +infinity.
@@ -99,10 +95,6 @@ local function evaluate(self, reminder, now)
 
     s.lastRemaining = remaining
 end
-
---------------------------------------------------------------------------------
--- Public API
---------------------------------------------------------------------------------
 
 -- Resets all tracking so a fresh Start after Stop re-fires every reminder.
 function NotesTimer:Start(section, callbacks, now)

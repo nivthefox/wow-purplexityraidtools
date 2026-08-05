@@ -1,4 +1,3 @@
--- NotesConfig: Notes config tab UI.
 local PRT = PurplexityRaidTools
 local NotesConfig = {}
 PRT.NotesConfig = NotesConfig
@@ -51,18 +50,19 @@ local function GetSettings()
 end
 
 local function ReadPath(settings, path)
-    if #path == 2 then
-        return settings[path[1]][path[2]]
+    local value = settings
+    for _, key in ipairs(path) do
+        value = value[key]
     end
-    return settings[path[1]][path[2]][path[3]]
+    return value
 end
 
 local function WritePath(settings, path, value)
-    if #path == 2 then
-        settings[path[1]][path[2]] = value
-        return
+    local node = settings
+    for i = 1, #path - 1 do
+        node = node[path[i]]
     end
-    settings[path[1]][path[2]][path[3]] = value
+    node[path[#path]] = value
 end
 
 local function ListFonts()
@@ -88,10 +88,6 @@ local function SortedNoteNames()
     return names
 end
 
---------------------------------------------------------------------------------
--- Static popups
---------------------------------------------------------------------------------
-
 StaticPopupDialogs["PRT_NOTES_DELETE"] = {
     text = "Delete note \"%s\"?",
     button1 = YES,
@@ -113,16 +109,8 @@ local function OnEditorSaved(savedName)
     end
 end
 
---------------------------------------------------------------------------------
--- Tab
---------------------------------------------------------------------------------
-
 PRT:RegisterTab("Notes", function(parent)
     local ROW_HEIGHT = 28
-
-    --------------------------------------------------------------------
-    -- Sub-tab: Notes (note management + test buttons)
-    --------------------------------------------------------------------
 
     local function SetupNotes(panel)
         local childWidth = panel:GetWidth()
@@ -523,10 +511,6 @@ PRT:RegisterTab("Notes", function(parent)
         end)
     end
 
-    --------------------------------------------------------------------
-    -- Sub-tab: Display (display settings + Show In)
-    --------------------------------------------------------------------
-
     local function SetupDisplay(panel)
         local scrollFrame = CreateFrame("ScrollFrame", nil, panel, "UIPanelScrollFrameTemplate")
         scrollFrame:SetPoint("TOPLEFT", 0, 0)
@@ -656,10 +640,6 @@ PRT:RegisterTab("Notes", function(parent)
         end)
     end
 
-    --------------------------------------------------------------------
-    -- Sub-tab: Popups
-    --------------------------------------------------------------------
-
     local function SetupPopups(panel)
         local yOffset = -10
 
@@ -730,10 +710,6 @@ PRT:RegisterTab("Notes", function(parent)
         { name = "Popups", setup = SetupPopups },
     })
 end)
-
---------------------------------------------------------------------------------
--- Apply callback
---------------------------------------------------------------------------------
 
 PRT:RegisterApplyCallback("notes", function()
     PRT.NotesFrame:ApplySettings()

@@ -47,10 +47,6 @@ local VALID_NOTE_TEXT = "EncounterID:3176;Name:Sszorak"
 local INVALID_NOTE_TEXT =
     "EncounterID:3176;Name:Sszorak\nEncounterID:3009;Name:Anub"
 
---------------------------------------------------------------------------------
--- Isolation helpers
---------------------------------------------------------------------------------
-
 -- Snapshot and restore an arbitrary set of globals around a test body so WoW-API
 -- overrides never leak between tests (or into wow_stubs.lua). Mirrors the
 -- withGlobals helper in test_comms.lua.
@@ -168,10 +164,6 @@ end
 local function encode(msgType, data)
     return Comms:Encode({ type = msgType, data = data })
 end
-
---------------------------------------------------------------------------------
--- Send seam: gate order and exact reason strings
---------------------------------------------------------------------------------
 
 tests["BroadcastNote solo activates locally, shows the frame, never sends"] = function()
     resetNotes()
@@ -315,10 +307,6 @@ tests["BroadcastNote sends the SELECTED note, not the active one"] = function()
     assertEquals(decoded.data.name, "Beta", "the selection, not the active note, goes out")
     assertEquals(decoded.data.text, "EncounterID:2000;Name:Other")
 end
-
---------------------------------------------------------------------------------
--- Send seam: success payloads
---------------------------------------------------------------------------------
 
 tests["BroadcastNote sends msgType 'note' with {name, text} on the happy path"] = function()
     resetNotes()
@@ -595,10 +583,6 @@ tests["receive: a clear arriving in combat is dropped before the privilege check
     end)
 end
 
---------------------------------------------------------------------------------
--- Merge integration: OnActiveNoteChanged merges annotations
---------------------------------------------------------------------------------
-
 if not PurplexityRaidTools.NotesMerge then
     dofile("Modules/Notes/NotesMerge.lua")
 end
@@ -694,10 +678,6 @@ tests["received note preserves existing annotations after re-broadcast"] = funct
             "annotation override must be applied after re-broadcast activates")
     end)
 end
-
---------------------------------------------------------------------------------
--- NoteApplies: fail open on nil encounterID
---------------------------------------------------------------------------------
 
 -- NoteApplies is local, so we exercise it through the encounter lifecycle.
 -- We need OnEncounterStart to fire, which means we need an active note, the

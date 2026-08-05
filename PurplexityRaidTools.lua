@@ -1,21 +1,12 @@
--- PurplexityRaidTools: Core namespace and shared configuration
--- This file loads first and sets up the global namespace
-
 PurplexityRaidTools = PurplexityRaidTools or {}
 local PRT = PurplexityRaidTools
 
--- Saved variables (initialized on ADDON_LOADED)
 PurplexityRaidToolsDB = PurplexityRaidToolsDB or {}
 
--- Default settings
-PRT.defaults = {
-    -- Add module defaults here as they're created
-}
+PRT.defaults = {}
 
--- Registry for apply callbacks (modules register here, config calls them)
 PRT.applyCallbacks = {}
 
--- Module registry (ordered by TOC load order)
 PRT.modules = {}
 PRT.modulesByName = {}
 
@@ -42,10 +33,6 @@ function PRT:ApplySettings(settingName)
     self:EvaluateAllModules()
 end
 
---------------------------------------------------------------------------------
--- Module Lifecycle
---------------------------------------------------------------------------------
-
 function PRT:EvaluateModule(entry)
     local name = entry.name
     local module = entry.module
@@ -55,7 +42,6 @@ function PRT:EvaluateModule(entry)
         return
     end
 
-    -- Check enabled setting
     local enabled
     if module.GetEnabledSetting then
         enabled = module:GetEnabledSetting()
@@ -64,13 +50,11 @@ function PRT:EvaluateModule(entry)
         enabled = settings and (settings.enabled ~= false)
     end
 
-    -- Check activatable
     local activatable = enabled
     if activatable and module.IsActivatable then
         activatable = module:IsActivatable()
     end
 
-    -- Transition
     if activatable and not module.active then
         module.active = true
         if module.OnEnable then
@@ -90,13 +74,8 @@ function PRT:EvaluateAllModules()
     end
 end
 
---------------------------------------------------------------------------------
--- Profile System
---------------------------------------------------------------------------------
-
 PRT.Profiles = {}
 
--- Deep copy a table
 local function DeepCopy(source)
     if type(source) ~= "table" then return source end
     local copy = {}
@@ -117,14 +96,12 @@ local function DeepMerge(defaults, target)
     end
 end
 
--- Get the current profile's data table
 function PRT.Profiles:GetCurrent()
     local db = PurplexityRaidToolsDB
     local profileName = db.currentProfile or "Default"
     return db.profiles and db.profiles[profileName] or {}
 end
 
--- Get array of all profile names
 function PRT.Profiles:GetNames()
     local names = {}
     local db = PurplexityRaidToolsDB
@@ -137,12 +114,10 @@ function PRT.Profiles:GetNames()
     return names
 end
 
--- Get the current profile name
 function PRT.Profiles:GetCurrentName()
     return PurplexityRaidToolsDB.currentProfile or "Default"
 end
 
--- Switch to a different profile
 function PRT.Profiles:Switch(name)
     local db = PurplexityRaidToolsDB
     if not db.profiles or not db.profiles[name] then return false end
@@ -152,7 +127,6 @@ function PRT.Profiles:Switch(name)
     return true
 end
 
--- Create a new profile (optionally clone from another)
 function PRT.Profiles:Create(name, cloneFrom)
     local db = PurplexityRaidToolsDB
     if not db.profiles then db.profiles = {} end
@@ -167,7 +141,6 @@ function PRT.Profiles:Create(name, cloneFrom)
     return true
 end
 
--- Delete a profile (cannot delete Default or current)
 function PRT.Profiles:Delete(name)
     local db = PurplexityRaidToolsDB
     if name == "Default" then return false end
@@ -178,7 +151,6 @@ function PRT.Profiles:Delete(name)
     return true
 end
 
--- Rename a profile
 function PRT.Profiles:Rename(oldName, newName)
     local db = PurplexityRaidToolsDB
     if not newName or newName == "" then return false end
@@ -195,7 +167,6 @@ function PRT.Profiles:Rename(oldName, newName)
     return true
 end
 
--- Helper to get a saved value with fallback to default (profile-aware)
 function PRT:GetSetting(key)
     local profile = self.Profiles:GetCurrent()
     if profile[key] ~= nil then
@@ -204,17 +175,14 @@ function PRT:GetSetting(key)
     return self.defaults[key]
 end
 
--- Merge defaults into the current profile (recursive, non-destructive)
 function PRT:MergeDefaults()
     local profile = self.Profiles:GetCurrent()
     DeepMerge(self.defaults, profile)
 end
 
--- Initialize saved variables with profile structure
 function PRT:InitializeDB()
     local db = PurplexityRaidToolsDB
 
-    -- Ensure profile structure exists
     if not db.profiles then
         db.profiles = {}
     end
@@ -225,11 +193,9 @@ function PRT:InitializeDB()
         db.currentProfile = "Default"
     end
 
-    -- Import defaults into current profile
     self:MergeDefaults()
 end
 
--- Event frame for initialization and lifecycle
 local eventFrame = CreateFrame("Frame")
 eventFrame:RegisterEvent("ADDON_LOADED")
 eventFrame:SetScript("OnEvent", function(_, event, addonName)
@@ -240,11 +206,9 @@ eventFrame:SetScript("OnEvent", function(_, event, addonName)
                 entry.module:Initialize()
             end
         end
-        -- Register lifecycle events
         eventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
         eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
         eventFrame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
-        -- Initial module evaluation
         PRT:EvaluateAllModules()
         eventFrame:UnregisterEvent("ADDON_LOADED")
     elseif event == "GROUP_ROSTER_UPDATE" or event == "PLAYER_ENTERING_WORLD"
@@ -252,10 +216,6 @@ eventFrame:SetScript("OnEvent", function(_, event, addonName)
         PRT:EvaluateAllModules()
     end
 end)
-
---------------------------------------------------------------------------------
--- Content Type Detection (shared by DontRelease, CooldownRoster, etc.)
---------------------------------------------------------------------------------
 
 function PRT.GetCurrentContentType()
     local _, instanceType, difficultyID = GetInstanceInfo()
@@ -327,10 +287,6 @@ function PRT.IsContentTypeEnabled(contentTypes)
     return false
 end
 
---------------------------------------------------------------------------------
--- Group Iteration
---------------------------------------------------------------------------------
-
 function PRT:IterateGroup()
     if IsInRaid() then
         local count = GetNumGroupMembers()
@@ -365,7 +321,6 @@ function PRT:IterateGroup()
     end
 end
 
--- Slash command
 SLASH_PURPLEXITYRAIDTOOLS1 = "/prt"
 SLASH_PURPLEXITYRAIDTOOLS2 = "/purplexity"
 SlashCmdList["PURPLEXITYRAIDTOOLS"] = function(msg)

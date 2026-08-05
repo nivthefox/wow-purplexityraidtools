@@ -1,23 +1,14 @@
--- GroupInspect: Inspects group members to determine spec and talents.
--- Always-on module that exposes a shared data table and listener mechanism
--- so multiple consumers can react to changes without duplicating the crawl.
+-- Always-on module exposing a shared data table and listener mechanism so
+-- multiple consumers can react to changes without duplicating the inspect crawl.
 local PRT = PurplexityRaidTools
 local GroupInspect = {}
 PRT.GroupInspect = GroupInspect
 PRT:RegisterModule("groupInspect", GroupInspect)
 
---------------------------------------------------------------------------------
--- Data Table
---------------------------------------------------------------------------------
-
 --- Per-player data, keyed by GUID.
 --- Each entry: { name, class, specId (nil until inspect), talents (nil until inspect),
 ---               addonVersion (nil until a version response arrives) }
 GroupInspect.members = {}
-
---------------------------------------------------------------------------------
--- Listener Mechanism
---------------------------------------------------------------------------------
 
 local listeners = {}
 
@@ -33,24 +24,16 @@ local function NotifyListeners()
     end
 end
 
---------------------------------------------------------------------------------
--- Local State
---------------------------------------------------------------------------------
-
-local priorityQueue = {}    -- array of GUIDs needing immediate inspection (new joins)
-local sweepQueue = {}       -- array of GUIDs queued by the periodic full-raid sweep
-local inspectPending = nil  -- unit currently being inspected
+local priorityQueue = {}
+local sweepQueue = {}
+local inspectPending = nil
 local inCombat = false
 
-local inspectTicker = nil   -- drains the inspect queues, one member per tick
-local sweepTicker = nil     -- refills the full-raid sweep on a fixed interval
+local inspectTicker = nil
+local sweepTicker = nil
 
-local TICK_INTERVAL = 1     -- seconds between inspect-drain attempts
-local SWEEP_INTERVAL = 60   -- seconds between full-raid sweeps
-
---------------------------------------------------------------------------------
--- Addon Version Detection
---------------------------------------------------------------------------------
+local INSPECT_TICK_SECONDS = 1
+local SWEEP_INTERVAL_SECONDS = 60
 
 local ADDON_NAME = "PurplexityRaidTools"
 local VERSION_QUERY_MSG_TYPE = "versionQuery"
@@ -114,20 +97,14 @@ local function OnVersionResponse(data, sender)
     member.addonVersion = data.version
 end
 
---------------------------------------------------------------------------------
--- Helpers
---------------------------------------------------------------------------------
-
 local function GetPlayerSpecId()
     local specIndex = C_SpecializationInfo.GetSpecialization()
     if not specIndex then
         return nil
     end
-    local specId = C_SpecializationInfo.GetSpecializationInfo(specIndex)
-    return specId
+    return C_SpecializationInfo.GetSpecializationInfo(specIndex)
 end
 
---- Find the unit token for a GUID by scanning the current group.
 local function UnitForGUID(guid)
     for unit in PRT:IterateGroup() do
         if UnitGUID(unit) == guid then
@@ -137,7 +114,6 @@ local function UnitForGUID(guid)
     return nil
 end
 
---- Fire off an inspect request for the given unit and set a 2-second timeout.
 local function BeginInspect(unit)
     inspectPending = unit
     NotifyInspect(unit)
@@ -170,9 +146,37 @@ local function GroupInCombat()
     return false
 end
 
---------------------------------------------------------------------------------
--- Talent Reading
---------------------------------------------------------------------------------
+local function IsSubTreeSelectionNode(node)
+    return Enum.TraitNodeType and Enum.TraitNodeType.SubTreeSelection
+        and node.type == Enum.TraitNodeType.SubTreeSelection
+end
+
+local function ActiveNodeSpellId(configId, node)
+    if not node or node.ID == 0 or not node.activeEntry then
+        return nil
+    end
+    -- Hero talent subtree selection nodes are not talents.
+    if IsSubTreeSelectionNode(node) then
+        return nil
+    end
+    if not node.currentRank or node.currentRank == 0 then
+        return nil
+    end
+    if node.subTreeID and not node.subTreeActive then
+        return nil
+    end
+
+    local entry = C_Traits.GetEntryInfo(configId, node.activeEntry.entryID)
+    if not entry or not entry.definitionID then
+        return nil
+    end
+
+    local defInfo = C_Traits.GetDefinitionInfo(entry.definitionID)
+    if not defInfo then
+        return nil
+    end
+    return defInfo.spellID
+end
 
 --- Walk a trait config and return a set of active talent spell IDs
 --- (spellId -> true). Returns nil if the API data is unavailable.
@@ -194,31 +198,16 @@ local function ReadTalentsFromConfig(configId)
 
     local talents = {}
     for i = 1, #nodes do
-        local nodeID = nodes[i]
-        local node = C_Traits.GetNodeInfo(configId, nodeID)
-        if node and node.ID ~= 0 and node.activeEntry then
-            -- Skip hero talent subtree selection nodes.
-            if not (Enum.TraitNodeType and Enum.TraitNodeType.SubTreeSelection
-                    and node.type == Enum.TraitNodeType.SubTreeSelection) then
-                if node.currentRank and node.currentRank > 0
-                        and (not node.subTreeID or node.subTreeActive) then
-                    local entryID = node.activeEntry.entryID
-                    local entry = C_Traits.GetEntryInfo(configId, entryID)
-                    if entry and entry.definitionID then
-                        local defInfo = C_Traits.GetDefinitionInfo(entry.definitionID)
-                        if defInfo and defInfo.spellID then
-                            talents[defInfo.spellID] = true
-                        end
-                    end
-                end
-            end
+        local node = C_Traits.GetNodeInfo(configId, nodes[i])
+        local spellId = ActiveNodeSpellId(configId, node)
+        if spellId then
+            talents[spellId] = true
         end
     end
 
     return talents
 end
 
---- Read the local player's active talents.
 local function ReadPlayerTalents()
     if not C_ClassTalents or not C_ClassTalents.GetActiveConfigID then
         return nil
@@ -230,15 +219,9 @@ local function ReadPlayerTalents()
     return ReadTalentsFromConfig(configId)
 end
 
---- Read the inspected player's active talents via C_Traits and return a set of
---- spell IDs (spellId -> true). Returns nil if the API data is unavailable.
 local function ReadInspectTalents()
     return ReadTalentsFromConfig(Constants.TraitConsts.INSPECT_TRAIT_CONFIG_ID)
 end
-
---------------------------------------------------------------------------------
--- Inspect Queue
---------------------------------------------------------------------------------
 
 --- Rebuild the full-raid sweep queue. Runs on a fixed interval as a backstop for
 --- spec/talent changes we failed to catch via events. Skips while the previous
@@ -258,13 +241,10 @@ local function RefillSweepQueue()
 end
 
 local function ProcessNextInspect()
-    -- Never inspect mid-fight, while an inspect is already pending, or while the
-    -- player has the Blizzard inspect window open (doing so breaks gear tooltips).
     if GroupInCombat() or inspectPending or IsInspectFrameOpen() then
         return
     end
 
-    -- Priority queue: new joins with no spec data go first.
     while #priorityQueue > 0 do
         local guid = table.remove(priorityQueue, 1)
         local unit = UnitForGUID(guid)
@@ -275,7 +255,6 @@ local function ProcessNextInspect()
         end
     end
 
-    -- Periodic full sweep: drain one queued member per tick.
     while #sweepQueue > 0 do
         local guid = table.remove(sweepQueue, 1)
         local unit = UnitForGUID(guid)
@@ -288,10 +267,10 @@ end
 
 local function StartTickers()
     if not inspectTicker then
-        inspectTicker = C_Timer.NewTicker(TICK_INTERVAL, ProcessNextInspect)
+        inspectTicker = C_Timer.NewTicker(INSPECT_TICK_SECONDS, ProcessNextInspect)
     end
     if not sweepTicker then
-        sweepTicker = C_Timer.NewTicker(SWEEP_INTERVAL, RefillSweepQueue)
+        sweepTicker = C_Timer.NewTicker(SWEEP_INTERVAL_SECONDS, RefillSweepQueue)
     end
 end
 
@@ -326,9 +305,52 @@ function GroupInspect:OnUnitConnected(unit)
     table.insert(priorityQueue, guid)
 end
 
---------------------------------------------------------------------------------
--- Roster Scanning
---------------------------------------------------------------------------------
+local function ReadLocalPlayer(guid)
+    local member = GroupInspect.members[guid]
+    if not member then
+        return
+    end
+
+    local specId = GetPlayerSpecId()
+    if specId and specId > 0 then
+        member.specId = specId
+    end
+
+    local talents = ReadPlayerTalents()
+    if talents then
+        member.talents = talents
+    end
+end
+
+local function AddNewMember(unit, guid)
+    local _, classToken = UnitClass(unit)
+    GroupInspect.members[guid] = {
+        name = UnitName(unit),
+        class = classToken,
+        specId = nil,
+        talents = nil,
+        addonVersion = nil,
+    }
+
+    if not UnitIsUnit(unit, "player") then
+        table.insert(priorityQueue, guid)
+        return
+    end
+
+    local member = GroupInspect.members[guid]
+    ReadLocalPlayer(guid)
+    member.addonVersion = GetLocalVersion()
+
+    -- The talent system may not be ready on the first frame after login; retry once.
+    if not member.specId or not member.talents then
+        C_Timer.After(1, function()
+            if GroupInspect.members[guid] then
+                ReadLocalPlayer(guid)
+                NotifyListeners()
+            end
+        end)
+    end
+end
 
 function GroupInspect:ScanRoster()
     local activeGUIDs = {}
@@ -338,57 +360,13 @@ function GroupInspect:ScanRoster()
         local guid = UnitGUID(unit)
         if guid then
             activeGUIDs[guid] = true
-
             if not self.members[guid] then
-                -- New member
-                local _, classToken = UnitClass(unit)
-                local playerName = UnitName(unit)
-                self.members[guid] = {
-                    name = playerName,
-                    class = classToken,
-                    specId = nil,
-                    talents = nil,
-                    addonVersion = nil,
-                }
+                AddNewMember(unit, guid)
                 changed = true
-
-                if UnitIsUnit(unit, "player") then
-                    -- Local player: read directly, no inspect needed
-                    local specId = GetPlayerSpecId()
-                    if specId and specId > 0 then
-                        self.members[guid].specId = specId
-                    end
-                    local talents = ReadPlayerTalents()
-                    if talents then
-                        self.members[guid].talents = talents
-                    end
-                    self.members[guid].addonVersion = GetLocalVersion()
-                    -- If spec or talents are still missing after load, retry shortly.
-                    -- The talent system may not be ready on the first frame after login.
-                    if not self.members[guid].specId or not self.members[guid].talents then
-                        C_Timer.After(1, function()
-                            if self.members[guid] then
-                                local specId2 = GetPlayerSpecId()
-                                if specId2 and specId2 > 0 then
-                                    self.members[guid].specId = specId2
-                                end
-                                local talents2 = ReadPlayerTalents()
-                                if talents2 then
-                                    self.members[guid].talents = talents2
-                                end
-                                NotifyListeners()
-                            end
-                        end)
-                    end
-                else
-                    -- Queue for inspection
-                    table.insert(priorityQueue, guid)
-                end
             end
         end
     end
 
-    -- Remove departed members
     for guid in pairs(self.members) do
         if not activeGUIDs[guid] then
             self.members[guid] = nil
@@ -396,12 +374,10 @@ function GroupInspect:ScanRoster()
         end
     end
 
-    -- Start or stop tickers based on group state
     if IsInGroup() or IsInRaid() then
         StartTickers()
     else
         StopTickers()
-        -- Clear all data when leaving a group
         for guid in pairs(self.members) do
             self.members[guid] = nil
         end
@@ -413,9 +389,22 @@ function GroupInspect:ScanRoster()
     end
 end
 
---------------------------------------------------------------------------------
--- Inspect Result Handling
---------------------------------------------------------------------------------
+local function TalentSetsDiffer(oldTalents, newTalents)
+    if not oldTalents then
+        return true
+    end
+    for spellId in pairs(newTalents) do
+        if not oldTalents[spellId] then
+            return true
+        end
+    end
+    for spellId in pairs(oldTalents) do
+        if not newTalents[spellId] then
+            return true
+        end
+    end
+    return false
+end
 
 local function OnInspectReady(eventGUID)
     if not inspectPending then
@@ -447,47 +436,20 @@ local function OnInspectReady(eventGUID)
 
     local changed = false
 
-    if specId and specId > 0 then
-        if member.specId ~= specId then
-            member.specId = specId
-            changed = true
-        end
+    if specId and specId > 0 and member.specId ~= specId then
+        member.specId = specId
+        changed = true
     end
 
-    if talents then
-        local oldTalents = member.talents
-        -- Compare talent sets: rebuild if the new set differs from the cached one.
-        local talentsChanged = not oldTalents
-        if not talentsChanged then
-            for spellId in pairs(talents) do
-                if not oldTalents[spellId] then
-                    talentsChanged = true
-                    break
-                end
-            end
-        end
-        if not talentsChanged then
-            for spellId in pairs(oldTalents) do
-                if not talents[spellId] then
-                    talentsChanged = true
-                    break
-                end
-            end
-        end
-        if talentsChanged then
-            member.talents = talents
-            changed = true
-        end
+    if talents and TalentSetsDiffer(member.talents, talents) then
+        member.talents = talents
+        changed = true
     end
 
     if changed then
         NotifyListeners()
     end
 end
-
---------------------------------------------------------------------------------
--- Event Handling
---------------------------------------------------------------------------------
 
 local function OnEvent(_, event, ...)
     if event == "GROUP_ROSTER_UPDATE" or event == "PLAYER_ENTERING_WORLD" then
@@ -509,10 +471,6 @@ local function OnEvent(_, event, ...)
         inCombat = false
     end
 end
-
---------------------------------------------------------------------------------
--- Initialization
---------------------------------------------------------------------------------
 
 function GroupInspect:Initialize()
     self.eventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")

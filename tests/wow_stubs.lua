@@ -8,19 +8,11 @@
 -- Tests can override any stub by assigning to the global directly before
 -- the code-under-test runs, then restoring afterward if needed.
 
---------------------------------------------------------------------------------
--- Controllable clock
---------------------------------------------------------------------------------
-
 WowStubs = { clock = 0 }
 
 function GetTime()
     return WowStubs.clock
 end
-
---------------------------------------------------------------------------------
--- PurplexityRaidTools namespace
---------------------------------------------------------------------------------
 
 PurplexityRaidTools = {
     defaults  = {},
@@ -47,10 +39,6 @@ function PRT:GetSetting(key)
     return self.defaults[key]
 end
 
---------------------------------------------------------------------------------
--- Fake profile store
---------------------------------------------------------------------------------
-
 PurplexityRaidTools.Profiles = {
     current = {},
     GetCurrent = function(self)
@@ -60,10 +48,6 @@ PurplexityRaidTools.Profiles = {
         return "Test"
     end,
 }
-
---------------------------------------------------------------------------------
--- String utilities
---------------------------------------------------------------------------------
 
 -- strsplit(sep, str [, pieces]) -> multiple return values
 -- Matches WoW semantics: sep is a set of single-character delimiters, empty
@@ -108,10 +92,6 @@ function strupper(str)
     return str:upper()
 end
 
---------------------------------------------------------------------------------
--- Global aliases for WoW-idiomatic Lua
---------------------------------------------------------------------------------
-
 format   = string.format
 strmatch = string.match
 tinsert  = table.insert
@@ -146,10 +126,6 @@ function CopyTable(t)
     end
     return copy
 end
-
---------------------------------------------------------------------------------
--- Unit / group stubs (overridable)
---------------------------------------------------------------------------------
 
 function UnitName(unit)
     return unit, nil  -- name, realm

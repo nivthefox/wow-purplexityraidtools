@@ -70,7 +70,7 @@ function ReadyScreen:ShowAudit()
     if readyCheckActive then
         return
     end
-    if not IsInRaid() then
+    if not IsInGroup() then
         return
     end
     local settings = PRT:GetSetting("readyScreen")
@@ -161,7 +161,7 @@ function ReadyScreen:OnReadyCheckFinished()
 end
 
 function ReadyScreen:IsActivatable()
-    return IsInRaid()
+    return IsInGroup()
 end
 
 function ReadyScreen:Initialize()

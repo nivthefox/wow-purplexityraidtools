@@ -12,7 +12,7 @@ local RAID_BUFFS = {
     {
         key = "arcaneIntellect",
         name = "Arcane Intellect",
-        spellId = 1458,
+        spellId = 1459,
         class = "MAGE",
         messages = {
             "It's ironic that the 'smart' class has forgotten the Intellect buff. Again.",

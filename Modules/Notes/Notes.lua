@@ -577,6 +577,14 @@ end
 --------------------------------------------------------------------------------
 
 local function OnNoteReceived(data, sender)
+    -- Notes are never sent or received in combat: distribution is pre-pull
+    -- setup, and 12.1 makes the privilege APIs return secrets while identity
+    -- is secret (branching on one is a Lua error). Drop anything that arrives
+    -- mid-combat — only in-flight or non-compliant sends can — BEFORE the
+    -- privilege check ever runs.
+    if InCombat() then
+        return
+    end
     if type(data) ~= "table" or not data.name then
         return
     end
@@ -594,6 +602,10 @@ local function OnNoteReceived(data, sender)
 end
 
 local function OnClearReceived(_, sender)
+    -- Same combat drop as OnNoteReceived, same reason.
+    if InCombat() then
+        return
+    end
     if not PRT.Comms:IsSenderPrivileged(sender) then
         return
     end

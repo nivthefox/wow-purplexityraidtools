@@ -547,6 +547,54 @@ tests["receive: clear from an unprivileged sender is ignored (no deactivate, no 
     end)
 end
 
+-- 12.1 identity secrecy: UnitIsGroupLeader/UnitIsGroupAssistant return secrets
+-- in combat, and branching on a secret is a Lua error. The receive handlers must
+-- drop combat-received messages BEFORE the privilege check, so these stubs error
+-- to fail the test loudly if the privilege path is ever reached.
+local function combatSecrecyGlobals()
+    return merge(CTX_GLOBALS, {
+        IsInRaid = function() return true end,
+        IsInGroup = function() return true end,
+        InCombatLockdown = function() return true end,
+        UnitIsGroupLeader = function() error("attempted to branch on a secret in combat") end,
+        UnitIsGroupAssistant = function() error("attempted to branch on a secret in combat") end,
+        UnitName = function(unit) return unit, nil end,
+    })
+end
+
+tests["receive: a note arriving in combat is dropped before the privilege check"] = function()
+    withGlobals(combatSecrecyGlobals(), function()
+        local frameSpy = installReceiveHarness()
+        frameSpy.showCount = 0
+
+        local encoded = encode("note", { name = "Alpha", text = VALID_NOTE_TEXT })
+        Comms:Dispatch(encoded, "Niv-Illidan")
+
+        local store = PRT.Profiles.current.notes
+        assertNil(store.savedNotes["Alpha"], "a combat-received note must not be stored")
+        assertNil(store.activeNote, "a combat-received note must not be activated")
+        assertEquals(frameSpy.showCount, 0, "a combat-received note must never Show the frame")
+    end)
+end
+
+tests["receive: a clear arriving in combat is dropped before the privilege check"] = function()
+    withGlobals(combatSecrecyGlobals(), function()
+        local frameSpy = installReceiveHarness()
+
+        Notes:SaveNote("Alpha", VALID_NOTE_TEXT)
+        Notes:ActivateNote("Alpha")
+        assertEquals(PRT.Profiles.current.notes.activeNote, "Alpha")
+        frameSpy.hideCount = 0
+
+        local encoded = encode("clear", {})
+        Comms:Dispatch(encoded, "Niv-Illidan")
+
+        assertEquals(PRT.Profiles.current.notes.activeNote, "Alpha",
+            "a combat-received clear must not deactivate")
+        assertEquals(frameSpy.hideCount, 0, "a combat-received clear must not Hide the frame")
+    end)
+end
+
 --------------------------------------------------------------------------------
 -- Merge integration: OnActiveNoteChanged merges annotations
 --------------------------------------------------------------------------------

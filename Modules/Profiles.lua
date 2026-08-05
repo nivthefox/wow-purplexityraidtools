@@ -1,9 +1,12 @@
--- Profiles: Config tab and dialogs for managing settings profiles
 local PRT = PurplexityRaidTools
 
---------------------------------------------------------------------------------
--- Config UI
---------------------------------------------------------------------------------
+local function PrintSuccess(msg)
+    print("|cFF00FF00PurplexityRaidTools:|r " .. msg)
+end
+
+local function PrintError(msg)
+    print("|cFFFF0000PurplexityRaidTools:|r " .. msg)
+end
 
 PRT:RegisterTab("Profiles", function(parent)
     local container = CreateFrame("Frame", nil, parent)
@@ -22,7 +25,6 @@ PRT:RegisterTab("Profiles", function(parent)
     local yOffset = 0
     local ROW_HEIGHT = 24
 
-    -- Profile Section
     local profileHeader = PRT.Components.GetHeader(scrollChild, "Profile")
     profileHeader:SetPoint("TOPLEFT", 0, yOffset)
     yOffset = yOffset - 28
@@ -47,7 +49,6 @@ PRT:RegisterTab("Profiles", function(parent)
     profileDropdown:SetPoint("TOPLEFT", 0, yOffset)
     yOffset = yOffset - ROW_HEIGHT
 
-    -- Create/Clone/Delete buttons
     local buttonHolder = CreateFrame("Frame", nil, scrollChild)
     buttonHolder:SetPoint("TOPLEFT", 20, yOffset)
     buttonHolder:SetSize(400, 30)
@@ -75,7 +76,7 @@ PRT:RegisterTab("Profiles", function(parent)
     deleteButton:SetScript("OnClick", function()
         local currentName = PRT.Profiles:GetCurrentName()
         if currentName == "Default" then
-            print("|cFFFF0000PurplexityRaidTools:|r Cannot delete the Default profile.")
+            PrintError("Cannot delete the Default profile.")
             return
         end
         StaticPopup_Show("PRT_DELETE_PROFILE", currentName)
@@ -93,9 +94,43 @@ PRT:RegisterTab("Profiles", function(parent)
     return container
 end, { bottom = true })
 
---------------------------------------------------------------------------------
--- Profile Dialogs
---------------------------------------------------------------------------------
+local function CreateProfile(name)
+    if not name or name == "" then
+        return
+    end
+
+    if PRT.Profiles:Create(name) then
+        PRT.Profiles:Switch(name)
+        PrintSuccess("Created and switched to profile: " .. name)
+    else
+        PrintError("Profile already exists: " .. name)
+    end
+end
+
+local function CloneProfile(name)
+    if not name or name == "" then
+        return
+    end
+
+    if PRT.Profiles:Create(name, PRT.Profiles:GetCurrentName()) then
+        PRT.Profiles:Switch(name)
+        PrintSuccess("Cloned profile to: " .. name)
+    else
+        PrintError("Profile already exists: " .. name)
+    end
+end
+
+local function RenameProfile(newName)
+    if not newName or newName == "" then
+        return
+    end
+
+    if PRT.Profiles:Rename(PRT.Profiles:GetCurrentName(), newName) then
+        PrintSuccess("Renamed profile to: " .. newName)
+    else
+        PrintError("Could not rename profile. Name may already exist.")
+    end
+end
 
 StaticPopupDialogs["PRT_CREATE_PROFILE"] = {
     text = "Enter a name for the new profile:",
@@ -103,28 +138,11 @@ StaticPopupDialogs["PRT_CREATE_PROFILE"] = {
     button2 = "Cancel",
     hasEditBox = true,
     OnAccept = function(self)
-        local name = self.editBox:GetText()
-        if name and name ~= "" then
-            if PRT.Profiles:Create(name) then
-                PRT.Profiles:Switch(name)
-                print("|cFF00FF00PurplexityRaidTools:|r Created and switched to profile: " .. name)
-            else
-                print("|cFFFF0000PurplexityRaidTools:|r Profile already exists: " .. name)
-            end
-        end
+        CreateProfile(self.editBox:GetText())
     end,
     EditBoxOnEnterPressed = function(self)
-        local parent = self:GetParent()
-        local name = self:GetText()
-        if name and name ~= "" then
-            if PRT.Profiles:Create(name) then
-                PRT.Profiles:Switch(name)
-                print("|cFF00FF00PurplexityRaidTools:|r Created and switched to profile: " .. name)
-            else
-                print("|cFFFF0000PurplexityRaidTools:|r Profile already exists: " .. name)
-            end
-        end
-        parent:Hide()
+        CreateProfile(self:GetText())
+        self:GetParent():Hide()
     end,
     timeout = 0,
     whileDead = true,
@@ -137,30 +155,11 @@ StaticPopupDialogs["PRT_CLONE_PROFILE"] = {
     button2 = "Cancel",
     hasEditBox = true,
     OnAccept = function(self)
-        local name = self.editBox:GetText()
-        local currentName = PRT.Profiles:GetCurrentName()
-        if name and name ~= "" then
-            if PRT.Profiles:Create(name, currentName) then
-                PRT.Profiles:Switch(name)
-                print("|cFF00FF00PurplexityRaidTools:|r Cloned profile to: " .. name)
-            else
-                print("|cFFFF0000PurplexityRaidTools:|r Profile already exists: " .. name)
-            end
-        end
+        CloneProfile(self.editBox:GetText())
     end,
     EditBoxOnEnterPressed = function(self)
-        local parent = self:GetParent()
-        local name = self:GetText()
-        local currentName = PRT.Profiles:GetCurrentName()
-        if name and name ~= "" then
-            if PRT.Profiles:Create(name, currentName) then
-                PRT.Profiles:Switch(name)
-                print("|cFF00FF00PurplexityRaidTools:|r Cloned profile to: " .. name)
-            else
-                print("|cFFFF0000PurplexityRaidTools:|r Profile already exists: " .. name)
-            end
-        end
-        parent:Hide()
+        CloneProfile(self:GetText())
+        self:GetParent():Hide()
     end,
     timeout = 0,
     whileDead = true,
@@ -171,11 +170,11 @@ StaticPopupDialogs["PRT_DELETE_PROFILE"] = {
     text = "Are you sure you want to delete the profile '%s'?",
     button1 = "Delete",
     button2 = "Cancel",
-    OnAccept = function(self, data)
+    OnAccept = function()
         local currentName = PRT.Profiles:GetCurrentName()
         PRT.Profiles:Switch("Default")
         if PRT.Profiles:Delete(currentName) then
-            print("|cFF00FF00PurplexityRaidTools:|r Deleted profile: " .. currentName)
+            PrintSuccess("Deleted profile: " .. currentName)
         end
     end,
     timeout = 0,
@@ -190,28 +189,11 @@ StaticPopupDialogs["PRT_RENAME_PROFILE"] = {
     button2 = "Cancel",
     hasEditBox = true,
     OnAccept = function(self)
-        local newName = self.editBox:GetText()
-        local oldName = PRT.Profiles:GetCurrentName()
-        if newName and newName ~= "" then
-            if PRT.Profiles:Rename(oldName, newName) then
-                print("|cFF00FF00PurplexityRaidTools:|r Renamed profile to: " .. newName)
-            else
-                print("|cFFFF0000PurplexityRaidTools:|r Could not rename profile. Name may already exist.")
-            end
-        end
+        RenameProfile(self.editBox:GetText())
     end,
     EditBoxOnEnterPressed = function(self)
-        local parent = self:GetParent()
-        local newName = self:GetText()
-        local oldName = PRT.Profiles:GetCurrentName()
-        if newName and newName ~= "" then
-            if PRT.Profiles:Rename(oldName, newName) then
-                print("|cFF00FF00PurplexityRaidTools:|r Renamed profile to: " .. newName)
-            else
-                print("|cFFFF0000PurplexityRaidTools:|r Could not rename profile. Name may already exist.")
-            end
-        end
-        parent:Hide()
+        RenameProfile(self:GetText())
+        self:GetParent():Hide()
     end,
     timeout = 0,
     whileDead = true,

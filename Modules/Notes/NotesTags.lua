@@ -14,14 +14,9 @@ local PRT = PurplexityRaidTools
 local NotesTags = {}
 PRT.NotesTags = NotesTags
 
---------------------------------------------------------------------------------
--- Melee spec table
---
 -- DPS/healer specs only; tank-derived melee classification is applied by the
 -- caller when it builds playerCtx.isMelee. Deliberate surprises: 65 Holy Paladin
 -- and 270 Mistweaver Monk are classified MELEE.
---------------------------------------------------------------------------------
-
 local MELEE_TABLE = {
     [263] = true, -- Shaman: Enhancement
     [255] = true, -- Hunter: Survival
@@ -43,10 +38,6 @@ local MELEE_TABLE = {
 function NotesTags.IsMeleeSpec(specID)
     return MELEE_TABLE[specID] == true
 end
-
---------------------------------------------------------------------------------
--- Tag matching
---------------------------------------------------------------------------------
 
 local function tokenMatches(token, ctx)
     if token == "everyone" then
@@ -109,10 +100,6 @@ function NotesTags.Matches(tagString, ctx)
 
     return false
 end
-
---------------------------------------------------------------------------------
--- MarkRelevance
---------------------------------------------------------------------------------
 
 -- Sets reminder.relevant on every per-phase reminder. Freeform lines live in
 -- .lines with no reminder entry, so they are never touched.

@@ -46,12 +46,45 @@ local BACKDROP_INFO = {
 local frame
 local state = {}
 
---------------------------------------------------------------------------------
--- Helpers
---------------------------------------------------------------------------------
-
 local function GetSettings()
     return PRT:GetSetting("notes")
+end
+
+local function NonEmpty(text)
+    if text == "" then
+        return nil
+    end
+    return text
+end
+
+local function ParseTTSInput(raw)
+    if raw == "true" then
+        return true
+    end
+    if raw == "false" then
+        return false
+    end
+    return NonEmpty(raw)
+end
+
+local function FormatTTSValue(tts)
+    if tts == true then
+        return "true"
+    end
+    if tts == false then
+        return "false"
+    end
+    return tts or ""
+end
+
+local function ByName(a, b)
+    return a.name < b.name
+end
+
+local function SortRemindersByTime(bucket)
+    table.sort(bucket, function(a, b)
+        return a.time < b.time
+    end)
 end
 
 local function EnsurePositions()
@@ -186,9 +219,7 @@ local function GetLocalPlayerAbilities()
         return {}
     end
     local result = CollectAbilitiesFromSpec(specData)
-    table.sort(result, function(a, b)
-        return a.name < b.name
-    end)
+    table.sort(result, ByName)
     return result
 end
 
@@ -222,9 +253,7 @@ local function GetAbilitiesForTag(tag)
         local specData = PRT.SpellData[member.specId]
         if specData and specData.abilities then
             local result = CollectAbilitiesFromSpec(specData)
-            table.sort(result, function(a, b)
-                return a.name < b.name
-            end)
+            table.sort(result, ByName)
             return result
         end
     end
@@ -243,9 +272,7 @@ local function GetAbilitiesForTag(tag)
                 end
             end
         end
-        table.sort(result, function(a, b)
-            return a.name < b.name
-        end)
+        table.sort(result, ByName)
         return result
     end
 
@@ -291,10 +318,6 @@ local function BuildPlayerCtx()
         isMelee = isMelee,
     }
 end
-
---------------------------------------------------------------------------------
--- Phase derivation
---------------------------------------------------------------------------------
 
 local function DerivePhases(parsedNote)
     if not parsedNote or not parsedNote.reminders then
@@ -383,10 +406,6 @@ local function TotalDuration(phases, activePhase)
     return PHASE_PAD
 end
 
---------------------------------------------------------------------------------
--- Reminder collection from parsed note
---------------------------------------------------------------------------------
-
 local function CollectReminders(parsedNote, activePhase)
     if not parsedNote or not parsedNote.reminders then
         return {}
@@ -465,10 +484,6 @@ local function SplitAbilityAndText(text, knownAbilities)
     return text, ""
 end
 
---------------------------------------------------------------------------------
--- Position persistence
---------------------------------------------------------------------------------
-
 local function SaveEditorPosition()
     if not frame then
         return
@@ -500,10 +515,6 @@ local function RestoreEditorPosition()
         frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
     end
 end
-
---------------------------------------------------------------------------------
--- Frame creation
---------------------------------------------------------------------------------
 
 local titleBar, modeBar, phaseTabs, timelineArea, editPanel
 local rulerFrame, bodyScroll, canvas, cursorLine, cursorLabel
@@ -657,10 +668,6 @@ local function CreatePhaseTab(parent)
     return tab
 end
 
---------------------------------------------------------------------------------
--- Edit panel fields
---------------------------------------------------------------------------------
-
 local editFields = {}
 local currentAbilities = {}
 
@@ -681,7 +688,7 @@ local function CreateFieldInput(parent)
     return box
 end
 
-local function CreateFieldDropdown(parent, labelText, getItems, onSelect)
+local function CreateFieldDropdown(parent, getItems, onSelect)
     local dropdown = CreateFrame("DropdownButton", nil, parent, "WowStyle1DropdownTemplate")
     dropdown:SetHeight(22)
     dropdown.getItems = getItems
@@ -772,8 +779,8 @@ local function BuildEditPanel()
         return input
     end
 
-    local function AddDropdown(labelText, getItems, onSelect)
-        local dd = CreateFieldDropdown(scrollChild, labelText, getItems, onSelect)
+    local function AddDropdown(getItems, onSelect)
+        local dd = CreateFieldDropdown(scrollChild, getItems, onSelect)
         dd:SetPoint("TOPLEFT", 4, yOff)
         dd:SetWidth(fieldWidth)
         yOff = yOff - 28
@@ -807,7 +814,7 @@ local function BuildEditPanel()
     end)
 
     editFields.abilityLabel = AddLabel("ABILITY")
-    editFields.ability = AddDropdown("Ability",
+    editFields.ability = AddDropdown(
         function()
             local items = { { name = "(free text)", value = "" } }
             for _, ab in ipairs(currentAbilities) do
@@ -840,7 +847,7 @@ local function BuildEditPanel()
     editFields.duration:SetNumeric(false)
 
     editFields.displayTypeLabel = AddLabel("DISPLAY TYPE")
-    editFields.displayType = AddDropdown("Display Type",
+    editFields.displayType = AddDropdown(
         function() return DISPLAY_TYPE_OPTIONS end,
         function() end
     )
@@ -968,10 +975,6 @@ local function BuildEditPanel()
     return panel
 end
 
---------------------------------------------------------------------------------
--- Build the main frame
---------------------------------------------------------------------------------
-
 local function BuildFrame()
     if frame then
         return
@@ -1062,7 +1065,7 @@ local function BuildFrame()
     titleBar.encounterText:SetPoint("LEFT", titleBar.nameText, "RIGHT", 12, 0)
     titleBar.encounterText:SetTextColor(0.5, 0.5, 0.5)
 
-    titleBar.difficultyDropdown = CreateFieldDropdown(titleBar, "Difficulty",
+    titleBar.difficultyDropdown = CreateFieldDropdown(titleBar,
         function() return DIFFICULTY_OPTIONS end,
         function(value)
             if state.parsedNote then
@@ -1113,13 +1116,11 @@ local function BuildFrame()
         NotesEditor:ShowRawMode()
     end)
 
-    -- Phase tabs
     phaseTabs = CreateFrame("Frame", nil, frame)
     phaseTabs:SetHeight(24)
     phaseTabs:SetPoint("TOPLEFT", modeBar, "BOTTOMLEFT", 0, -2)
     phaseTabs:SetPoint("TOPRIGHT", modeBar, "BOTTOMRIGHT", 0, -2)
 
-    -- Timeline area
     timelineArea = CreateFrame("Frame", nil, frame)
     timelineArea:SetPoint("TOPLEFT", phaseTabs, "BOTTOMLEFT", 0, -2)
     timelineArea:SetPoint("BOTTOMRIGHT", -6, 6)
@@ -1191,16 +1192,8 @@ local function BuildFrame()
         cursorLabel:SetText(FormatTime(time))
     end)
 
-    -- Edit panel
     editPanel = BuildEditPanel()
-
-    -- Close on Escape
-    table.insert(UISpecialFrames, "PRT_NotesEditor")
 end
-
---------------------------------------------------------------------------------
--- Render
---------------------------------------------------------------------------------
 
 function NotesEditor:SyncRuler()
     if not rulerFrame or not bodyScroll then
@@ -1313,24 +1306,25 @@ function NotesEditor:RenderTimeline()
         end
     end
 
+    local function PlaceTick(t, y)
+        local tick = GetFromPool(tickPool, function()
+            return CreateTick(rulerFrame)
+        end)
+        tick.baseY = y
+        tick:SetText(FormatTime(t))
+        local scrollOffset = bodyScroll:GetVerticalScroll()
+        tick:SetPoint("TOPRIGHT", rulerFrame, "TOPRIGHT", -4, -(y - scrollOffset))
+        tick:Show()
+    end
+
     if state.activePhase == "all" then
         for pi, phase in ipairs(phases) do
             local isLast = (pi == #phases)
             for t = 0, phase.duration, TICK_INTERVAL do
-                if not isLast and t == phase.duration then
-                    -- skip boundary tick; next phase's 0:00 covers it
-                else
-                local y = (phase.start + t) * VPPS + TOP_PAD
-                if t % TICK_LABEL_INTERVAL == 0 then
-                    local tick = GetFromPool(tickPool, function()
-                        return CreateTick(rulerFrame)
-                    end)
-                    tick.baseY = y
-                    tick:SetText(FormatTime(t))
-                    local scrollOffset = bodyScroll:GetVerticalScroll()
-                    tick:SetPoint("TOPRIGHT", rulerFrame, "TOPRIGHT", -4, -(y - scrollOffset))
-                    tick:Show()
-                end
+                -- The boundary tick is skipped; the next phase's 0:00 covers it.
+                local isCoveredBoundary = not isLast and t == phase.duration
+                if not isCoveredBoundary and t % TICK_LABEL_INTERVAL == 0 then
+                    PlaceTick(t, (phase.start + t) * VPPS + TOP_PAD)
                 end
             end
         end
@@ -1345,15 +1339,7 @@ function NotesEditor:RenderTimeline()
         local dur = phase and phase.duration or PHASE_PAD
         for t = 0, dur, TICK_INTERVAL do
             if t % TICK_LABEL_INTERVAL == 0 then
-                local y = t * VPPS + TOP_PAD
-                local tick = GetFromPool(tickPool, function()
-                    return CreateTick(rulerFrame)
-                end)
-                tick.baseY = y
-                tick:SetText(FormatTime(t))
-                local scrollOffset = bodyScroll:GetVerticalScroll()
-                tick:SetPoint("TOPRIGHT", rulerFrame, "TOPRIGHT", -4, -(y - scrollOffset))
-                tick:Show()
+                PlaceTick(t, t * VPPS + TOP_PAD)
             end
         end
     end
@@ -1469,18 +1455,12 @@ function NotesEditor:RenderBlock(reminder, y, stackIdx, height, phases, playerCt
     end
 
     local isInteractive = true
-    if state.mode == "annotate" and playerCtx then
-        if not reminder.isPersonal and not PRT.NotesTags.Matches(reminder.tag, playerCtx) then
-            isInteractive = false
-            block:SetAlpha(0.4)
-        else
-            block:SetAlpha(1)
-        end
-    elseif state.mode == "annotate" then
-        block:SetAlpha(1)
-    else
-        block:SetAlpha(1)
+    if state.mode == "annotate" and playerCtx
+            and not reminder.isPersonal
+            and not PRT.NotesTags.Matches(reminder.tag, playerCtx) then
+        isInteractive = false
     end
+    block:SetAlpha(isInteractive and 1 or 0.4)
 
     block:SetScript("OnClick", function()
         if not isInteractive then
@@ -1502,11 +1482,13 @@ function NotesEditor:Render()
         modeBar.showMineLabel:Show()
         modeBar.rawBtn:Hide()
         modeBar.annotateBtn:Hide()
+        frame:SetTitle("Annotate Note")
     else
         modeBar.showMineCheck:Hide()
         modeBar.showMineLabel:Hide()
         modeBar.rawBtn:Show()
         modeBar.annotateBtn:Show()
+        frame:SetTitle("Edit Note")
     end
 
     titleBar.nameText:SetText(state.noteName or "New Note")
@@ -1516,10 +1498,6 @@ function NotesEditor:Render()
     self:RenderPhaseTabs()
     self:RenderTimeline()
 end
-
---------------------------------------------------------------------------------
--- Raw text frame (separate window, built like NivUI's CreateTextAreaDialog)
---------------------------------------------------------------------------------
 
 local rawFrame
 
@@ -1660,9 +1638,49 @@ function NotesEditor:SwitchToVisual()
     self:Render()
 end
 
---------------------------------------------------------------------------------
--- Edit panel open/save/delete
---------------------------------------------------------------------------------
+local function EnsureAnnotationNote()
+    if not state.annotationNote then
+        state.annotationNote = {
+            encounterID = state.parsedNote and state.parsedNote.encounterID,
+            reminders = {},
+            lines = {},
+        }
+    end
+    return state.annotationNote
+end
+
+local function AppendReminderToNote(note, reminder)
+    local bucket = note.reminders[reminder.phaseKey]
+    if not bucket then
+        bucket = {}
+        note.reminders[reminder.phaseKey] = bucket
+    end
+    bucket[#bucket + 1] = reminder
+    SortRemindersByTime(bucket)
+    note.lines[#note.lines + 1] = { type = "reminder", reminder = reminder }
+end
+
+local function RemoveReminderFromNote(note, reminder)
+    local bucket = note.reminders[reminder.phaseKey]
+    if bucket then
+        for i, r in ipairs(bucket) do
+            if r == reminder then
+                table.remove(bucket, i)
+                break
+            end
+        end
+        if #bucket == 0 then
+            note.reminders[reminder.phaseKey] = nil
+        end
+    end
+
+    for i, entry in ipairs(note.lines) do
+        if entry.type == "reminder" and entry.reminder == reminder then
+            table.remove(note.lines, i)
+            break
+        end
+    end
+end
 
 function NotesEditor:OpenAddPanel(time, phaseNum)
     editPanel:Show()
@@ -1723,7 +1741,7 @@ function NotesEditor:OpenEditPanel(reminder)
         )
         editFields.displayType:SetValue(reminder.displayType or "Icon")
         editFields.sound:SetText(reminder.sound or "")
-        editFields.tts:SetText(reminder.tts == true and "true" or (reminder.tts == false and "false" or (reminder.tts or "")))
+        editFields.tts:SetText(FormatTTSValue(reminder.tts))
         editFields.ttsTimer:SetText(reminder.ttsTimer and tostring(reminder.ttsTimer) or "")
         editFields.countdown:SetText(reminder.countdown and tostring(reminder.countdown) or "")
 
@@ -1758,7 +1776,7 @@ function NotesEditor:OpenEditPanel(reminder)
     editFields.duration:SetText(tostring(reminder.duration or 5))
     editFields.displayType:SetValue(reminder.displayType or "Icon")
     editFields.sound:SetText(reminder.sound or "")
-    editFields.tts:SetText(reminder.tts == true and "true" or (reminder.tts == false and "false" or (reminder.tts or "")))
+    editFields.tts:SetText(FormatTTSValue(reminder.tts))
     editFields.ttsTimer:SetText(reminder.ttsTimer and tostring(reminder.ttsTimer) or "")
     editFields.countdown:SetText(reminder.countdown and tostring(reminder.countdown) or "")
     editFields.bossSpell:SetText(reminder.bossSpell and tostring(reminder.bossSpell) or "")
@@ -1809,22 +1827,12 @@ function NotesEditor:SaveFromPanel()
 
     local durVal = tonumber(editFields.duration:GetText())
     local displayTypeVal = editFields.displayType:GetValue() or "Icon"
-    local soundVal = editFields.sound:GetText()
-    if soundVal == "" then soundVal = nil end
-    local ttsRaw = editFields.tts:GetText()
-    local ttsVal
-    if ttsRaw == "true" then
-        ttsVal = true
-    elseif ttsRaw == "false" then
-        ttsVal = false
-    elseif ttsRaw ~= "" then
-        ttsVal = ttsRaw
-    end
+    local soundVal = NonEmpty(editFields.sound:GetText())
+    local ttsVal = ParseTTSInput(editFields.tts:GetText())
     local ttsTimerVal = tonumber(editFields.ttsTimer:GetText())
     local countdownVal = tonumber(editFields.countdown:GetText())
     local bossSpellVal = tonumber(editFields.bossSpell:GetText())
-    local colorsVal = editFields.colors:GetText()
-    if colorsVal == "" then colorsVal = nil end
+    local colorsVal = NonEmpty(editFields.colors:GetText())
 
     if not state.parsedNote then
         state.parsedNote = {
@@ -1856,62 +1864,14 @@ function NotesEditor:SaveFromPanel()
     local note = state.parsedNote
 
     if state.editingReminder then
-        local oldPhaseKey = state.editingReminder.phaseKey
-        local oldBucket = note.reminders[oldPhaseKey]
-        if oldBucket then
-            for i, r in ipairs(oldBucket) do
-                if r == state.editingReminder then
-                    table.remove(oldBucket, i)
-                    break
-                end
-            end
-            if #oldBucket == 0 then
-                note.reminders[oldPhaseKey] = nil
-            end
-        end
-
-        for i, entry in ipairs(note.lines) do
-            if entry.type == "reminder" and entry.reminder == state.editingReminder then
-                table.remove(note.lines, i)
-                break
-            end
-        end
+        RemoveReminderFromNote(note, state.editingReminder)
     end
 
-    local bucket = note.reminders[newReminder.phaseKey]
-    if not bucket then
-        bucket = {}
-        note.reminders[newReminder.phaseKey] = bucket
-    end
-    bucket[#bucket + 1] = newReminder
-    table.sort(bucket, function(a, b)
-        return a.time < b.time
-    end)
-
-    note.lines[#note.lines + 1] = { type = "reminder", reminder = newReminder }
+    AppendReminderToNote(note, newReminder)
 
     if state.mode == "annotate" then
         newReminder.isPersonal = true
-
-        if not state.annotationNote then
-            state.annotationNote = {
-                encounterID = state.parsedNote and state.parsedNote.encounterID,
-                reminders = {},
-                lines = {},
-            }
-        end
-        local annNote = state.annotationNote
-        local annBucket = annNote.reminders[newReminder.phaseKey]
-        if not annBucket then
-            annBucket = {}
-            annNote.reminders[newReminder.phaseKey] = annBucket
-        end
-        annBucket[#annBucket + 1] = newReminder
-        table.sort(annBucket, function(a, b)
-            return a.time < b.time
-        end)
-        annNote.lines[#annNote.lines + 1] = { type = "reminder", reminder = newReminder }
-
+        AppendReminderToNote(EnsureAnnotationNote(), newReminder)
         self:SaveCurrentAnnotation()
     else
         self:SaveCurrentNote()
@@ -1928,17 +1888,8 @@ function NotesEditor:SaveAnnotationFromPanel()
     end
 
     local displayTypeVal = editFields.displayType:GetValue() or "Icon"
-    local soundVal = editFields.sound:GetText()
-    if soundVal == "" then soundVal = nil end
-    local ttsRaw = editFields.tts:GetText()
-    local ttsVal
-    if ttsRaw == "true" then
-        ttsVal = true
-    elseif ttsRaw == "false" then
-        ttsVal = false
-    elseif ttsRaw ~= "" then
-        ttsVal = ttsRaw
-    end
+    local soundVal = NonEmpty(editFields.sound:GetText())
+    local ttsVal = ParseTTSInput(editFields.tts:GetText())
     local countdownVal = tonumber(editFields.countdown:GetText())
 
     local annReminder = {
@@ -1954,35 +1905,21 @@ function NotesEditor:SaveAnnotationFromPanel()
         countdown = countdownVal,
     }
 
-    if not state.annotationNote then
-        state.annotationNote = {
-            encounterID = state.parsedNote and state.parsedNote.encounterID,
-            reminders = {},
-            lines = {},
-        }
-    end
-
-    local annNote = state.annotationNote
+    local annNote = EnsureAnnotationNote()
     local bucket = annNote.reminders[annReminder.phaseKey]
-    if not bucket then
-        bucket = {}
-        annNote.reminders[annReminder.phaseKey] = bucket
-    end
 
     local found = false
-    for i, existing in ipairs(bucket) do
-        if existing.time == annReminder.time and existing.text == annReminder.text then
-            bucket[i] = annReminder
-            found = true
-            break
+    if bucket then
+        for i, existing in ipairs(bucket) do
+            if existing.time == annReminder.time and existing.text == annReminder.text then
+                bucket[i] = annReminder
+                found = true
+                break
+            end
         end
     end
     if not found then
-        bucket[#bucket + 1] = annReminder
-        table.sort(bucket, function(a, b)
-            return a.time < b.time
-        end)
-        annNote.lines[#annNote.lines + 1] = { type = "reminder", reminder = annReminder }
+        AppendReminderToNote(annNote, annReminder)
     end
 
     local annText = PRT.NotesSerializer:Serialize(annNote)
@@ -2014,25 +1951,7 @@ function NotesEditor:DeleteFromPanel()
         return
     end
 
-    local bucket = note.reminders[reminder.phaseKey]
-    if bucket then
-        for i, r in ipairs(bucket) do
-            if r == reminder then
-                table.remove(bucket, i)
-                break
-            end
-        end
-        if #bucket == 0 then
-            note.reminders[reminder.phaseKey] = nil
-        end
-    end
-
-    for i, entry in ipairs(note.lines) do
-        if entry.type == "reminder" and entry.reminder == reminder then
-            table.remove(note.lines, i)
-            break
-        end
-    end
+    RemoveReminderFromNote(note, reminder)
 
     if state.mode == "annotate" and reminder.isPersonal then
         self:SaveCurrentAnnotation()
@@ -2045,10 +1964,6 @@ function NotesEditor:DeleteFromPanel()
     self:ReloadNote()
     self:Render()
 end
-
---------------------------------------------------------------------------------
--- Save helpers
---------------------------------------------------------------------------------
 
 function NotesEditor:SaveCurrentNote()
     if not state.noteName then
@@ -2111,10 +2026,6 @@ function NotesEditor:ReloadNote()
     state.difficulty = parsed.difficulty
 end
 
---------------------------------------------------------------------------------
--- Public API
---------------------------------------------------------------------------------
-
 function NotesEditor:Open(name, text, mode)
     BuildFrame()
 
@@ -2154,19 +2065,6 @@ function NotesEditor:Open(name, text, mode)
     end
 
     modeBar.showMineCheck:SetChecked(false)
-    if state.mode == "annotate" then
-        modeBar.showMineCheck:Show()
-        modeBar.showMineLabel:Show()
-        modeBar.rawBtn:Hide()
-        modeBar.annotateBtn:Hide()
-        frame:SetTitle("Annotate Note")
-    else
-        modeBar.showMineCheck:Hide()
-        modeBar.showMineLabel:Hide()
-        modeBar.rawBtn:Show()
-        modeBar.annotateBtn:Show()
-        frame:SetTitle("Edit Note")
-    end
 
     if rawFrame then
         rawFrame:Hide()

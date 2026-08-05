@@ -7,48 +7,31 @@ PRT.NotesParser = NotesParser
 local MULTI_ENCOUNTER_ERROR =
     "A note may only contain one encounter. Use a separate note per encounter."
 
---------------------------------------------------------------------------------
--- Line splitting
---------------------------------------------------------------------------------
-
-local function splitLines(text)
-    local lines = {}
-    local normalized = text:gsub("\r\n", "\n"):gsub("\r", "\n")
-    local pos = 1
-    local len = #normalized
-    while pos <= len + 1 do
-        local nl = normalized:find("\n", pos, true)
-        if nl then
-            lines[#lines + 1] = normalized:sub(pos, nl - 1)
-            pos = nl + 1
-        else
-            lines[#lines + 1] = normalized:sub(pos)
-            break
-        end
-    end
-    return lines
-end
-
-local function splitOnSemicolons(line)
+local function splitOn(text, separator)
     local parts = {}
     local pos = 1
-    local len = #line
+    local len = #text
     while pos <= len + 1 do
-        local sc = line:find(";", pos, true)
-        if sc then
-            parts[#parts + 1] = line:sub(pos, sc - 1)
-            pos = sc + 1
+        local found = text:find(separator, pos, true)
+        if found then
+            parts[#parts + 1] = text:sub(pos, found - 1)
+            pos = found + 1
         else
-            parts[#parts + 1] = line:sub(pos)
+            parts[#parts + 1] = text:sub(pos)
             break
         end
     end
     return parts
 end
 
+local function splitLines(text)
+    local normalized = text:gsub("\r\n", "\n"):gsub("\r", "\n")
+    return splitOn(normalized, "\n")
+end
+
 local function parseFields(line)
     local fields = {}
-    for _, pair in ipairs(splitOnSemicolons(line)) do
+    for _, pair in ipairs(splitOn(line, ";")) do
         local colon = pair:find(":", 1, true)
         if colon then
             local key = pair:sub(1, colon - 1):match("^%s*(.-)%s*$")
@@ -61,10 +44,6 @@ local function parseFields(line)
     return fields
 end
 
---------------------------------------------------------------------------------
--- Helpers
---------------------------------------------------------------------------------
-
 local function toNumber(value)
     if value == nil then return nil end
     return tonumber(value)
@@ -75,10 +54,6 @@ local function isTimedLine(line)
         and line:find("tag:", 1, true)
         and (line:find("text:", 1, true) or line:find("spellid:", 1, true))
 end
-
---------------------------------------------------------------------------------
--- Reminder construction
---------------------------------------------------------------------------------
 
 local function buildReminder(fields)
     local time = toNumber(fields["time"])
@@ -153,10 +128,6 @@ local function buildReminder(fields)
 
     return reminder
 end
-
---------------------------------------------------------------------------------
--- Parse
---------------------------------------------------------------------------------
 
 local function newNote()
     return {

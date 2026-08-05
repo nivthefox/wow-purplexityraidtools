@@ -35,10 +35,6 @@ local function resetNotes()
     return PRT.Profiles.current.notes
 end
 
---------------------------------------------------------------------------------
--- Save
---------------------------------------------------------------------------------
-
 tests["save creates a new note"] = function()
     local notes = resetNotes()
     local ok = Notes:SaveNote("Alpha", "text one")
@@ -109,10 +105,6 @@ tests["rejected save over the active note keeps it active with old content"] = f
     assertEquals(notes.savedNotes["Alpha"], "EncounterID:3176;Name:Sszorak")
 end
 
---------------------------------------------------------------------------------
--- Delete
---------------------------------------------------------------------------------
-
 tests["delete removes the note"] = function()
     local notes = resetNotes()
     Notes:SaveNote("Alpha", "text one")
@@ -144,10 +136,6 @@ tests["delete of a nonexistent note returns false"] = function()
     local ok = Notes:DeleteNote("Ghost")
     assertFalse(ok)
 end
-
---------------------------------------------------------------------------------
--- Rename
---------------------------------------------------------------------------------
 
 tests["rename moves the note text"] = function()
     local notes = resetNotes()
@@ -183,10 +171,6 @@ tests["rename of a nonexistent note fails"] = function()
     assertFalse(ok)
 end
 
---------------------------------------------------------------------------------
--- Activate
---------------------------------------------------------------------------------
-
 tests["activate sets activeNote"] = function()
     local notes = resetNotes()
     Notes:SaveNote("Alpha", "text one")
@@ -213,10 +197,6 @@ tests["activate(nil) deactivates"] = function()
     assertNil(notes.activeNote)
 end
 
---------------------------------------------------------------------------------
--- GetActiveNote
---------------------------------------------------------------------------------
-
 tests["GetActiveNote round-trips name and text"] = function()
     local notes = resetNotes()
     Notes:SaveNote("Alpha", "text one")
@@ -232,10 +212,6 @@ tests["GetActiveNote returns nil when nothing is active"] = function()
     assertNil(name)
     assertNil(text)
 end
-
---------------------------------------------------------------------------------
--- SaveAnnotation
---------------------------------------------------------------------------------
 
 tests["SaveAnnotation stores a plain string"] = function()
     local notes = resetNotes()
@@ -253,10 +229,6 @@ tests["SaveAnnotation validates via parser"] = function()
     assertNil(notes.annotations["Alpha"])
 end
 
---------------------------------------------------------------------------------
--- GetAnnotation
---------------------------------------------------------------------------------
-
 tests["GetAnnotation returns the stored string"] = function()
     local notes = resetNotes()
     Notes:SaveAnnotation("Alpha", "my annotation")
@@ -269,10 +241,6 @@ tests["GetAnnotation returns nil for nonexistent name"] = function()
     local text = Notes:GetAnnotation("Ghost")
     assertNil(text)
 end
-
---------------------------------------------------------------------------------
--- DeleteAnnotation
---------------------------------------------------------------------------------
 
 tests["DeleteAnnotation removes annotation"] = function()
     local notes = resetNotes()
@@ -287,10 +255,6 @@ tests["DeleteAnnotation of nonexistent name returns false"] = function()
     local ok = Notes:DeleteAnnotation("Ghost")
     assertFalse(ok)
 end
-
---------------------------------------------------------------------------------
--- Annotation integration with RenameNote
---------------------------------------------------------------------------------
 
 tests["RenameNote also renames annotation"] = function()
     local notes = resetNotes()
@@ -309,10 +273,6 @@ tests["RenameNote with no annotation does not crash"] = function()
     assertNil(notes.annotations["Alpha"])
     assertNil(notes.annotations["Gamma"])
 end
-
---------------------------------------------------------------------------------
--- Annotation integration with DeleteNote
---------------------------------------------------------------------------------
 
 tests["DeleteNote also deletes annotation"] = function()
     local notes = resetNotes()

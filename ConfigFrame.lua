@@ -1,6 +1,3 @@
--- PurplexityRaidTools Config Frame
--- Modern configuration UI
-
 local PRT = PurplexityRaidTools
 
 local FRAME_WIDTH = 880
@@ -11,13 +8,8 @@ local SIDEBAR_WIDTH = 125
 local LABEL_WIDTH = 200
 local CONTROL_MAX_WIDTH = 350
 
---------------------------------------------------------------------------------
--- Component Helpers
---------------------------------------------------------------------------------
-
 local Components = {}
 
--- Create a checkbox with label
 function Components.GetCheckbox(parent, label, callback)
     local holder = CreateFrame("Frame", nil, parent)
     holder:SetHeight(ROW_HEIGHT)
@@ -59,7 +51,6 @@ function Components.GetCheckbox(parent, label, callback)
     return holder
 end
 
--- Create a basic dropdown
 function Components.GetBasicDropdown(parent, labelText, getItems, isSelectedCallback, onSelectionCallback)
     local frame = CreateFrame("Frame", nil, parent)
     frame:SetHeight(ROW_HEIGHT)
@@ -97,7 +88,6 @@ function Components.GetBasicDropdown(parent, labelText, getItems, isSelectedCall
     return frame
 end
 
--- Create a slider with +/- steppers AND an input box
 function Components.GetSliderWithInput(parent, labelText, min, max, step, isDecimal, callback)
     local holder = CreateFrame("Frame", nil, parent)
     holder:SetHeight(ROW_HEIGHT)
@@ -110,14 +100,12 @@ function Components.GetSliderWithInput(parent, labelText, min, max, step, isDeci
     holder.Label:SetPoint("RIGHT", holder, "LEFT", LABEL_WIDTH - 40, 0)
     holder.Label:SetText(labelText)
 
-    -- Input box on the right
     local editBox = CreateFrame("EditBox", nil, holder, "InputBoxTemplate")
     editBox:SetSize(50, 20)
     editBox:SetAutoFocus(false)
     editBox:SetNumeric(not isDecimal)
     editBox:SetMaxLetters(6)
 
-    -- Slider in the middle
     holder.Slider = CreateFrame("Slider", nil, holder, "MinimalSliderWithSteppersTemplate")
     holder.Slider:SetPoint("LEFT", holder, "LEFT", LABEL_WIDTH - 20, 0)
     holder.Slider:SetPoint("RIGHT", editBox, "LEFT", -10, 0)
@@ -198,7 +186,6 @@ function Components.GetSliderWithInput(parent, labelText, min, max, step, isDeci
     return holder
 end
 
--- Create a color picker
 function Components.GetColorPicker(parent, labelText, hasAlpha, callback)
     local holder = CreateFrame("Frame", nil, parent)
     holder:SetHeight(ROW_HEIGHT)
@@ -247,7 +234,6 @@ function Components.GetColorPicker(parent, labelText, hasAlpha, callback)
 
             ColorPickerFrame:SetupColorPickerAndShow(info)
         else
-            -- Right click resets to white
             swatch.currentColor = { r = 1, g = 1, b = 1, a = hasAlpha and 1 or nil }
             swatch:SetColor(CreateColor(1, 1, 1))
             if callback then callback(swatch.currentColor) end
@@ -269,7 +255,6 @@ function Components.GetColorPicker(parent, labelText, hasAlpha, callback)
     return holder
 end
 
--- Create a section header
 function Components.GetHeader(parent, text)
     local holder = CreateFrame("Frame", nil, parent)
     holder:SetPoint("LEFT", 10, 0)
@@ -283,7 +268,6 @@ function Components.GetHeader(parent, text)
     return holder
 end
 
--- Create a tab button
 function Components.GetTab(parent, text)
     local tab = CreateFrame("Button", nil, parent, "PanelTopTabButtonTemplate")
     tab:SetText(text)
@@ -295,7 +279,6 @@ function Components.GetTab(parent, text)
     return tab
 end
 
--- Create a left-side sidebar tab button
 function Components.GetSidebarTab(parent, text)
     local btn = CreateFrame("Button", nil, parent)
     btn:SetSize(SIDEBAR_WIDTH - 8, 28)
@@ -326,7 +309,6 @@ function Components.GetSidebarTab(parent, text)
     return btn
 end
 
--- Create a group of top sub-tabs inside a sidebar tab's content area.
 -- defs: array of { name = "Tab Name", setup = function(panel) ... end }
 -- Each setup function builds its content inside the panel it is given.
 -- Returns the outer container (suitable as a RegisterTab container).
@@ -378,12 +360,7 @@ function Components.GetSubTabGroup(parent, defs)
     return container
 end
 
--- Export components for modules to use
 PRT.Components = Components
-
---------------------------------------------------------------------------------
--- Main Config Frame
---------------------------------------------------------------------------------
 
 local ConfigFrame = CreateFrame("Frame", "PurplexityRaidToolsConfigFrame", UIParent, "ButtonFrameTemplate")
 ConfigFrame:SetSize(FRAME_WIDTH, FRAME_HEIGHT)
@@ -391,13 +368,11 @@ ConfigFrame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
 ConfigFrame:SetToplevel(true)
 ConfigFrame:Hide()
 
--- Customize ButtonFrameTemplate
 ButtonFrameTemplate_HidePortrait(ConfigFrame)
 ButtonFrameTemplate_HideButtonBar(ConfigFrame)
 ConfigFrame.Inset:Hide()
 ConfigFrame:SetTitle("PurplexityRaidTools")
 
--- Make movable
 ConfigFrame:SetMovable(true)
 ConfigFrame:SetClampedToScreen(true)
 ConfigFrame:EnableMouse(true)
@@ -408,12 +383,8 @@ ConfigFrame:SetScript("OnDragStop", function(self)
     self:SetUserPlaced(false)
 end)
 
--- Add to special frames so Escape closes it
+-- UISpecialFrames membership makes Escape close the frame.
 table.insert(UISpecialFrames, "PurplexityRaidToolsConfigFrame")
-
---------------------------------------------------------------------------------
--- Sidebar Tab System
---------------------------------------------------------------------------------
 
 local Sidebar = CreateFrame("Frame", nil, ConfigFrame)
 Sidebar:SetWidth(SIDEBAR_WIDTH)
@@ -465,7 +436,6 @@ local function LayoutSidebarTabs()
         end
     end
 
-    -- Bottom entries stack upward from the bottom of the sidebar
     for i, e in ipairs(bottomEntries) do
         e.button:ClearAllPoints()
         if i == 1 then
@@ -486,9 +456,8 @@ local function LayoutSidebarTabs()
     end
 end
 
--- Export tab system for modules (tabs are kept in alphabetical order).
--- Pass opts.bottom = true to pin a tab to the bottom of the sidebar,
--- separated from the main group.
+-- Tabs are kept in alphabetical order. Pass opts.bottom = true to pin a tab
+-- to the bottom of the sidebar, separated from the main group.
 PRT.RegisterTab = function(self, name, setupFunc, opts)
     local entry = {
         name = name,
@@ -512,16 +481,11 @@ PRT.RegisterTab = function(self, name, setupFunc, opts)
     LayoutSidebarTabs()
 end
 
--- Select first tab when shown
 ConfigFrame:SetScript("OnShow", function()
     if #tabEntries > 0 or #bottomEntries > 0 then
         SelectTab(currentEntry or tabEntries[1] or bottomEntries[1])
     end
 end)
-
---------------------------------------------------------------------------------
--- Placeholder content (shown when no modules registered)
---------------------------------------------------------------------------------
 
 local placeholder = CreateFrame("Frame", nil, ContentArea)
 placeholder:SetAllPoints()

@@ -37,10 +37,6 @@ PRT:RegisterModule("notes", Notes)
 --   onCancelPhase(reminders)
 -- ============================================================================
 
---------------------------------------------------------------------------------
--- Default Settings
---------------------------------------------------------------------------------
-
 PRT.defaults.notes = {
     enabled = true,
     -- activeNote is intentionally omitted: nil keys do not exist, and a nil
@@ -76,10 +72,6 @@ PRT.defaults.notes = {
     },
     positions = {},
 }
-
---------------------------------------------------------------------------------
--- Storage
---------------------------------------------------------------------------------
 
 local function GetNotesStore()
     local profile = PRT.Profiles:GetCurrent()
@@ -187,10 +179,6 @@ function Notes:GetActiveNote()
     return name, store.savedNotes[name]
 end
 
---------------------------------------------------------------------------------
--- Runtime state (encounter session)
---------------------------------------------------------------------------------
-
 local activeNote = nil
 local ticker = nil
 local encounterPhase = 1
@@ -209,14 +197,10 @@ local DIFFICULTY_ID_TO_NOTE_STRING = {
 }
 
 -- Reject any WoW event/callback argument that is a protected "secret" value
--- (post-Midnight combat data restrictions), mirroring MRT's boss-mod guard.
+-- (post-Midnight combat data restrictions).
 local function isSecret(value)
     return issecretvalue ~= nil and issecretvalue(value)
 end
-
---------------------------------------------------------------------------------
--- Player context
---------------------------------------------------------------------------------
 
 -- Tanks count as melee here; DPS/healer classification defers to IsMeleeSpec.
 local function BuildPlayerCtx()
@@ -279,10 +263,6 @@ local function RefreshRelevance()
     PRT.NotesFrame:SetNote(activeNote)
 end
 
---------------------------------------------------------------------------------
--- Encounter applicability
---------------------------------------------------------------------------------
-
 local function NoteApplies(note, encounterID, difficultyString)
     if not note then
         return false
@@ -292,10 +272,6 @@ local function NoteApplies(note, encounterID, difficultyString)
     end
     return note.difficulty == nil or note.difficulty == difficultyString
 end
-
---------------------------------------------------------------------------------
--- Timer callbacks (frozen signatures)
---------------------------------------------------------------------------------
 
 local timerCallbacks = {
     onPopupShow = function(reminder, remaining)
@@ -317,10 +293,6 @@ local timerCallbacks = {
     end,
 }
 
---------------------------------------------------------------------------------
--- Boss-mod phase tracking
---------------------------------------------------------------------------------
-
 local function ApplyPhase(stage)
     if isSecret(stage) then
         return
@@ -334,9 +306,9 @@ local function ApplyPhase(stage)
     PRT.NotesTimer:SetPhase(stage, phaseStart)
 end
 
--- Registers exactly once. Callback arg order follows MRT: BigWigs
--- (event, addon, stage); DBM (event, addon, modId, stage, ...). Every arg is
--- guarded against secret values.
+-- Registers exactly once. Callback arg order: BigWigs (event, addon, stage);
+-- DBM (event, addon, modId, stage, ...). Every arg is guarded against secret
+-- values.
 local function HookBossMods()
     if bossModHooked then
         return
@@ -366,10 +338,6 @@ local function HookBossMods()
 
     bossModHooked = hooked
 end
-
---------------------------------------------------------------------------------
--- Encounter lifecycle
---------------------------------------------------------------------------------
 
 local function StopTicker()
     if ticker then
@@ -439,15 +407,10 @@ local function OnEncounterEnd(success)
     end
 end
 
---------------------------------------------------------------------------------
--- Test mode
---
--- Starts the active note's timer without an encounter event, bypassing
--- encounterID matching and content-type gates. The note frame shows, popups
--- fire, and the ticker runs exactly as in a real encounter. TestStop tears
--- everything down.
---------------------------------------------------------------------------------
-
+-- Test mode starts the active note's timer without an encounter event,
+-- bypassing encounterID matching and content-type gates. The note frame shows,
+-- popups fire, and the ticker runs exactly as in a real encounter. TestStop
+-- tears everything down.
 function Notes:TestStart()
     if testRunning then
         return false
@@ -475,14 +438,13 @@ function Notes:TestStart()
     end
 
     StopTicker()
-    local self_ = self
     ticker = C_Timer.NewTicker(1, function()
         local now = GetTime()
         PRT.NotesTimer:Tick(now)
         PRT.NotesFrame:TickUpdate(now, phaseStart, encounterPhase)
 
         if now - phaseStart >= maxTime then
-            self_:TestStop()
+            self:TestStop()
         end
     end)
 
@@ -509,15 +471,11 @@ function Notes:IsTestRunning()
     return testRunning
 end
 
---------------------------------------------------------------------------------
--- Broadcast send seam
---
--- Both entry points re-check the group/privilege gates at call time and HARD-ban
--- sending while in combat, so no code path can broadcast mid-pull. Each returns
--- ok(boolean), reason(string when refused) for the config UI's tooltip.
--- InCombatLockdown is guarded for headless safety, mirroring isSecret.
---------------------------------------------------------------------------------
-
+-- Broadcast send seam. Both entry points re-check the group/privilege gates at
+-- call time and HARD-ban sending while in combat, so no code path can broadcast
+-- mid-pull. Each returns ok(boolean), reason(string when refused) for the
+-- config UI's tooltip. InCombatLockdown is guarded for headless safety,
+-- mirroring isSecret.
 local SEND_MSG_TYPE = "note"
 local CLEAR_MSG_TYPE = "clear"
 local REASON_NO_PRIVILEGE = "Requires raid leader or assistant."
@@ -573,10 +531,6 @@ function Notes:BroadcastClear()
     return true
 end
 
---------------------------------------------------------------------------------
--- Comms receive handlers
---------------------------------------------------------------------------------
-
 local function OnNoteReceived(data, sender)
     -- Notes are never sent or received in combat: distribution is pre-pull
     -- setup, and 12.1 makes the privilege APIs return secrets while identity
@@ -613,10 +567,6 @@ local function OnClearReceived(_, sender)
     Notes:ActivateNote(nil)
     PRT.NotesFrame:Hide()
 end
-
---------------------------------------------------------------------------------
--- Event dispatch
---------------------------------------------------------------------------------
 
 local function OnEvent(_, event, arg1, arg2, arg3, arg4, arg5)
     if event == "ENCOUNTER_START" then
@@ -665,10 +615,6 @@ function Notes:OnActiveNoteChanged()
     PRT.NotesFrame:SetNote(activeNote)
 end
 
---------------------------------------------------------------------------------
--- Lifecycle
---------------------------------------------------------------------------------
-
 function Notes:Initialize()
     PRT.NotesFrame:Init()
     PRT.NotesPopups:Init()
@@ -682,8 +628,8 @@ function Notes:OnEnable()
     self.eventFrame:RegisterEvent("ADDON_LOADED")
     self.eventFrame:SetScript("OnEvent", OnEvent)
 
-    PRT.Comms:RegisterHandler("note", OnNoteReceived)
-    PRT.Comms:RegisterHandler("clear", OnClearReceived)
+    PRT.Comms:RegisterHandler(SEND_MSG_TYPE, OnNoteReceived)
+    PRT.Comms:RegisterHandler(CLEAR_MSG_TYPE, OnClearReceived)
 
     HookBossMods()
     self:OnActiveNoteChanged()

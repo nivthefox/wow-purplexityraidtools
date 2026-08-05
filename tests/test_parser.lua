@@ -34,10 +34,6 @@ local INVALID_MSG =
 
 local tests = {}
 
---------------------------------------------------------------------------------
--- Small helpers
---------------------------------------------------------------------------------
-
 -- Parse and assert success (note, nil). Returns the note.
 local function parseOK(text)
     local note, err = Parser:Parse(text)
@@ -62,10 +58,6 @@ local function countFreeform(note)
     end
     return n
 end
-
---------------------------------------------------------------------------------
--- Metadata line & flat note shape (spec 2.1, 4.3)
---------------------------------------------------------------------------------
 
 tests["metadata populates encounterID, name, difficulty on the flat note"] = function()
     local note = parseOK(
@@ -118,10 +110,6 @@ tests["non-numeric EncounterID falls back to the raw string"] = function()
     assertEquals(type(note.encounterID), "string")
 end
 
---------------------------------------------------------------------------------
--- Multi-metadata rejection (spec 2.1, 3.2) — COUNT-BASED
---------------------------------------------------------------------------------
-
 tests["two EncounterID lines are rejected with the exact message"] = function()
     local note, err = Parser:Parse(
         "EncounterID:3176;Name:Boss A;Difficulty:Mythic\n" ..
@@ -158,10 +146,6 @@ tests["two IDENTICAL EncounterID lines are still rejected (count-based)"] = func
     assertNil(note, "two metadata lines are invalid even when identical")
     assertEquals(err, INVALID_MSG)
 end
-
---------------------------------------------------------------------------------
--- Inert note: no metadata line (spec 2.1, 2.3)
---------------------------------------------------------------------------------
 
 tests["a note with no metadata line is valid but inert"] = function()
     local note, err = Parser:Parse(
@@ -205,10 +189,6 @@ tests["inert note preserves freeform text content in order"] = function()
     assertEquals(note.lines[3].text, "Third line")
 end
 
---------------------------------------------------------------------------------
--- Empty / nil input (contract reading: valid inert note, never an error)
---------------------------------------------------------------------------------
-
 tests["empty string parses to a valid inert note (no error)"] = function()
     -- Reading: empty input has no metadata line, so it is an inert note, not an
     -- error. It carries no encounter, no reminders, and no lines.
@@ -229,10 +209,6 @@ tests["nil input parses to a valid inert note (no error)"] = function()
     assertNil(note.encounterID)
     assertEquals(#note.lines, 0)
 end
-
---------------------------------------------------------------------------------
--- Content BEFORE the metadata line is KEPT as freeform (flipped behavior)
---------------------------------------------------------------------------------
 
 tests["freeform lines before the metadata line are kept, in order"] = function()
     -- OLD behavior dropped pre-metadata content; the NEW contract keeps it as
@@ -270,10 +246,6 @@ tests["a timed-looking line BEFORE the metadata line is freeform, not a reminder
     assertEquals(note.lines[1].text, "time:99;tag:everyone;text:Too early")
     assertEquals(countFreeform(note), 1)
 end
-
---------------------------------------------------------------------------------
--- Timed-line recognition (spec 2.2, 4.2)
---------------------------------------------------------------------------------
 
 tests["a full timed line under the metadata line is a reminder"] = function()
     local note = parseOK(
@@ -323,10 +295,6 @@ tests["a line missing both text and spellid is not a reminder"] = function()
     )
     assertNil(note.reminders["1"], "line without text/spellid should not create a reminder")
 end
-
---------------------------------------------------------------------------------
--- Field defaults (spec 2.2)
---------------------------------------------------------------------------------
 
 tests["default phase is 1 with phaseKey '1'"] = function()
     local note = parseOK(
@@ -401,10 +369,6 @@ tests["explicit TTSTimer is honored"] = function()
     assertEquals(r.ttsTimer, 3)
 end
 
---------------------------------------------------------------------------------
--- Decimal times & fractional phases (spec 2.2)
---------------------------------------------------------------------------------
-
 tests["decimal time is parsed as a number"] = function()
     local note = parseOK(
         "EncounterID:1;Difficulty:Mythic\n" ..
@@ -424,10 +388,6 @@ tests["fractional phase yields phase number and matching phaseKey"] = function()
     assertEquals(r.phaseKey, "2.5")
 end
 
---------------------------------------------------------------------------------
--- Clamping (spec 9.2.1)
---------------------------------------------------------------------------------
-
 tests["duration is clamped to time"] = function()
     local note = parseOK(
         "EncounterID:1;Difficulty:Mythic\n" ..
@@ -446,10 +406,6 @@ tests["ttsTimer is clamped to time"] = function()
     assertEquals(r.ttsTimer, 4)
 end
 
---------------------------------------------------------------------------------
--- Unknown fields (spec 2.2 glowunit, 9.4)
---------------------------------------------------------------------------------
-
 tests["unknown field glowunit is ignored without error"] = function()
     local note = parseOK(
         "EncounterID:1;Difficulty:Mythic\n" ..
@@ -459,10 +415,6 @@ tests["unknown field glowunit is ignored without error"] = function()
     assertEquals(r.text, "Go")
     assertNil(r.glowunit, "glowunit must not be stored on the reminder")
 end
-
---------------------------------------------------------------------------------
--- TTS handling (spec 2.2, 9.1)
---------------------------------------------------------------------------------
 
 tests["TTS:true parses to boolean true"] = function()
     local note = parseOK(
@@ -491,10 +443,6 @@ tests["TTS custom string is preserved"] = function()
     assertEquals(r.tts, "Move out now")
 end
 
---------------------------------------------------------------------------------
--- Optional passthrough fields (spec 2.2)
---------------------------------------------------------------------------------
-
 tests["sound, countdown, and bossSpell are captured"] = function()
     local note = parseOK(
         "EncounterID:1;Difficulty:Mythic\n" ..
@@ -505,10 +453,6 @@ tests["sound, countdown, and bossSpell are captured"] = function()
     assertEquals(r.countdown, 3)
     assertEquals(r.bossSpell, 456789)
 end
-
---------------------------------------------------------------------------------
--- Robustness: CRLF, empty & garbage lines (spec 2.3, 4.2)
---------------------------------------------------------------------------------
 
 tests["CRLF line endings are handled"] = function()
     local note = parseOK(
@@ -535,10 +479,6 @@ tests["empty lines and garbage lines do not crash"] = function()
     assertEquals(r.text, "Go")
 end
 
---------------------------------------------------------------------------------
--- First-colon-only pair splitting (spec 2.2: values may contain colons)
---------------------------------------------------------------------------------
-
 tests["only the first colon in a pair splits key from value"] = function()
     local note = parseOK(
         "EncounterID:1;Difficulty:Mythic\n" ..
@@ -547,10 +487,6 @@ tests["only the first colon in a pair splits key from value"] = function()
     local r = onlyReminder(note, "1")
     assertEquals(r.text, "Stack at 3:00 mark")
 end
-
---------------------------------------------------------------------------------
--- Sorting (spec 4.3)
---------------------------------------------------------------------------------
 
 tests["reminders are sorted by time within a phase"] = function()
     local note = parseOK(
@@ -581,10 +517,6 @@ tests["reminders split across phases land in separate phase arrays"] = function(
     assertEquals(reminders["1"][1].text, "P1")
     assertEquals(reminders["2"][1].text, "P2")
 end
-
---------------------------------------------------------------------------------
--- lines array (contract: ordered note-frame lines)
---------------------------------------------------------------------------------
 
 tests["lines array preserves note order and includes freeform lines"] = function()
     local note = parseOK(
@@ -620,10 +552,6 @@ tests["reminder lines in the lines array reference the reminder"] = function()
     assertEquals(lines[1].reminder, note.reminders["1"][1],
         "line.reminder should be the same object filed under its phase")
 end
-
---------------------------------------------------------------------------------
--- Integration: the spec 2.4 complete-note fixture (single encounter)
---------------------------------------------------------------------------------
 
 local SPEC_EXAMPLE = table.concat({
     "EncounterID:3176;Name:Sszorak;Difficulty:Mythic",

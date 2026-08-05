@@ -10,7 +10,7 @@
 --     reminders = { [phaseKey] = array }, lines } and sets reminder.relevant
 --     on every reminder across all of that note's phase buckets.
 --   PRT.NotesTags.IsMeleeSpec(specID) -> bool
---     spec-ID -> melee classification, mirroring NSRT's meleetable
+--     spec-ID -> melee classification
 --     (DPS/healer specs only; tank melee-classification is applied when the
 --      caller builds playerCtx.isMelee, not here).
 --
@@ -27,10 +27,6 @@ dofile("Modules/Notes/NotesTags.lua")
 
 local PRT = PurplexityRaidTools
 local Tags = PRT.NotesTags
-
---------------------------------------------------------------------------------
--- Fixtures
---------------------------------------------------------------------------------
 
 -- Default context: a Retribution Paladin named "Bubbles" in group3, DAMAGER,
 -- classID 2 (Paladin), specID 70 (Ret), classified melee.
@@ -50,10 +46,6 @@ local function ctx(overrides)
     end
     return base
 end
-
---------------------------------------------------------------------------------
--- Player-name matching (case-insensitive)
---------------------------------------------------------------------------------
 
 tests["name matches exactly"] = function()
     assertTrue(Tags.Matches("Bubbles", ctx()))
@@ -80,10 +72,6 @@ tests["name is not a substring match"] = function()
     assertFalse(Tags.Matches("Bubble", ctx()))
 end
 
---------------------------------------------------------------------------------
--- Role tags: tank / healer / damager
---------------------------------------------------------------------------------
-
 tests["role tag damager matches DAMAGER"] = function()
     assertTrue(Tags.Matches("damager", ctx({ role = "DAMAGER" })))
 end
@@ -108,10 +96,6 @@ tests["healer tag does not match a damager"] = function()
     assertFalse(Tags.Matches("healer", ctx({ role = "DAMAGER" })))
 end
 
---------------------------------------------------------------------------------
--- Class tags: numeric 1-13 -> classID
---------------------------------------------------------------------------------
-
 tests["class ID matches"] = function()
     -- classID 2 = Paladin.
     assertTrue(Tags.Matches("2", ctx({ classID = 2 })))
@@ -134,10 +118,6 @@ tests["class ID does not match against specID field"] = function()
     -- but guards the disjoint-range logic) must not match on the spec side.
     assertFalse(Tags.Matches("2", ctx({ classID = 11, specID = 2 })))
 end
-
---------------------------------------------------------------------------------
--- Spec tags: numeric >= 62 -> specID
---------------------------------------------------------------------------------
 
 tests["spec ID matches"] = function()
     -- specID 70 = Retribution Paladin.
@@ -162,10 +142,6 @@ tests["spec ID does not match against classID field"] = function()
     assertFalse(Tags.Matches("70", ctx({ classID = 70, specID = 62 })))
 end
 
---------------------------------------------------------------------------------
--- Dead zone: numeric 14-61 matches nothing
---------------------------------------------------------------------------------
-
 tests["dead-zone number 14 (lower) matches nothing"] = function()
     assertFalse(Tags.Matches("14", ctx({ classID = 14, specID = 14 })))
 end
@@ -177,10 +153,6 @@ end
 tests["dead-zone number 61 (upper) matches nothing"] = function()
     assertFalse(Tags.Matches("61", ctx({ classID = 61, specID = 61 })))
 end
-
---------------------------------------------------------------------------------
--- Group tags: group1 - group8 -> subgroup
---------------------------------------------------------------------------------
 
 tests["group tag matches subgroup"] = function()
     assertTrue(Tags.Matches("group3", ctx({ subgroup = 3 })))
@@ -207,10 +179,6 @@ tests["bare group number without prefix does not match"] = function()
     assertFalse(Tags.Matches("group3", ctx({ subgroup = 5 })))
 end
 
---------------------------------------------------------------------------------
--- Position tags: melee / ranged via isMelee
---------------------------------------------------------------------------------
-
 tests["melee tag matches when isMelee is true"] = function()
     assertTrue(Tags.Matches("melee", ctx({ isMelee = true })))
 end
@@ -231,22 +199,21 @@ tests["melee tag is case-insensitive"] = function()
     assertTrue(Tags.Matches("MELEE", ctx({ isMelee = true })))
 end
 
---------------------------------------------------------------------------------
--- IsMeleeSpec: spec-ID -> melee classification (mirrors NSRT meleetable).
+-- IsMeleeSpec: spec-ID -> melee classification.
 --
 -- The implementer must build the same specID table. Melee DPS/healer specs
--- asserted below (from NSRT's meleetable):
+-- asserted below:
 --   Shaman   263 Enhancement (melee)
 --   Hunter   255 Survival    (melee)
 --   Rogue    259 Assassination, 260 Outlaw, 261 Subtlety (melee)
 --   Warrior  71 Arms, 72 Fury (melee)
 --   DK       251 Frost, 252 Unholy (melee)
 --   Druid    103 Feral (melee)
---   Paladin  70 Retribution (melee), 65 Holy (melee per NSRT)
---   Monk     269 Windwalker (melee), 270 Mistweaver (melee per NSRT)
+--   Paladin  70 Retribution (melee), 65 Holy (melee, deliberately)
+--   Monk     269 Windwalker (melee), 270 Mistweaver (melee, deliberately)
 --   DH       577 Havoc (melee)
 --
--- Ranged specs asserted (NOT in NSRT's meleetable):
+-- Ranged specs asserted (not melee):
 --   Shaman   262 Elemental, 264 Restoration
 --   Hunter   253 Beast Mastery, 254 Marksmanship
 --   Druid    102 Balance, 105 Restoration
@@ -333,10 +300,6 @@ tests["IsMeleeSpec: unknown spec ID is not melee"] = function()
     assertFalse(Tags.IsMeleeSpec(999999))
 end
 
---------------------------------------------------------------------------------
--- everyone: always matches
---------------------------------------------------------------------------------
-
 tests["everyone matches"] = function()
     assertTrue(Tags.Matches("everyone", ctx()))
 end
@@ -349,10 +312,6 @@ tests["everyone matches regardless of context"] = function()
     assertTrue(Tags.Matches("everyone",
         ctx({ role = "TANK", classID = 6, specID = 250, subgroup = 8, isMelee = false })))
 end
-
---------------------------------------------------------------------------------
--- Multi-value tags: ANY-OF semantics
---------------------------------------------------------------------------------
 
 tests["multi-value tag matches on the second identifier"] = function()
     assertTrue(Tags.Matches("Sparkles Bubbles", ctx()))
@@ -380,10 +339,6 @@ end
 tests["extra whitespace between identifiers is tolerated"] = function()
     assertTrue(Tags.Matches("Sparkles    Bubbles", ctx()))
 end
-
---------------------------------------------------------------------------------
--- Non-matching / garbage tags: false, no crash
---------------------------------------------------------------------------------
 
 tests["empty string matches nothing"] = function()
     assertFalse(Tags.Matches("", ctx()))
@@ -416,10 +371,8 @@ tests["negative and zero numbers do not match"] = function()
     assertFalse(Tags.Matches("0", ctx({ classID = 2, specID = 70 })))
 end
 
---------------------------------------------------------------------------------
--- MarkRelevance: walks every phase bucket of a single note, sets
--- reminder.relevant, leaves freeform lines untouched.
---------------------------------------------------------------------------------
+-- MarkRelevance walks every phase bucket of a single note, sets
+-- reminder.relevant, and leaves freeform lines untouched.
 
 -- Build a single parsed-note fixture matching the frozen data contract (rev 2):
 --   note = { encounterID, name, difficulty,

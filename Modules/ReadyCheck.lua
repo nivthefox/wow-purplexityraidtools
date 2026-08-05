@@ -1,12 +1,7 @@
--- ReadyCheck: Monitors ready checks and reminds players about missing buffs
 local PRT = PurplexityRaidTools
 local ReadyCheck = {}
 PRT.ReadyCheck = ReadyCheck
 PRT:RegisterModule("readyCheck", ReadyCheck)
-
---------------------------------------------------------------------------------
--- Buff Definitions
---------------------------------------------------------------------------------
 
 local RAID_BUFFS = {
     {
@@ -120,10 +115,6 @@ local DEAD_MESSAGES = {
 }
 local DEAD_POLITE_MESSAGE = "Please accept your resurrection before we pull."
 
---------------------------------------------------------------------------------
--- Default Settings
---------------------------------------------------------------------------------
-
 PRT.defaults.readyCheck = {
     enabled = true,
     snarkyMessages = false,
@@ -136,11 +127,6 @@ PRT.defaults.readyCheck = {
     powerWordFortitude = true,
     skyfury = true,
 }
-
-
---------------------------------------------------------------------------------
--- Raid Scanning
---------------------------------------------------------------------------------
 
 local function GetPlayersByClass(className)
     local players = {}
@@ -225,10 +211,6 @@ local function EveryoneHasBuff(members, buffName)
     return true
 end
 
---------------------------------------------------------------------------------
--- Messaging
---------------------------------------------------------------------------------
-
 local function GetRandomMessage(messages)
     return messages[math.random(#messages)]
 end
@@ -246,35 +228,75 @@ local function NotifyPlayers(players, messages)
     end
 end
 
---------------------------------------------------------------------------------
--- Ready Check Handler
---------------------------------------------------------------------------------
+local function NagDeadPlayers(snarky)
+    for _, name in ipairs(GetDeadMembers()) do
+        local message = snarky and GetRandomMessage(DEAD_MESSAGES) or DEAD_POLITE_MESSAGE
+        SendWhisper(name, message)
+    end
+end
+
+local function CheckRaidBuff(buff, allMembers, skippedMembers, totalRaid, snarky)
+    local providers = GetPlayersByClass(buff.class)
+    if #providers == 0 then
+        return
+    end
+
+    local missing = {}
+    for _, member in ipairs(allMembers) do
+        if not HasBuff(member.unit, buff.name) then
+            table.insert(missing, member.name)
+        end
+    end
+    if #missing == 0 then
+        return
+    end
+
+    print(string.format(
+        "PRT: %s missing — checked %d/%d, missing: %s%s",
+        buff.name,
+        #allMembers,
+        totalRaid,
+        table.concat(missing, ", "),
+        #skippedMembers > 0 and (", skipped (out of range): " .. table.concat(skippedMembers, ", ")) or ""
+    ))
+    local messages = snarky and buff.messages
+        or { string.format("It looks like %s may be missing. Please cast it, just in case.", buff.name) }
+    NotifyPlayers(providers, messages)
+end
+
+local function CheckSoulstones(snarky)
+    local warlocks = GetPlayersByClass("WARLOCK")
+    if #warlocks == 0 then
+        return
+    end
+
+    local healers = GetHealers()
+    if #healers == 0 or AnyoneHasBuff(healers, SOULSTONE_BUFF_NAME) then
+        return
+    end
+
+    local messages = snarky and SOULSTONE_MESSAGES
+        or { "It looks like no healer has a Soulstone. Please cast it on one, just in case." }
+    NotifyPlayers(warlocks, messages)
+end
 
 function ReadyCheck:OnReadyCheck()
     local settings = PRT:GetSetting("readyCheck")
     if not settings or not settings.enabled then
         return
     end
-
     if not IsInRaid() then
+        return
+    end
+    if not UnitIsGroupLeader("player") then
         return
     end
 
     local snarky = settings.snarkyMessages
 
-    if not UnitIsGroupLeader("player") then
-        return
-    end
-
-    -- Nag dead players (independent of buff auras, so run before the secret-aura guard)
+    -- Dead nags are independent of buff auras, so they run before the secret-aura guard.
     if settings.checkDead then
-        local dead = GetDeadMembers()
-        if #dead > 0 then
-            for _, name in ipairs(dead) do
-                local message = snarky and GetRandomMessage(DEAD_MESSAGES) or DEAD_POLITE_MESSAGE
-                SendWhisper(name, message)
-            end
-        end
+        NagDeadPlayers(snarky)
     end
 
     local allMembers, skippedMembers = GetAllRaidMembers()
@@ -282,57 +304,22 @@ function ReadyCheck:OnReadyCheck()
         return
     end
 
-    -- If auras are hidden (e.g. Plunderstorm), skip buff checks entirely to avoid false positives
+    -- If auras are hidden (e.g. Plunderstorm), skip buff checks entirely to avoid false positives.
     if C_Secrets and C_Secrets.ShouldAurasBeSecret and C_Secrets.ShouldAurasBeSecret() then
         return
     end
 
-    -- Check raid buffs
     local totalRaid = #allMembers + #skippedMembers
     for _, buff in ipairs(RAID_BUFFS) do
         if settings[buff.key] then
-            local providers = GetPlayersByClass(buff.class)
-            if #providers > 0 then
-                local missing = {}
-                for _, member in ipairs(allMembers) do
-                    if not HasBuff(member.unit, buff.name) then
-                        table.insert(missing, member.name)
-                    end
-                end
-                if #missing > 0 then
-                    print(string.format(
-                        "PRT: %s missing — checked %d/%d, missing: %s%s",
-                        buff.name,
-                        #allMembers,
-                        totalRaid,
-                        table.concat(missing, ", "),
-                        #skippedMembers > 0 and (", skipped (out of range): " .. table.concat(skippedMembers, ", ")) or ""
-                    ))
-                    local messages = snarky and buff.messages
-                        or { string.format("It looks like %s may be missing. Please cast it, just in case.", buff.name) }
-                    NotifyPlayers(providers, messages)
-                end
-            end
+            CheckRaidBuff(buff, allMembers, skippedMembers, totalRaid, snarky)
         end
     end
 
-    -- Check soulstones (special case: only check healers)
     if settings.checkSoulstones then
-        local warlocks = GetPlayersByClass("WARLOCK")
-        if #warlocks > 0 then
-            local healers = GetHealers()
-            if #healers > 0 and not AnyoneHasBuff(healers, SOULSTONE_BUFF_NAME) then
-                local messages = snarky and SOULSTONE_MESSAGES
-                    or { "It looks like no healer has a Soulstone. Please cast it on one, just in case." }
-                NotifyPlayers(warlocks, messages)
-            end
-        end
+        CheckSoulstones(snarky)
     end
 end
-
---------------------------------------------------------------------------------
--- Config UI
---------------------------------------------------------------------------------
 
 PRT:RegisterTab("Ready Check", function(parent)
     return PRT.Components.GetSubTabGroup(parent, {
@@ -438,16 +425,6 @@ PRT:RegisterTab("Ready Check", function(parent)
         },
     })
 end)
-
---------------------------------------------------------------------------------
--- Initialization
---------------------------------------------------------------------------------
-
-function ReadyCheck:Initialize()
-    PRT.GroupInspect:Listen(function()
-        -- No-op today; registered for consumer pattern consistency
-    end)
-end
 
 function ReadyCheck:IsActivatable()
     return IsInRaid()

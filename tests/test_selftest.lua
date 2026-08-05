@@ -4,10 +4,6 @@
 
 local tests = {}
 
---------------------------------------------------------------------------------
--- assertEquals
---------------------------------------------------------------------------------
-
 tests["assertEquals: passes on equal values"] = function()
     assertEquals(1, 1)
     assertEquals("hello", "hello")
@@ -28,10 +24,6 @@ tests["assertEquals: failure message includes actual and expected"] = function()
     assertTrue(err:find("want") ~= nil)
 end
 
---------------------------------------------------------------------------------
--- assertNear
---------------------------------------------------------------------------------
-
 tests["assertNear: passes when within epsilon"] = function()
     assertNear(1.0001, 1.0, 0.001)
     assertNear(0.9999, 1.0, 0.001)
@@ -42,10 +34,6 @@ tests["assertNear: fails when outside epsilon"] = function()
         assertNear(1.1, 1.0, 0.001)
     end)
 end
-
---------------------------------------------------------------------------------
--- assertTrue
---------------------------------------------------------------------------------
 
 tests["assertTrue: passes on truthy values"] = function()
     assertTrue(true)
@@ -62,10 +50,6 @@ tests["assertTrue: fails on nil"] = function()
     assertError(function() assertTrue(nil) end)
 end
 
---------------------------------------------------------------------------------
--- assertFalse
---------------------------------------------------------------------------------
-
 tests["assertFalse: passes on false"] = function()
     assertFalse(false)
     assertFalse(nil)
@@ -79,10 +63,6 @@ tests["assertFalse: fails on truthy value"] = function()
     assertError(function() assertFalse(1) end)
 end
 
---------------------------------------------------------------------------------
--- assertNil
---------------------------------------------------------------------------------
-
 tests["assertNil: passes on nil"] = function()
     assertNil(nil)
 end
@@ -92,10 +72,6 @@ tests["assertNil: fails on non-nil"] = function()
     assertError(function() assertNil(false) end)
     assertError(function() assertNil("") end)
 end
-
---------------------------------------------------------------------------------
--- assertNotNil
---------------------------------------------------------------------------------
 
 tests["assertNotNil: passes on non-nil"] = function()
     assertNotNil(0)
@@ -107,10 +83,6 @@ end
 tests["assertNotNil: fails on nil"] = function()
     assertError(function() assertNotNil(nil) end)
 end
-
---------------------------------------------------------------------------------
--- assertTableEquals
---------------------------------------------------------------------------------
 
 tests["assertTableEquals: passes on equal tables"] = function()
     assertTableEquals({ 1, 2, 3 }, { 1, 2, 3 })
@@ -143,10 +115,6 @@ tests["assertTableEquals: nested deep equality"] = function()
     end)
 end
 
---------------------------------------------------------------------------------
--- assertError
---------------------------------------------------------------------------------
-
 tests["assertError: passes when error is raised"] = function()
     assertError(function() error("boom") end)
 end
@@ -155,10 +123,6 @@ tests["assertError: fails when no error is raised"] = function()
     local ok, _ = pcall(assertError, function() end)
     assertFalse(ok)
 end
-
---------------------------------------------------------------------------------
--- strsplit stub
---------------------------------------------------------------------------------
 
 tests["strsplit: splits on delimiter"] = function()
     local a, b, c = strsplit(",", "one,two,three")
@@ -203,10 +167,6 @@ tests["strsplit: multi-character sep is a delimiter set"] = function()
     assertEquals(c, "three")
 end
 
---------------------------------------------------------------------------------
--- CopyTable stub
---------------------------------------------------------------------------------
-
 tests["CopyTable: returns a deep copy"] = function()
     local original = { a = 1, b = { c = 2 } }
     local copy = CopyTable(original)
@@ -223,10 +183,6 @@ tests["CopyTable: handles non-table passthrough"] = function()
     assertNil(CopyTable(nil))
 end
 
---------------------------------------------------------------------------------
--- Controllable clock
---------------------------------------------------------------------------------
-
 tests["GetTime: returns WowStubs.clock"] = function()
     local saved = WowStubs.clock
     WowStubs.clock = 0
@@ -235,10 +191,6 @@ tests["GetTime: returns WowStubs.clock"] = function()
     assertEquals(GetTime(), 12345.5)
     WowStubs.clock = saved
 end
-
---------------------------------------------------------------------------------
--- Ambiguate stub
---------------------------------------------------------------------------------
 
 tests["Ambiguate: strips realm for mode none"] = function()
     assertEquals(Ambiguate("Thrall-Stormrage", "none"), "Thrall")
@@ -255,10 +207,6 @@ end
 tests["Ambiguate: handles name without realm"] = function()
     assertEquals(Ambiguate("Thrall", "none"), "Thrall")
 end
-
---------------------------------------------------------------------------------
--- PRT namespace basics
---------------------------------------------------------------------------------
 
 tests["PRT.Profiles: GetCurrent returns current table"] = function()
     local p = PurplexityRaidTools.Profiles

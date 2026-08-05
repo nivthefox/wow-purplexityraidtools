@@ -275,6 +275,157 @@ local function GetRaidLeaderVersion()
     return nil
 end
 
+local function BuildRoster()
+    local unitMap = {}
+    for unit in PRT:IterateGroup() do
+        local guid = UnitGUID(unit)
+        if guid then
+            unitMap[guid] = unit
+        end
+    end
+
+    local roster = {}
+    for guid, member in pairs(PRT.GroupInspect.members) do
+        local unit = unitMap[guid]
+        local displayName = member.name
+        if unit then
+            displayName = GetUnitName(unit, true) or member.name
+        end
+        table.insert(roster, {
+            guid = guid,
+            name = displayName,
+            class = member.class,
+            specId = member.specId,
+            addonVersion = member.addonVersion,
+            unit = unit,
+        })
+    end
+
+    PRT.ReadyScreen.SortRoster(roster)
+    return roster
+end
+
+local function SetRowName(row, entry)
+    local classColor = RAID_CLASS_COLORS[entry.class]
+    if classColor then
+        row.nameText:SetText(classColor:WrapTextInColorCode(entry.name or ""))
+    else
+        row.nameText:SetText(entry.name or "")
+    end
+end
+
+local function SetRowSpec(row, entry)
+    if not entry.specId then
+        row.specIcon:Hide()
+        return
+    end
+
+    local _, _, _, icon = GetSpecializationInfoByID(entry.specId)
+    if not icon then
+        row.specIcon:Hide()
+        return
+    end
+
+    row.specIcon:SetTexture(icon)
+    row.specIcon:Show()
+end
+
+local function SetRowRole(row, entry)
+    local role = entry.unit and UnitGroupRolesAssigned(entry.unit)
+    local roleAtlas = role and ROLE_ATLASES[role]
+    if not roleAtlas then
+        row.roleIcon:Hide()
+        return
+    end
+
+    row.roleIcon:SetAtlas(roleAtlas)
+    row.roleIcon:Show()
+end
+
+local function SetRowVersion(row, entry, rlVersion)
+    local versionStr = DecodeVersion(entry.addonVersion)
+    if not versionStr then
+        row.versionText:SetText("\226\128\148")
+        row.versionText:SetTextColor(0.5, 0.5, 0.5)
+        return
+    end
+
+    row.versionText:SetText(versionStr)
+    if PRT.ReadyScreen.ClassifyVersion(entry.addonVersion, rlVersion) == "outdated" then
+        row.versionText:SetTextColor(1, 0.3, 0.3)
+    else
+        row.versionText:SetTextColor(1, 1, 1)
+    end
+end
+
+local function SetRowReady(row, entry, responses, isOffline, isDead)
+    local responseState = responses[entry.guid]
+    if PRT.ReadyScreen:IsReadyCheckActive() and entry.unit then
+        local status = GetReadyCheckStatus(entry.unit)
+        if status == "ready" then
+            responseState = "ready"
+        elseif status == "notready" then
+            responseState = "notready"
+        end
+    end
+
+    local displayedState = PRT.ReadyScreen.GetDisplayedState(isOffline, isDead, responseState)
+    local iconInfo = displayedState and READY_ICONS[displayedState]
+    if not iconInfo then
+        row.readyIcon:Hide()
+        return
+    end
+
+    if iconInfo.atlas then
+        row.readyIcon:SetAtlas(iconInfo.atlas)
+    else
+        row.readyIcon:SetTexture(iconInfo.texture)
+    end
+    local size = (COL_ICON_WIDTH - 4) * (iconInfo.scale or 1)
+    row.readyIcon:SetSize(size, size)
+    row.readyIcon:Show()
+end
+
+local function SetRowBuffs(row, entry, isOffline)
+    for j, col in ipairs(buffColumns) do
+        local buffIcon = row.buffIcons[j]
+        local hasBuff = false
+        if entry.unit and not isOffline and UnitIsVisible(entry.unit) then
+            hasBuff = C_UnitAuras.GetAuraDataBySpellName(entry.unit, col.name, "HELPFUL") ~= nil
+        end
+
+        if hasBuff then
+            buffIcon:SetTexture(SpellTexture(col.spellId) or FALLBACK_ICON)
+            buffIcon:Show()
+        else
+            buffIcon:Hide()
+        end
+    end
+
+    for j = #buffColumns + 1, #row.buffIcons do
+        row.buffIcons[j]:Hide()
+    end
+end
+
+local function UpdateRow(row, entry, showReady, responses, rlVersion)
+    local isOffline = (entry.unit and not UnitIsConnected(entry.unit)) or false
+    local isDead = (entry.unit and UnitIsDeadOrGhost(entry.unit)) or false
+
+    row:SetAlpha(isOffline and 0.5 or 1)
+    SetRowName(row, entry)
+    SetRowSpec(row, entry)
+    SetRowRole(row, entry)
+    SetRowVersion(row, entry, rlVersion)
+
+    if showReady then
+        SetRowReady(row, entry, responses, isOffline, isDead)
+    else
+        row.readyIcon:Hide()
+    end
+
+    SetRowBuffs(row, entry, isOffline)
+end
+
 local function InitFrame()
     if frame then return end
 
@@ -395,32 +546,7 @@ function ReadyScreenFrame:Refresh()
 
     LayoutHeaderColumns(headerRow, showReady, buffColumns)
 
-    local unitMap = {}
-    for unit in PRT:IterateGroup() do
-        local guid = UnitGUID(unit)
-        if guid then
-            unitMap[guid] = unit
-        end
-    end
-
-    local roster = {}
-    for guid, member in pairs(PRT.GroupInspect.members) do
-        local unit = unitMap[guid]
-        local displayName = member.name
-        if unit then
-            displayName = GetUnitName(unit, true) or member.name
-        end
-        table.insert(roster, {
-            guid = guid,
-            name = displayName,
-            class = member.class,
-            specId = member.specId,
-            addonVersion = member.addonVersion,
-            unit = unit,
-        })
-    end
-
-    PRT.ReadyScreen.SortRoster(roster)
+    local roster = BuildRoster()
 
     local frameWidth = BACKDROP_PADDING * 2 + GetFixedColumnsWidth(showReady) + #buffColumns * (COL_ICON_WIDTH + COLUMN_PADDING)
     frame:SetWidth(frameWidth)
@@ -439,100 +565,7 @@ function ReadyScreenFrame:Refresh()
         row:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -(BACKDROP_PADDING + HEADER_HEIGHT + 4 + HEADER_HEIGHT + (i - 1) * ROW_HEIGHT))
         row:SetPoint("RIGHT", frame, "RIGHT", 0, 0)
 
-        local isOffline = entry.unit and not UnitIsConnected(entry.unit)
-        local isDead = entry.unit and UnitIsDeadOrGhost(entry.unit)
-
-        row:SetAlpha(isOffline and 0.5 or 1)
-
-        local classColor = RAID_CLASS_COLORS[entry.class]
-        if classColor then
-            row.nameText:SetText(classColor:WrapTextInColorCode(entry.name or ""))
-        else
-            row.nameText:SetText(entry.name or "")
-        end
-
-        if entry.specId then
-            local _, _, _, icon = GetSpecializationInfoByID(entry.specId)
-            if icon then
-                row.specIcon:SetTexture(icon)
-                row.specIcon:Show()
-            else
-                row.specIcon:Hide()
-            end
-        else
-            row.specIcon:Hide()
-        end
-
-        local role = entry.unit and UnitGroupRolesAssigned(entry.unit)
-        local roleAtlas = role and ROLE_ATLASES[role]
-        if roleAtlas then
-            row.roleIcon:SetAtlas(roleAtlas)
-            row.roleIcon:Show()
-        else
-            row.roleIcon:Hide()
-        end
-
-        local versionStr = DecodeVersion(entry.addonVersion)
-        if versionStr then
-            row.versionText:SetText(versionStr)
-            local classification = PRT.ReadyScreen.ClassifyVersion(entry.addonVersion, rlVersion)
-            if classification == "outdated" then
-                row.versionText:SetTextColor(1, 0.3, 0.3)
-            else
-                row.versionText:SetTextColor(1, 1, 1)
-            end
-        else
-            row.versionText:SetText("\226\128\148")
-            row.versionText:SetTextColor(0.5, 0.5, 0.5)
-        end
-
-        if showReady then
-            local responseState = responses[entry.guid]
-            if PRT.ReadyScreen:IsReadyCheckActive() and entry.unit then
-                local status = GetReadyCheckStatus(entry.unit)
-                if status == "ready" then
-                    responseState = "ready"
-                elseif status == "notready" then
-                    responseState = "notready"
-                end
-            end
-            local displayedState = PRT.ReadyScreen.GetDisplayedState(isOffline or false, isDead or false, responseState)
-            local iconInfo = displayedState and READY_ICONS[displayedState]
-            if iconInfo then
-                if iconInfo.atlas then
-                    row.readyIcon:SetAtlas(iconInfo.atlas)
-                else
-                    row.readyIcon:SetTexture(iconInfo.texture)
-                end
-                local size = (COL_ICON_WIDTH - 4) * (iconInfo.scale or 1)
-                row.readyIcon:SetSize(size, size)
-                row.readyIcon:Show()
-            else
-                row.readyIcon:Hide()
-            end
-        else
-            row.readyIcon:Hide()
-        end
-
-        for j, col in ipairs(buffColumns) do
-            local buffIcon = row.buffIcons[j]
-            local hasBuff = false
-            if entry.unit and not isOffline and UnitIsVisible(entry.unit) then
-                hasBuff = C_UnitAuras.GetAuraDataBySpellName(entry.unit, col.name, "HELPFUL") ~= nil
-            end
-
-            if hasBuff then
-                buffIcon:SetTexture(SpellTexture(col.spellId) or FALLBACK_ICON)
-                buffIcon:Show()
-            else
-                buffIcon:Hide()
-            end
-        end
-
-        for j = #buffColumns + 1, #row.buffIcons do
-            row.buffIcons[j]:Hide()
-        end
-
+        UpdateRow(row, entry, showReady, responses, rlVersion)
         row:Show()
     end
 

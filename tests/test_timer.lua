@@ -15,8 +15,6 @@
 --   onPopupExpire(reminder)
 --   onCancelPhase(reminders)
 --
--- Behavioral reference: NorthernSkyRaidTools/Reminders.lua. Copy behavior only.
---
 -- ============================================================================
 -- BEHAVIORAL DECISIONS LOCKED IN BY THIS SUITE (see final report for rationale):
 --
@@ -69,10 +67,6 @@ dofile("Modules/Notes/NotesTimer.lua")
 
 local PRT = PurplexityRaidTools
 local NotesTimer = PRT.NotesTimer
-
---------------------------------------------------------------------------------
--- Fixtures & helpers
---------------------------------------------------------------------------------
 
 -- Build a reminder table matching the FROZEN DATA CONTRACT. Only the fields the
 -- timer engine consumes are populated; everything else is defaulted sensibly.
@@ -164,10 +158,6 @@ end
 
 local tests = {}
 
---------------------------------------------------------------------------------
--- Popup: single fire, correct remaining
---------------------------------------------------------------------------------
-
 tests["popup fires when remaining <= duration"] = function()
     local r = makeReminder({ time = 30, duration = 5 })
     local rec = makeRecorder()
@@ -212,10 +202,6 @@ tests["popup fires when a tick lands exactly on the threshold"] = function()
     assertNear(rec.popupShow[1].remaining, 5, 1e-9)
 end
 
---------------------------------------------------------------------------------
--- Popup expiry
---------------------------------------------------------------------------------
-
 tests["popup expire fires once when remaining reaches zero"] = function()
     local r = makeReminder({ time = 30, duration = 5 })
     local rec = makeRecorder()
@@ -240,10 +226,6 @@ tests["popup expire fires when a tick jumps from shown to past-event"] = functio
     assertEquals(#rec.popupShow, 1)
     assertEquals(#rec.popupExpire, 1)
 end
-
---------------------------------------------------------------------------------
--- Audio
---------------------------------------------------------------------------------
 
 tests["audio fires once when remaining <= ttsTimer"] = function()
     local r = makeReminder({ time = 30, duration = 5, tts = "true", ttsTimer = 3 })
@@ -291,10 +273,6 @@ tests["audio with ttsTimer zero fires at the event, not before"] = function()
     NotesTimer:Tick(30)   -- remaining 0 <= 0, audio
     assertEquals(#rec.audio, 1)
 end
-
---------------------------------------------------------------------------------
--- Countdown: crossing semantics
---------------------------------------------------------------------------------
 
 tests["countdown announces 3,2,1 on integer-aligned ticks"] = function()
     local r = makeReminder({ time = 30, countdown = 3, duration = 5 })
@@ -394,10 +372,6 @@ tests["reminder without countdown never announces"] = function()
     assertEquals(#rec.countdown, 0)
 end
 
---------------------------------------------------------------------------------
--- Multiple reminders, same phase, interleaved thresholds
---------------------------------------------------------------------------------
-
 tests["multiple reminders fire in threshold order with correct counts"] = function()
     local early = makeReminder({ id = "early", time = 10, duration = 3 })
     local late  = makeReminder({ id = "late",  time = 20, duration = 3 })
@@ -431,10 +405,6 @@ tests["two reminders crossing in one tick both fire"] = function()
     assertEquals(#rec.popupShow, 2)
 end
 
---------------------------------------------------------------------------------
--- Phase-relative timing
---------------------------------------------------------------------------------
-
 tests["phase 2 reminder times are relative to phase start, not encounter start"] = function()
     local r = makeReminder({ id = "p2", time = 10, duration = 5, phase = 2, phaseKey = "2" })
     local rec = makeRecorder()
@@ -465,10 +435,6 @@ tests["phase 1 reminder timing is relative to encounter start now"] = function()
     assertNear(rec.popupShow[1].remaining, 3, 1e-9)
 end
 
---------------------------------------------------------------------------------
--- Fractional phases
---------------------------------------------------------------------------------
-
 tests["fractional phase 2.5 selects phaseKey 2.5 reminders and restarts timing"] = function()
     local inter = makeReminder({ id = "inter", time = 4, duration = 3, phase = 2.5, phaseKey = "2.5" })
     local rec = makeRecorder()
@@ -483,10 +449,6 @@ tests["fractional phase 2.5 selects phaseKey 2.5 reminders and restarts timing"]
     assertEquals(rec.popupShow[1].reminder, inter)
     assertNear(rec.popupShow[1].remaining, 2, 1e-9)
 end
-
---------------------------------------------------------------------------------
--- SetPhase: cancellation semantics
---------------------------------------------------------------------------------
 
 tests["SetPhase to new phase cancels unfired earlier-phase reminders"] = function()
     local p1 = makeReminder({ id = "p1", time = 30, duration = 5, phase = 1, phaseKey = "1" })
@@ -558,10 +520,6 @@ tests["SetPhase cancels multiple unfired earlier-phase reminders together"] = fu
     assertTrue(seen["b"])
 end
 
---------------------------------------------------------------------------------
--- SetPhase: same-phase no-op
---------------------------------------------------------------------------------
-
 tests["same-phase SetPhase is a no-op (no cancel, no re-fire)"] = function()
     local p1 = makeReminder({ id = "p1", time = 30, duration = 5, phase = 1, phaseKey = "1" })
     local rec = makeRecorder()
@@ -585,10 +543,6 @@ tests["same-phase SetPhase leaves phase timing unchanged"] = function()
     assertEquals(#rec.popupShow, 1)
     assertNear(rec.popupShow[1].remaining, 3, 1e-9)
 end
-
---------------------------------------------------------------------------------
--- Relevance filtering (spec 6.4 step 2)
---------------------------------------------------------------------------------
 
 tests["timer skips reminders with relevant == false"] = function()
     local r = makeReminder({ time = 30, duration = 5, countdown = 3,
@@ -618,10 +572,6 @@ tests["irrelevant reminders are excluded from onCancelPhase"] = function()
     assertEquals(#rec.cancelPhase[1], 1)
     assertEquals(rec.cancelPhase[1][1], relevant)
 end
-
---------------------------------------------------------------------------------
--- Stop
---------------------------------------------------------------------------------
 
 tests["Stop then Tick fires nothing"] = function()
     local r = makeReminder({ time = 30, duration = 5 })

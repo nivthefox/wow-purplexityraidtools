@@ -7,10 +7,6 @@ local PRT = PurplexityRaidTools
 local NotesPopups = {}
 PRT.NotesPopups = NotesPopups
 
---------------------------------------------------------------------------------
--- Constants
---------------------------------------------------------------------------------
-
 -- Position keys are created lazily under profile.notes.positions; defaults ship
 -- notes.positions as an empty table.
 local TYPES = { "Icon", "Bar", "Text", "Circle" }
@@ -48,19 +44,11 @@ local MOVER_SIZE = { -- visual size of each empty mover when unlocked
 
 local DEFAULT_FONT = "Fonts\\FRIZQT__.TTF"
 
---------------------------------------------------------------------------------
--- Local state
---------------------------------------------------------------------------------
-
 local movers = {}       -- type -> mover frame
 local pools = {}        -- type -> { free = {}, active = {} }
 local activeByType = {} -- type -> array of active popup frames (for arrangement)
 local reminderToPopup = {} -- reminder table -> popup frame (for Expire/Dismiss)
 local initialized = false
-
---------------------------------------------------------------------------------
--- Settings access
---------------------------------------------------------------------------------
 
 local function GetSettings()
     return PRT:GetSetting("notes")
@@ -96,13 +84,8 @@ local function IsLocked()
     return true
 end
 
---------------------------------------------------------------------------------
--- Color parsing
---
 -- reminder.colors is a raw string of space/colon separated RGBA numbers.
 -- Interpretation depends on DisplayType: Bar -> fill color, all others -> text.
---------------------------------------------------------------------------------
-
 local function ParseColors(raw)
     if type(raw) ~= "string" or raw == "" then
         return nil
@@ -125,10 +108,6 @@ local function ParseColors(raw)
     end
     return r, g, b, a or 1
 end
-
---------------------------------------------------------------------------------
--- Raid marker token substitution
---------------------------------------------------------------------------------
 
 local MARKER_INDEX = {
     star = 1, circle = 2, diamond = 3, triangle = 4,
@@ -156,10 +135,6 @@ local function ReplaceMarkers(text)
     return text
 end
 
---------------------------------------------------------------------------------
--- Icon / text helpers
---------------------------------------------------------------------------------
-
 local function SpellTexture(spellID)
     if not spellID then return nil end
     if C_Spell and C_Spell.GetSpellTexture then
@@ -168,12 +143,7 @@ local function SpellTexture(spellID)
     return nil
 end
 
---------------------------------------------------------------------------------
--- Frame construction (one constructor per type)
---
 -- Popups are parented to their mover; Arrange re-anchors them on every call.
---------------------------------------------------------------------------------
-
 local function CreateIconPopup(mover)
     local f = CreateFrame("Frame", nil, mover)
     f:SetSize(ICON_SIZE, ICON_SIZE + 14)
@@ -294,10 +264,6 @@ local CONSTRUCTORS = {
     Circle = CreateCirclePopup,
 }
 
---------------------------------------------------------------------------------
--- Pooling
---------------------------------------------------------------------------------
-
 local function HasActivePopups(displayType)
     local active = activeByType[displayType]
     return active and #active > 0
@@ -354,13 +320,8 @@ local function ReleasePopup(f)
     EnsureMoverVisibility(displayType)
 end
 
---------------------------------------------------------------------------------
--- Arrangement / stacking
---
 -- Popups of a type stack from the mover, sorted soonest-to-expire on top. A
 -- fading frame keeps its slot until released so the stack does not jump.
---------------------------------------------------------------------------------
-
 local function ExpiryOf(f)
     return f.eventTime or 0
 end
@@ -392,13 +353,8 @@ function NotesPopups:Arrange(displayType)
     end
 end
 
---------------------------------------------------------------------------------
--- Per-frame update (countdown + swipe/bar progress)
---
 -- The timer text is reformatted only when the displayed value changes, so no
 -- per-frame string garbage.
---------------------------------------------------------------------------------
-
 local function FormatRemaining(secs)
     if secs >= 10 then
         return tostring(math.floor(secs + 0.5))
@@ -433,10 +389,6 @@ local function PopupOnUpdate(f)
     end
 end
 
---------------------------------------------------------------------------------
--- Fade-out (natural expiry)
---------------------------------------------------------------------------------
-
 local function FadeOnUpdate(f, elapsed)
     f.fadeElapsed = f.fadeElapsed + elapsed
     local t = f.fadeElapsed / FADE_TIME
@@ -446,10 +398,6 @@ local function FadeOnUpdate(f, elapsed)
     end
     f:SetAlpha(1 - t)
 end
-
---------------------------------------------------------------------------------
--- Show
---------------------------------------------------------------------------------
 
 -- `remaining` is the seconds until the event at the moment of the call; the
 -- countdown runs from here to zero.
@@ -534,10 +482,6 @@ function NotesPopups:Show(reminder, remaining)
     self:Arrange(displayType)
 end
 
---------------------------------------------------------------------------------
--- Expire (natural, 0.5s fade) / Dismiss (immediate)
---------------------------------------------------------------------------------
-
 function NotesPopups:Expire(reminder)
     local f = reminderToPopup[reminder]
     if not f then return end
@@ -566,14 +510,9 @@ function NotesPopups:DismissAll()
     end
 end
 
---------------------------------------------------------------------------------
--- Audio
---
 -- Explicit sound wins over TTS. Sound resolves via LibSharedMedia (name) or a
 -- direct file path; TTS fires only when no sound is set (or the sound fails to
 -- resolve) and the Enable TTS setting is on.
---------------------------------------------------------------------------------
-
 local LSM
 local lsmSoundCache
 
@@ -620,18 +559,14 @@ function NotesPopups:PlayAudio(reminder)
     local p = GetPopupSettings()
 
     if reminder.sound and reminder.sound ~= "" then
-        local soundsOn = not p or p.soundsEnabled ~= false
-        if soundsOn then
-            local path = ResolveLSMSound(reminder.sound)
-            if path then
-                if PlaySoundFile(path, "Master") then
-                    return
-                end
-            end
-            if PlaySoundFile(reminder.sound, "Master") then
-                return
-            end
-        else
+        if p and p.soundsEnabled == false then
+            return
+        end
+        local path = ResolveLSMSound(reminder.sound)
+        if path and PlaySoundFile(path, "Master") then
+            return
+        end
+        if PlaySoundFile(reminder.sound, "Master") then
             return
         end
     end
@@ -668,10 +603,6 @@ function NotesPopups:AnnounceCountdown(n)
     if not n or n < 1 or n > 10 then return end
     PlaySoundFile(COUNTDOWN_SOUND:format(n), "Master")
 end
-
---------------------------------------------------------------------------------
--- Movers (one per type; visible only when unlocked)
---------------------------------------------------------------------------------
 
 local function GetPositionsStore()
     local profile = PRT.Profiles:GetCurrent()
@@ -742,10 +673,6 @@ local function CreateMover(displayType)
     return mover
 end
 
---------------------------------------------------------------------------------
--- Lock / settings
---------------------------------------------------------------------------------
-
 local MOVER_BACKDROP = {
     bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
     edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
@@ -781,10 +708,6 @@ function NotesPopups:ApplySettings()
     self:SetLocked(IsLocked())
 end
 
---------------------------------------------------------------------------------
--- Init
---------------------------------------------------------------------------------
-
 function NotesPopups:Init()
     if initialized then return end
     initialized = true
@@ -798,10 +721,6 @@ function NotesPopups:Init()
 
     self:SetLocked(IsLocked())
 end
-
---------------------------------------------------------------------------------
--- Test
---------------------------------------------------------------------------------
 
 function NotesPopups:Test()
     if not initialized then self:Init() end
@@ -827,9 +746,8 @@ function NotesPopups:Test()
 
     for _, reminder in ipairs(samples) do
         self:Show(reminder, reminder.duration)
-        local captured = reminder
         C_Timer.After(reminder.duration, function()
-            NotesPopups:Expire(captured)
+            NotesPopups:Expire(reminder)
         end)
     end
 end

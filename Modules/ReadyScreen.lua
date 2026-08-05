@@ -9,19 +9,42 @@ PRT.defaults.readyScreen = {
 }
 
 function ReadyScreen.GetDisplayedState(isOffline, isDead, responseState)
-    return nil
+    if isOffline then
+        return "offline"
+    end
+    if isDead then
+        return "dead"
+    end
+    return responseState
 end
 
 function ReadyScreen.FinalizeResponse(responseState)
-    return nil
+    if responseState == "pending" then
+        return "notready"
+    end
+    return responseState
 end
 
 function ReadyScreen.SortRoster(members)
-    return nil
+    table.sort(members, function(a, b)
+        if a.name == nil then return false end
+        if b.name == nil then return true end
+        return a.name < b.name
+    end)
+    return members
 end
 
 function ReadyScreen.ClassifyVersion(memberVersion, rlVersion)
-    return nil
+    if memberVersion == nil then
+        return "missing"
+    end
+    if rlVersion == nil then
+        return "current"
+    end
+    if memberVersion < rlVersion then
+        return "outdated"
+    end
+    return "current"
 end
 
 function ReadyScreen:IsActivatable()

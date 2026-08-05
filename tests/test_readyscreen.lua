@@ -69,9 +69,24 @@ tests["ClassifyVersion: nil member version is missing not outdated"] = function(
     assertEquals(ReadyScreen.ClassifyVersion(nil, 1001003), "missing")
 end
 
+tests["SortRoster: nil names sort last without error"] = function()
+    local roster = {
+        { name = "Zed" },
+        { name = nil },
+        { name = "Alice" },
+    }
+    local result = ReadyScreen.SortRoster(roster)
+    assertNotNil(result, "SortRoster must not crash on nil names")
+    assertEquals(roster[1].name, "Alice")
+    assertEquals(roster[2].name, "Zed")
+    assertNil(roster[3].name, "nil-name members must sort last")
+end
+
 tests["ClassifyVersion: nil RL version means nobody is outdated"] = function()
     assertEquals(ReadyScreen.ClassifyVersion(1000000, nil), "current")
     assertEquals(ReadyScreen.ClassifyVersion(999, nil), "current")
+    assertEquals(ReadyScreen.ClassifyVersion(nil, nil), "missing",
+        "nil member with nil RL is still missing, not outdated")
 end
 
 return tests

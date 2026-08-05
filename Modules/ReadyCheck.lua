@@ -422,7 +422,7 @@ PRT:RegisterTab("Ready Check", function(parent)
                 enabledCheckbox:SetValue(GetSettings().enabled)
                 yOffset = yOffset - ROW_HEIGHT
 
-                local autoDismissCheckbox = PRT.Components.GetCheckbox(panel, "Auto-dismiss after ready check", function(value)
+                local autoDismissCheckbox = PRT.Components.GetCheckbox(panel, "Close after ready", function(value)
                     GetSettings().autoDismiss = value
                 end)
                 autoDismissCheckbox:SetPoint("TOPLEFT", 0, yOffset)

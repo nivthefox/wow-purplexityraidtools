@@ -23,7 +23,6 @@ Modules/ReadyScreen.lua
 Modules/ReadyScreenFrame.lua
 Modules/ReadyCheck.lua
 Modules/AutoInvite.lua
-Modules/CooldownTracker.lua
 Modules/BattleResCounter.lua
 Modules/CooldownRoster.lua
 Modules/Notes/NotesParser.lua

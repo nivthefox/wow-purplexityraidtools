@@ -22,11 +22,6 @@ PRT.defaults.cooldownRoster = {
         external = true,
         movement = true,
     },
-    usageTracking = {
-        enabled = true,
-        barTexture = "Interface\\TargetingFrame\\UI-StatusBar",
-        barTextureName = nil,  -- LSM name; nil = default
-    },
 }
 
 --------------------------------------------------------------------------------
@@ -61,65 +56,6 @@ local CATEGORY_INFO = {
 --------------------------------------------------------------------------------
 -- Helpers
 --------------------------------------------------------------------------------
-
---- Return a bright, saturated tint of the player's class color (for active bars).
-local function GetActiveColor(classToken)
-    local c = RAID_CLASS_COLORS[classToken]
-    if not c then return 0.5, 0.8, 0.5 end
-    return math.min(c.r * 1.3, 1), math.min(c.g * 1.3, 1), math.min(c.b * 1.3, 1)
-end
-
---- Return a desaturated, darkened version of the player's class color (for cooldown bars).
-local function GetCooldownColor(classToken)
-    local c = RAID_CLASS_COLORS[classToken]
-    if not c then return 0.3, 0.3, 0.3 end
-    local gray = c.r * 0.299 + c.g * 0.587 + c.b * 0.114
-    local t = 0.5
-    return (c.r * (1 - t) + gray * t) * 0.6,
-           (c.g * (1 - t) + gray * t) * 0.6,
-           (c.b * (1 - t) + gray * t) * 0.6
-end
-
---- OnUpdate handler for bars with trackable abilities. Runs every frame to
---- pick up state changes from the tracker (which has no callback mechanism).
-local function BarOnUpdate(bar)
-    local state, remaining, total = PRT.CooldownTracker:GetState(bar.guid, bar.spellId)
-
-    if state == "ready" then
-        if bar.trackerState ~= "ready" then
-            bar.statusBar:Hide()
-            bar.countdownText:Hide()
-            bar.trackerState = "ready"
-            bar.lastCountdown = nil
-        end
-        return
-    end
-
-    -- Active or cooldown: show the bar
-    if total > 0 then
-        bar.statusBar:SetValue(remaining / total)
-    else
-        bar.statusBar:SetValue(0)
-    end
-
-    local shown = math.ceil(remaining)
-    if shown ~= bar.lastCountdown then
-        bar.countdownText:SetText(shown)
-        bar.lastCountdown = shown
-    end
-
-    -- Update color and visibility on state transitions
-    if state ~= bar.trackerState then
-        bar.trackerState = state
-        if state == "active" then
-            bar.statusBar:SetStatusBarColor(GetActiveColor(bar.playerClass))
-        else
-            bar.statusBar:SetStatusBarColor(GetCooldownColor(bar.playerClass))
-        end
-        bar.statusBar:Show()
-        bar.countdownText:Show()
-    end
-end
 
 local function BattleResBarOnUpdate(bar)
     local brc = PRT.BattleResCounter
@@ -195,7 +131,6 @@ function CooldownRoster:RebuildRoster()
                                 category = category,
                                 playerName = member.name,
                                 playerClass = member.class,
-                                guid = guid,
                             })
                         end
                     end
@@ -226,16 +161,6 @@ function CooldownRoster:RebuildRoster()
         return (a.playerName or "") < (b.playerName or "")
     end)
 
-    -- Build a talent map compatible with CooldownTracker:OnRosterChanged
-    local talents = {}
-    for guid, member in pairs(PRT.GroupInspect.members) do
-        if member.talents then
-            talents[guid] = member.talents
-        end
-    end
-
-    -- Notify the tracker so it knows which abilities to watch for
-    PRT.CooldownTracker:OnRosterChanged(rosterCooldowns, talents)
 end
 
 --------------------------------------------------------------------------------
@@ -255,24 +180,6 @@ local function CreateBar(parent)
     local barWidth = parent:GetWidth() - BACKDROP_PADDING * 2
     bar:SetSize(barWidth, BAR_HEIGHT)
 
-    -- Status bar for active/cooldown display (behind everything)
-    local statusBar = CreateFrame("StatusBar", nil, bar)
-    statusBar:SetAllPoints()
-    local settings = PRT:GetSetting("cooldownRoster")
-    local texturePath = settings and settings.usageTracking and settings.usageTracking.barTexture
-        or "Interface\\TargetingFrame\\UI-StatusBar"
-    statusBar:SetStatusBarTexture(texturePath)
-    statusBar:SetMinMaxValues(0, 1)
-    statusBar:SetValue(0)
-    statusBar:SetFrameLevel(bar:GetFrameLevel())
-    statusBar:Hide()
-    bar.statusBar = statusBar
-
-    -- Dark background behind the status bar
-    local statusBg = statusBar:CreateTexture(nil, "BACKGROUND")
-    statusBg:SetAllPoints()
-    statusBg:SetColorTexture(0, 0, 0, 0.4)
-
     local icon = bar:CreateTexture(nil, "ARTWORK")
     icon:SetSize(ICON_SIZE, ICON_SIZE)
     icon:SetPoint("LEFT", 2, 0)
@@ -283,7 +190,7 @@ local function CreateBar(parent)
     spellText:SetJustifyH("LEFT")
     bar.spellText = spellText
 
-    -- Countdown text (right side, visible during active/cooldown)
+    -- Countdown text (right side, used by the battle res row's recharge timer)
     local countdownText = bar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     countdownText:SetPoint("RIGHT", bar, "RIGHT", -4, 0)
     countdownText:SetJustifyH("RIGHT")
@@ -296,11 +203,6 @@ local function CreateBar(parent)
     playerText:SetPoint("RIGHT", countdownText, "LEFT", -4, 0)
     playerText:SetJustifyH("LEFT")
     bar.playerText = playerText
-
-    bar.trackerState = nil
-    bar.lastCountdown = nil
-    bar.guid = nil
-    bar.playerClass = nil
 
     bar:EnableMouse(true)
     bar:SetScript("OnEnter", function(self)
@@ -515,16 +417,11 @@ function CooldownRoster:UpdateDisplay()
             for i, entry in ipairs(entries) do
                 local bar = frame.bars[i]
                 bar.spellId = entry.spellId
-                bar.guid = entry.guid
-                bar.playerClass = entry.playerClass
                 bar.icon:SetTexture(C_Spell.GetSpellTexture(entry.spellId))
                 bar.spellText:SetText(entry.name)
 
                 if entry.isBattleRes then
                     bar.playerText:SetText("")
-                    bar.statusBar:Hide()
-                    bar.trackerState = nil
-                    bar.lastCountdown = nil
                     bar:SetScript("OnUpdate", BattleResBarOnUpdate)
                 else
                     local classColor = RAID_CLASS_COLORS[entry.playerClass]
@@ -533,22 +430,8 @@ function CooldownRoster:UpdateDisplay()
                     else
                         bar.playerText:SetText(entry.playerName)
                     end
-
-                    -- For trackable abilities with usage tracking enabled, always
-                    -- attach OnUpdate so we pick up state changes from the tracker
-                    -- in real time. BarOnUpdate handles show/hide based on state.
-                    local trackingEnabled = settings and settings.usageTracking
-                        and settings.usageTracking.enabled
-                    if trackingEnabled and PRT.CooldownTracker:IsTrackable(entry.spellId) then
-                        bar.trackerState = nil  -- force a visual refresh on next OnUpdate
-                        bar:SetScript("OnUpdate", BarOnUpdate)
-                    else
-                        bar.statusBar:Hide()
-                        bar.countdownText:Hide()
-                        bar.trackerState = nil
-                        bar.lastCountdown = nil
-                        bar:SetScript("OnUpdate", nil)
-                    end
+                    bar.countdownText:Hide()
+                    bar:SetScript("OnUpdate", nil)
                 end
 
                 bar:ClearAllPoints()
@@ -757,87 +640,6 @@ PRT:RegisterTab("Cooldown Roster", function(parent)
                 end)
             end,
         },
-
-        -----------------------------------------------------------------
-        -- Usage Tracking sub-tab
-        -----------------------------------------------------------------
-        {
-            name = "Usage Tracking",
-            setup = function(panel)
-                local yOffset = 0
-
-                local header = PRT.Components.GetHeader(panel, "Usage Tracking")
-                header:SetPoint("TOPLEFT", 0, yOffset)
-                yOffset = yOffset - 28
-
-                local trackingCheckbox = PRT.Components.GetCheckbox(panel, "Enabled", function(value)
-                    local s = GetSettings()
-                    if not s.usageTracking then s.usageTracking = {} end
-                    s.usageTracking.enabled = value
-                    PRT:ApplySettings("cooldownRoster")
-                end)
-                trackingCheckbox:SetPoint("TOPLEFT", 0, yOffset)
-                yOffset = yOffset - ROW_HEIGHT
-
-                -- Bar Texture dropdown (via LibSharedMedia)
-                yOffset = yOffset - 10
-                local textureHeader = PRT.Components.GetHeader(panel, "Bar Texture")
-                textureHeader:SetPoint("TOPLEFT", 0, yOffset)
-                yOffset = yOffset - 28
-
-                local function ListTextures()
-                    local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
-                    if not LSM then
-                        return {{ name = "Default", value = "Interface\\TargetingFrame\\UI-StatusBar" }}
-                    end
-                    local names = LSM:List("statusbar")
-                    local items = {}
-                    for _, name in ipairs(names) do
-                        items[#items + 1] = { name = name, value = name }
-                    end
-                    return items
-                end
-
-                local function GetCurrentTextureName()
-                    local s = GetSettings()
-                    local tracking = s and s.usageTracking
-                    return tracking and tracking.barTextureName or nil
-                end
-
-                local textureDropdown = PRT.Components.GetBasicDropdown(
-                    panel,
-                    "Texture",
-                    ListTextures,
-                    function(value)
-                        local current = GetCurrentTextureName()
-                        return current == value
-                    end,
-                    function(value)
-                        local s = GetSettings()
-                        if not s.usageTracking then s.usageTracking = {} end
-                        -- Store the LSM name; resolve to path at render time
-                        local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
-                        if LSM then
-                            s.usageTracking.barTexture = LSM:Fetch("statusbar", value) or value
-                            s.usageTracking.barTextureName = value
-                        else
-                            s.usageTracking.barTexture = value
-                        end
-                        PRT:ApplySettings("cooldownRoster")
-                    end
-                )
-                textureDropdown:SetPoint("TOPLEFT", 0, yOffset)
-                yOffset = yOffset - ROW_HEIGHT
-
-                -- Refresh on show
-                panel:SetScript("OnShow", function()
-                    local s = GetSettings()
-                    local tracking = s and s.usageTracking
-                    trackingCheckbox:SetValue(tracking and tracking.enabled or false)
-                    textureDropdown:SetValue()
-                end)
-            end,
-        },
     })
 end)
 
@@ -845,32 +647,7 @@ end)
 -- Apply Callback
 --------------------------------------------------------------------------------
 
---- Update all existing bar textures from settings.
-local function RefreshBarTextures()
-    local settings = PRT:GetSetting("cooldownRoster")
-    local texturePath = settings and settings.usageTracking and settings.usageTracking.barTexture
-        or "Interface\\TargetingFrame\\UI-StatusBar"
-    for _, frame in pairs(categoryFrames) do
-        for _, bar in ipairs(frame.bars) do
-            if bar.statusBar then
-                bar.statusBar:SetStatusBarTexture(texturePath)
-            end
-        end
-    end
-end
-
 PRT:RegisterApplyCallback("cooldownRoster", function()
-    -- Re-evaluate tracker enabled state
-    local settings = PRT:GetSetting("cooldownRoster")
-    if settings and settings.usageTracking and settings.usageTracking.enabled then
-        if CooldownRoster.active then
-            PRT.CooldownTracker:Enable()
-        end
-    else
-        PRT.CooldownTracker:Disable()
-    end
-
-    RefreshBarTextures()
     CooldownRoster:UpdateVisibility()
 end)
 
@@ -911,16 +688,9 @@ function CooldownRoster:OnEnable()
 
     self:RebuildRoster()
     self:UpdateVisibility()
-
-    local settings = PRT:GetSetting("cooldownRoster")
-    if settings and settings.usageTracking and settings.usageTracking.enabled then
-        PRT.CooldownTracker:Enable()
-    end
 end
 
 function CooldownRoster:OnDisable()
-    PRT.CooldownTracker:Disable()
-
     self.eventFrame:UnregisterAllEvents()
     self.eventFrame:SetScript("OnEvent", nil)
     for _, frame in pairs(categoryFrames) do

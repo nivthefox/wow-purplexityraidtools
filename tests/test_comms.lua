@@ -292,6 +292,21 @@ tests["Send passes the encoded payload to the injected transport function"] = fu
     Comms.sendFunc = nil
 end
 
+tests["Send forwards the whisper target through to the injected transport"] = function()
+    local captured = {}
+    Comms.sendFunc = function(encoded, channel, target)
+        captured.channel = channel
+        captured.target = target
+    end
+
+    Comms:Send("versionQuery", {}, "WHISPER", "Zed-Area52")
+    Comms.sendFunc = nil
+
+    assertEquals(captured.channel, "WHISPER")
+    assertEquals(captured.target, "Zed-Area52",
+        "Send must forward the target as sendFunc's third argument")
+end
+
 tests["Send round-trips through inject transport into a registered handler"] = function()
     local received = {}
     Comms:RegisterHandler("endToEnd", function(data, sender)

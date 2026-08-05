@@ -472,7 +472,7 @@ function ReadyScreenFrame:Refresh()
         for j, col in ipairs(buffColumns) do
             local buffIcon = row.buffIcons[j]
             local hasBuff = false
-            if entry.unit and not isOffline then
+            if entry.unit and not isOffline and UnitIsVisible(entry.unit) then
                 hasBuff = C_UnitAuras.GetAuraDataBySpellName(entry.unit, col.name, "HELPFUL") ~= nil
             end
 

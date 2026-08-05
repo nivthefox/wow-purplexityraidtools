@@ -86,10 +86,10 @@ end
 -- Send via injected transport
 --------------------------------------------------------------------------------
 
-function Comms:Send(msgType, data, channel)
+function Comms:Send(msgType, data, channel, target)
     local encoded = self:Encode({ type = msgType, data = data })
     if self.sendFunc then
-        self.sendFunc(encoded, channel)
+        self.sendFunc(encoded, channel, target)
     end
 end
 
@@ -122,8 +122,8 @@ local AceComm = LibStub("AceComm-3.0", true)
 if AceComm then
     AceComm:Embed(Comms)
 
-    Comms.sendFunc = function(encoded, channel)
-        Comms:SendCommMessage(PREFIX, encoded, channel)
+    Comms.sendFunc = function(encoded, channel, target)
+        Comms:SendCommMessage(PREFIX, encoded, channel, target)
     end
 
     Comms:RegisterComm(PREFIX, function(_, message, _, sender)

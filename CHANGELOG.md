@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 
 - **Battle Res Counter** with a standalone draggable icon widget (cooldown sweep, charge count, accrual timer) and a summary row at the bottom of the Cooldown Roster's Externals category. Active in any group.
+- **Addon Detection** that identifies which group members are also running PRT and what version they have, surfaced on GroupInspect's member data.
 
 ## [1.0.0-beta-2] - 2026-07-30
 

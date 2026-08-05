@@ -11,7 +11,8 @@ PRT:RegisterModule("groupInspect", GroupInspect)
 --------------------------------------------------------------------------------
 
 --- Per-player data, keyed by GUID.
---- Each entry: { name, class, specId (nil until inspect), talents (nil until inspect) }
+--- Each entry: { name, class, specId (nil until inspect), talents (nil until inspect),
+---               addonVersion (nil until a version response arrives) }
 GroupInspect.members = {}
 
 --------------------------------------------------------------------------------
@@ -48,6 +49,72 @@ local TICK_INTERVAL = 1     -- seconds between inspect-drain attempts
 local SWEEP_INTERVAL = 60   -- seconds between full-raid sweeps
 
 --------------------------------------------------------------------------------
+-- Addon Version Detection
+--------------------------------------------------------------------------------
+
+local ADDON_NAME = "PurplexityRaidTools"
+local VERSION_QUERY_MSG_TYPE = "versionQuery"
+local VERSION_RESPONSE_MSG_TYPE = "versionResponse"
+
+--- Pack "major.minor.patch" into a single comparable integer, dropping any
+--- prerelease suffix. Anything unparseable encodes to 0 ("installed, version
+--- indeterminate"), never nil.
+function GroupInspect.EncodeVersion(versionString)
+    if type(versionString) ~= "string" then
+        return 0
+    end
+
+    local prereleaseStart = versionString:find("-", 1, true)
+    if prereleaseStart then
+        versionString = versionString:sub(1, prereleaseStart - 1)
+    end
+
+    local major, minor, patch = versionString:match("^(%d+)%.(%d+)%.(%d+)$")
+    if not major then
+        return 0
+    end
+
+    return tonumber(major) * 1000000 + tonumber(minor) * 1000 + tonumber(patch)
+end
+
+local function GetLocalVersion()
+    return GroupInspect.EncodeVersion(C_AddOns.GetAddOnMetadata(ADDON_NAME, "Version"))
+end
+
+--- Whisper a version query to the unit being inspected. Members running PRT
+--- answer; silence means the addon is missing. The target must carry the realm
+--- for cross-realm members, and is nil for a unit that just left the group.
+local function SendVersionQuery(unit)
+    local target = GetUnitName(unit, true)
+    if not target then
+        return
+    end
+    PRT.Comms:Send(VERSION_QUERY_MSG_TYPE, {}, "WHISPER", target)
+end
+
+local function OnVersionQuery(_, sender)
+    PRT.Comms:Send(VERSION_RESPONSE_MSG_TYPE, { version = GetLocalVersion() }, "WHISPER", sender)
+end
+
+local function OnVersionResponse(data, sender)
+    if type(data) ~= "table" or type(data.version) ~= "number" then
+        return
+    end
+
+    local guid = UnitGUID(sender)
+    if not guid then
+        return
+    end
+
+    local member = GroupInspect.members[guid]
+    if not member then
+        return
+    end
+
+    member.addonVersion = data.version
+end
+
+--------------------------------------------------------------------------------
 -- Helpers
 --------------------------------------------------------------------------------
 
@@ -79,6 +146,7 @@ local function BeginInspect(unit)
             inspectPending = nil
         end
     end)
+    SendVersionQuery(unit)
 end
 
 --- Return true if the Blizzard inspect window is open. Inspecting while it is
@@ -260,6 +328,7 @@ function GroupInspect:ScanRoster()
                     class = classToken,
                     specId = nil,
                     talents = nil,
+                    addonVersion = nil,
                 }
                 changed = true
 
@@ -273,6 +342,7 @@ function GroupInspect:ScanRoster()
                     if talents then
                         self.members[guid].talents = talents
                     end
+                    self.members[guid].addonVersion = GetLocalVersion()
                     -- If spec or talents are still missing after load, retry shortly.
                     -- The talent system may not be ready on the first frame after login.
                     if not self.members[guid].specId or not self.members[guid].talents then
@@ -424,4 +494,7 @@ function GroupInspect:Initialize()
     self.eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
     self.eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
     self.eventFrame:SetScript("OnEvent", OnEvent)
+
+    PRT.Comms:RegisterHandler(VERSION_QUERY_MSG_TYPE, OnVersionQuery)
+    PRT.Comms:RegisterHandler(VERSION_RESPONSE_MSG_TYPE, OnVersionResponse)
 end

@@ -1,4 +1,5 @@
 import { SPELL_ATTR0_PASSIVE, SX_IS_BIG_DEFENSIVE, SX_IS_EXTERNAL_DEFENSIVE, SX_IMPORTANT_SPELL, RAID_COOLDOWN_SPELLS, RAID_MOVEMENT_SPELLS } from './constants.mjs';
+import { resolveTraitSpecs } from './resolve-trait-specs.mjs';
 
 /**
  * Combine parsed data to produce per-spec ability lists.
@@ -130,24 +131,6 @@ function addAbility(abilities, spell) {
         charges: spell.charges,
         channeled: spell.channeled || undefined,
     });
-}
-
-function resolveTraitSpecs(trait, specs) {
-    if (trait.specIds.length > 0) {
-        return trait.specIds.filter(id => specs.has(id));
-    }
-
-    if (trait.classId === 0) {
-        return [];
-    }
-
-    const classSpecs = [];
-    for (const [specId, spec] of specs) {
-        if (spec.classId === trait.classId) {
-            classSpecs.push(specId);
-        }
-    }
-    return classSpecs;
 }
 
 function isPassive(spell) {

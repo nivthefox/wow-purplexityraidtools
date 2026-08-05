@@ -1,6 +1,4 @@
-// ---------------------------------------------------------------------------
 // Protocol constants — these are baked into the WoW engine, not data.
-// ---------------------------------------------------------------------------
 
 // Spell effect type for APPLY_AURA
 export const E_APPLY_AURA = 6;
@@ -32,9 +30,7 @@ export const SX_IMPORTANT_SPELL = 491;
 // Number of class family flag uint32s per spell/effect
 export const NUM_CLASS_FAMILY_FLAGS = 4;
 
-// ---------------------------------------------------------------------------
 // Statically maintained — WoW has no attribute bit for raidwide CDs.
-// ---------------------------------------------------------------------------
 export const RAID_MOVEMENT_SPELLS = new Set([
     106898,   // Stampeding Roar
     192077,   // Wind Rush Totem
@@ -62,13 +58,9 @@ export const RAID_COOLDOWN_SPELLS = new Set([
     472433,   // Evangelism
 ]);
 
-// ---------------------------------------------------------------------------
 // Validation gate — alert if the discovered spec count doesn't match.
-// ---------------------------------------------------------------------------
 export const EXPECTED_SPEC_COUNT = 40;
 
-// ---------------------------------------------------------------------------
 // SimC GitHub coordinates — branch discovered at runtime via fetch-simc.
-// ---------------------------------------------------------------------------
 export const SIMC_REPO = 'simulationcraft/simc';
 export const SIMC_GENERATED_PATH = 'engine/dbc/generated';

@@ -1,5 +1,5 @@
 -- SpellData.lua (auto-generated, do not edit)
--- Source: SimulationCraft dbc_extract3 (build 12.0.7.68887)
+-- Source: SimulationCraft dbc_extract3 (build 12.0.7.68974)
 
 local PRT = PurplexityRaidTools
 

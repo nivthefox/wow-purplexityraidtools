@@ -453,6 +453,14 @@ function ReadyScreenFrame:Refresh()
 
         if showReady then
             local responseState = responses[entry.guid]
+            if PRT.ReadyScreen:IsReadyCheckActive() and entry.unit then
+                local status = GetReadyCheckStatus(entry.unit)
+                if status == "ready" then
+                    responseState = "ready"
+                elseif status == "notready" then
+                    responseState = "notready"
+                end
+            end
             local displayedState = PRT.ReadyScreen.GetDisplayedState(isOffline or false, isDead or false, responseState)
             local iconInfo = displayedState and READY_ICONS[displayedState]
             if iconInfo then

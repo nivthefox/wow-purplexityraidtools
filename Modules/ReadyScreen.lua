@@ -14,6 +14,7 @@ local responses = {}
 local autoDismissTimer = nil
 local readyCheckActive = false
 local auraRefreshPending = false
+local readyCheckTicker = nil
 
 function ReadyScreen.GetDisplayedState(isOffline, isDead, responseState)
     if isOffline then
@@ -84,7 +85,7 @@ function ReadyScreen:ShowAudit()
     end
 end
 
-function ReadyScreen:ShowReadyCheck()
+function ReadyScreen:ShowReadyCheck(initiator)
     if mode ~= "hidden" then
         ReadyScreen:Close()
     end
@@ -99,18 +100,42 @@ function ReadyScreen:ShowReadyCheck()
         responses[guid] = "pending"
     end
 
+    if initiator then
+        local initiatorGUID = UnitGUID(initiator)
+        if initiatorGUID and responses[initiatorGUID] then
+            responses[initiatorGUID] = "ready"
+        end
+    end
+
     mode = "readycheck"
     readyCheckActive = true
 
     if PRT.ReadyScreenFrame then
         PRT.ReadyScreenFrame:Show("readycheck")
     end
+
+    readyCheckTicker = C_Timer.NewTicker(0.5, function()
+        if not readyCheckActive then
+            if readyCheckTicker then
+                readyCheckTicker:Cancel()
+                readyCheckTicker = nil
+            end
+            return
+        end
+        if PRT.ReadyScreenFrame and PRT.ReadyScreenFrame:IsShown() then
+            PRT.ReadyScreenFrame:Refresh()
+        end
+    end)
 end
 
 function ReadyScreen:Close()
     if autoDismissTimer then
         autoDismissTimer:Cancel()
         autoDismissTimer = nil
+    end
+    if readyCheckTicker then
+        readyCheckTicker:Cancel()
+        readyCheckTicker = nil
     end
     if PRT.ReadyScreenFrame then
         PRT.ReadyScreenFrame:Hide()
@@ -136,6 +161,11 @@ end
 
 function ReadyScreen:OnReadyCheckFinished()
     readyCheckActive = false
+
+    if readyCheckTicker then
+        readyCheckTicker:Cancel()
+        readyCheckTicker = nil
+    end
 
     for guid, state in pairs(responses) do
         responses[guid] = ReadyScreen.FinalizeResponse(state)
@@ -181,9 +211,10 @@ function ReadyScreen:OnEnable()
     self.eventFrame:RegisterEvent("UNIT_FLAGS")
     self.eventFrame:SetScript("OnEvent", function(_, event, ...)
         if event == "READY_CHECK" then
+            local initiator = ...
             local settings = PRT:GetSetting("readyScreen")
             if settings and settings.enabled then
-                ReadyScreen:ShowReadyCheck()
+                ReadyScreen:ShowReadyCheck(initiator)
             end
         elseif event == "READY_CHECK_CONFIRM" then
             if mode == "readycheck" then

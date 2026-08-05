@@ -14,7 +14,6 @@ export function generateLua(specAbilities, buildInfo) {
 
     for (const specId of sortedSpecIds) {
         const spec = specAbilities.get(specId);
-        const abilityCount = spec.abilities.size;
 
         lines.push(`    [${specId}] = {`);
         lines.push(`        name = ${luaString(spec.specName)},`);

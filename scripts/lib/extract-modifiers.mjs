@@ -7,6 +7,7 @@ import {
     PROPERTY_TO_FIELD,
     NUM_CLASS_FAMILY_FLAGS,
 } from './constants.mjs';
+import { resolveTraitSpecs } from './resolve-trait-specs.mjs';
 
 /**
  * Extract talent modifier deltas and attach them to abilities.
@@ -32,7 +33,7 @@ export function extractModifiers(specAbilities, traits, spells, effects, labels,
             continue;
         }
 
-        const targetSpecIds = resolveTargetSpecs(trait, specs);
+        const targetSpecIds = resolveTraitSpecs(trait, specs);
 
         for (const effect of talentEffects) {
             if (effect.type !== E_APPLY_AURA) {
@@ -138,22 +139,4 @@ function computeDelta(effect, fieldName, isPercent) {
     }
 
     return effect.baseValue;
-}
-
-function resolveTargetSpecs(trait, specs) {
-    if (trait.specIds.length > 0) {
-        return trait.specIds.filter(id => specs.has(id));
-    }
-
-    if (trait.classId === 0) {
-        return [];
-    }
-
-    const classSpecs = [];
-    for (const [specId, spec] of specs) {
-        if (spec.classId === trait.classId) {
-            classSpecs.push(specId);
-        }
-    }
-    return classSpecs;
 }

@@ -195,7 +195,7 @@ function ReadyScreen:OnEnable()
             end
         elseif event == "UNIT_AURA" or event == "UNIT_FLAGS" then
             local unit = ...
-            if mode ~= "hidden" and unit and unit:match("^raid") and not auraRefreshPending then
+            if mode ~= "hidden" and unit and (unit:match("^raid") or unit:match("^party") or unit == "player") and not auraRefreshPending then
                 auraRefreshPending = true
                 C_Timer.After(0.1, function()
                     auraRefreshPending = false

@@ -119,11 +119,11 @@ end
 --------------------------------------------------------------------------------
 
 local function GetPlayerSpecId()
-    local specIndex = GetSpecialization()
+    local specIndex = C_SpecializationInfo.GetSpecialization()
     if not specIndex then
         return nil
     end
-    local specId = GetSpecializationInfo(specIndex)
+    local specId = C_SpecializationInfo.GetSpecializationInfo(specIndex)
     return specId
 end
 
@@ -409,7 +409,7 @@ local function OnInspectReady(eventGUID)
         return
     end
 
-    local specId = GetInspectSpecialization(inspectPending)
+    local specId = C_SpecializationInfo.GetInspectSpecialization(inspectPending)
     local talents = ReadInspectTalents()
     inspectPending = nil
 

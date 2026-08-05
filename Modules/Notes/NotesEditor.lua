@@ -171,11 +171,13 @@ local function GetLocalPlayerAbilities()
     if not PRT.SpellData then
         return {}
     end
-    local specIndex = GetSpecialization and GetSpecialization()
+    local specIndex = C_SpecializationInfo and C_SpecializationInfo.GetSpecialization
+        and C_SpecializationInfo.GetSpecialization()
     if not specIndex then
         return {}
     end
-    local specId = GetSpecializationInfo and GetSpecializationInfo(specIndex)
+    local specId = C_SpecializationInfo.GetSpecializationInfo
+        and C_SpecializationInfo.GetSpecializationInfo(specIndex)
     if not specId then
         return {}
     end
@@ -255,9 +257,10 @@ local function BuildPlayerCtx()
     local _, _, classID = UnitClass("player")
     local role = UnitGroupRolesAssigned("player")
     local specID
-    local specIndex = GetSpecialization and GetSpecialization()
+    local specIndex = C_SpecializationInfo and C_SpecializationInfo.GetSpecialization
+        and C_SpecializationInfo.GetSpecialization()
     if specIndex then
-        specID = GetSpecializationInfo(specIndex)
+        specID = C_SpecializationInfo.GetSpecializationInfo(specIndex)
     end
 
     if (not role or role == "NONE") and specIndex then

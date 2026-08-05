@@ -156,8 +156,10 @@ local function makeStubs()
             table.insert(sim.inspectedUnits, unitToken)
         end,
         ClearInspectPlayer = function() end,
-        GetSpecialization = function() return 1 end,
-        GetSpecializationInfo = function() return SPEC_ID end,
+        C_SpecializationInfo = {
+            GetSpecialization = function() return 1 end,
+            GetSpecializationInfo = function() return SPEC_ID end,
+        },
         C_ClassTalents = {
             GetActiveConfigID = function() return nil end,
         },

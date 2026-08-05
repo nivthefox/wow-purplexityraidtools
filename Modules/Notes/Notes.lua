@@ -225,9 +225,10 @@ local function BuildPlayerCtx()
     local role = UnitGroupRolesAssigned("player")
 
     local specID
-    local specIndex = GetSpecialization and GetSpecialization()
+    local specIndex = C_SpecializationInfo and C_SpecializationInfo.GetSpecialization
+        and C_SpecializationInfo.GetSpecialization()
     if specIndex then
-        specID = GetSpecializationInfo(specIndex)
+        specID = C_SpecializationInfo.GetSpecializationInfo(specIndex)
     end
 
     if (not role or role == "NONE") and specIndex then

@@ -306,6 +306,26 @@ local function StopTickers()
     end
 end
 
+--- A group member coming online becomes inspectable. Push them onto the
+--- priority queue so the next drain tick picks them up instead of waiting on
+--- the 60-second sweep. The drain gate skips members that already have spec
+--- data, so a reconnect with cached data costs nothing.
+function GroupInspect:OnUnitConnected(unit)
+    local guid = UnitGUID(unit)
+    if not guid or not self.members[guid] then
+        return
+    end
+    if UnitIsUnit(unit, "player") then
+        return
+    end
+    for i = 1, #priorityQueue do
+        if priorityQueue[i] == guid then
+            return
+        end
+    end
+    table.insert(priorityQueue, guid)
+end
+
 --------------------------------------------------------------------------------
 -- Roster Scanning
 --------------------------------------------------------------------------------
@@ -473,6 +493,12 @@ local function OnEvent(_, event, ...)
     if event == "GROUP_ROSTER_UPDATE" or event == "PLAYER_ENTERING_WORLD" then
         GroupInspect:ScanRoster()
 
+    elseif event == "UNIT_CONNECTION" then
+        local unit, isConnected = ...
+        if isConnected then
+            GroupInspect:OnUnitConnected(unit)
+        end
+
     elseif event == "INSPECT_READY" then
         OnInspectReady(...)
 
@@ -491,6 +517,7 @@ end
 function GroupInspect:Initialize()
     self.eventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
     self.eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
+    self.eventFrame:RegisterEvent("UNIT_CONNECTION")
     self.eventFrame:RegisterEvent("INSPECT_READY")
     self.eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
     self.eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")

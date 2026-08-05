@@ -465,4 +465,65 @@ tests["a version query is answered with the local encoded version, whispered to 
     end)
 end
 
+tests["a member logging in is priority-queued and inspected on the next tick"] = function()
+    runSim(function()
+        sim.units = { "raid1", "raid2" }
+        GroupInspect:ScanRoster()
+        driveInspectTick()
+        assertEquals(#sim.inspectedUnits, 1, "the join inspect fires first")
+        flushTimers() -- expire the pending-inspect timeout; no INSPECT_READY ever arrived
+
+        GroupInspect:OnUnitConnected("raid2")
+        driveInspectTick()
+        assertEquals(#sim.inspectedUnits, 2,
+            "a login must re-inspect a member whose spec never resolved, not wait for the sweep")
+        assertEquals(sim.inspectedUnits[2], "raid2")
+    end)
+end
+
+tests["duplicate login events queue a member once"] = function()
+    runSim(function()
+        sim.units = { "raid1", "raid2" }
+        GroupInspect:ScanRoster()
+        driveInspectTick()
+        flushTimers()
+
+        GroupInspect:OnUnitConnected("raid2")
+        GroupInspect:OnUnitConnected("raid2")
+        driveInspectTick()
+        flushTimers()
+        driveInspectTick()
+        assertEquals(#sim.inspectedUnits, 2,
+            "the second connection event must not queue a second inspect")
+    end)
+end
+
+tests["a login with cached spec data does not trigger an inspect"] = function()
+    runSim(function()
+        sim.units = { "raid1", "raid2" }
+        GroupInspect:ScanRoster()
+        GroupInspect.members["GUID-BOB"].specId = SPEC_ID
+
+        GroupInspect:OnUnitConnected("raid2")
+        driveInspectTick()
+        assertEquals(#sim.inspectedUnits, 0,
+            "the drain gate must skip a reconnect that kept its spec data")
+    end)
+end
+
+tests["logins for the local player or a non-member are ignored"] = function()
+    runSim(function()
+        sim.units = { "raid1", "raid2" }
+        GroupInspect:ScanRoster()
+        driveInspectTick()
+        flushTimers()
+
+        GroupInspect:OnUnitConnected("raid1") -- local player: read directly, never inspected
+        GroupInspect:OnUnitConnected("raid3") -- exists as a unit, but not in this group
+        driveInspectTick()
+        assertEquals(#sim.inspectedUnits, 1,
+            "neither the local player nor a stranger may be queued by a login")
+    end)
+end
+
 return tests

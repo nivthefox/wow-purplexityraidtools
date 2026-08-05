@@ -178,6 +178,7 @@ function ReadyScreen:OnEnable()
     self.eventFrame:RegisterEvent("READY_CHECK_FINISHED")
     self.eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
     self.eventFrame:RegisterEvent("UNIT_AURA")
+    self.eventFrame:RegisterEvent("UNIT_FLAGS")
     self.eventFrame:SetScript("OnEvent", function(_, event, ...)
         if event == "READY_CHECK" then
             local settings = PRT:GetSetting("readyScreen")
@@ -192,8 +193,9 @@ function ReadyScreen:OnEnable()
             if readyCheckActive then
                 ReadyScreen:OnReadyCheckFinished()
             end
-        elseif event == "UNIT_AURA" then
-            if mode ~= "hidden" and not auraRefreshPending then
+        elseif event == "UNIT_AURA" or event == "UNIT_FLAGS" then
+            local unit = ...
+            if mode ~= "hidden" and unit and unit:match("^raid") and not auraRefreshPending then
                 auraRefreshPending = true
                 C_Timer.After(0.1, function()
                     auraRefreshPending = false

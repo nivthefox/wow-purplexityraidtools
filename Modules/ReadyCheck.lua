@@ -97,6 +97,10 @@ local RAID_BUFFS = {
 
 local SOULSTONE_SPELL_ID = 20707
 local SOULSTONE_BUFF_NAME = "Soulstone"
+
+PRT.RAID_BUFFS = RAID_BUFFS
+PRT.SOULSTONE_SPELL_ID = SOULSTONE_SPELL_ID
+PRT.SOULSTONE_BUFF_NAME = SOULSTONE_BUFF_NAME
 local SOULSTONE_MESSAGES = {
     "Why have you not soulstoned a healer? What am I even paying you for?",
     "Soulstone a healer. It's the closest you'll get to being useful after you die.",
@@ -331,83 +335,108 @@ end
 --------------------------------------------------------------------------------
 
 PRT:RegisterTab("Ready Check", function(parent)
-    local container = CreateFrame("Frame", nil, parent)
-    container:SetAllPoints()
-    container:Hide()
+    return PRT.Components.GetSubTabGroup(parent, {
+        {
+            name = "Notifications",
+            setup = function(panel)
+                local yOffset = 0
+                local ROW_HEIGHT = 24
 
-    local yOffset = 0
-    local ROW_HEIGHT = 24
+                local function GetSettings()
+                    return PRT:GetSetting("readyCheck")
+                end
 
-    local function GetSettings()
-        return PRT:GetSetting("readyCheck")
-    end
+                local enabledCheckbox = PRT.Components.GetCheckbox(panel, "Enabled", function(value)
+                    GetSettings().enabled = value
+                end)
+                enabledCheckbox:SetPoint("TOPLEFT", 0, yOffset)
+                enabledCheckbox:SetValue(GetSettings().enabled)
 
+                local raidLeaderNote = enabledCheckbox:CreateFontString(nil, "OVERLAY", "GameFontDisable")
+                raidLeaderNote:SetPoint("LEFT", enabledCheckbox, "CENTER", 20, 0)
+                raidLeaderNote:SetText("(requires Raid Leader)")
 
-    -- Master toggle
-    local enabledCheckbox = PRT.Components.GetCheckbox(container, "Enabled", function(value)
-        GetSettings().enabled = value
-    end)
-    enabledCheckbox:SetPoint("TOPLEFT", 0, yOffset)
-    enabledCheckbox:SetValue(GetSettings().enabled)
+                yOffset = yOffset - ROW_HEIGHT
 
-    local raidLeaderNote = enabledCheckbox:CreateFontString(nil, "OVERLAY", "GameFontDisable")
-    raidLeaderNote:SetPoint("LEFT", enabledCheckbox, "CENTER", 20, 0)
-    raidLeaderNote:SetText("(requires Raid Leader)")
+                local snarkyCheckbox = PRT.Components.GetCheckbox(panel, "Use snarky messages", function(value)
+                    GetSettings().snarkyMessages = value
+                end)
+                snarkyCheckbox:SetPoint("TOPLEFT", 0, yOffset)
+                snarkyCheckbox:SetValue(GetSettings().snarkyMessages)
+                yOffset = yOffset - ROW_HEIGHT
 
-    yOffset = yOffset - ROW_HEIGHT
+                yOffset = yOffset - 10
 
-    -- Snarky messages toggle
-    local snarkyCheckbox = PRT.Components.GetCheckbox(container, "Use snarky messages", function(value)
-        GetSettings().snarkyMessages = value
-    end)
-    snarkyCheckbox:SetPoint("TOPLEFT", 0, yOffset)
-    snarkyCheckbox:SetValue(GetSettings().snarkyMessages)
-    yOffset = yOffset - ROW_HEIGHT
+                local buffCheckboxes = {}
+                for _, buff in ipairs(RAID_BUFFS) do
+                    local checkbox = PRT.Components.GetCheckbox(panel, buff.name, function(value)
+                        GetSettings()[buff.key] = value
+                    end)
+                    checkbox:SetPoint("TOPLEFT", 0, yOffset)
+                    checkbox:SetValue(GetSettings()[buff.key])
+                    buffCheckboxes[buff.key] = checkbox
+                    yOffset = yOffset - ROW_HEIGHT
+                end
 
-    -- Spacing before buff checks
-    yOffset = yOffset - 10
+                local soulstoneCheckbox = PRT.Components.GetCheckbox(panel, "Soul Stones", function(value)
+                    GetSettings().checkSoulstones = value
+                end)
+                soulstoneCheckbox:SetPoint("TOPLEFT", 0, yOffset)
+                soulstoneCheckbox:SetValue(GetSettings().checkSoulstones)
+                yOffset = yOffset - ROW_HEIGHT
 
-    -- Raid buff checkboxes
-    local buffCheckboxes = {}
-    for _, buff in ipairs(RAID_BUFFS) do
-        local checkbox = PRT.Components.GetCheckbox(container, buff.name, function(value)
-            GetSettings()[buff.key] = value
-        end)
-        checkbox:SetPoint("TOPLEFT", 0, yOffset)
-        checkbox:SetValue(GetSettings()[buff.key])
-        buffCheckboxes[buff.key] = checkbox
-        yOffset = yOffset - ROW_HEIGHT
-    end
+                local deadCheckbox = PRT.Components.GetCheckbox(panel, "Dead players", function(value)
+                    GetSettings().checkDead = value
+                end)
+                deadCheckbox:SetPoint("TOPLEFT", 0, yOffset)
+                deadCheckbox:SetValue(GetSettings().checkDead)
+                yOffset = yOffset - ROW_HEIGHT
 
-    -- Soulstone checkbox
-    local soulstoneCheckbox = PRT.Components.GetCheckbox(container, "Soul Stones", function(value)
-        GetSettings().checkSoulstones = value
-    end)
-    soulstoneCheckbox:SetPoint("TOPLEFT", 0, yOffset)
-    soulstoneCheckbox:SetValue(GetSettings().checkSoulstones)
-    yOffset = yOffset - ROW_HEIGHT
+                panel:SetScript("OnShow", function()
+                    local settings = GetSettings()
+                    enabledCheckbox:SetValue(settings.enabled)
+                    snarkyCheckbox:SetValue(settings.snarkyMessages)
+                    for _, buff in ipairs(RAID_BUFFS) do
+                        buffCheckboxes[buff.key]:SetValue(settings[buff.key])
+                    end
+                    soulstoneCheckbox:SetValue(settings.checkSoulstones)
+                    deadCheckbox:SetValue(settings.checkDead)
+                end)
+            end,
+        },
+        {
+            name = "Ready Screen",
+            setup = function(panel)
+                local yOffset = 0
+                local ROW_HEIGHT = 24
 
-    -- Dead players checkbox
-    local deadCheckbox = PRT.Components.GetCheckbox(container, "Dead players", function(value)
-        GetSettings().checkDead = value
-    end)
-    deadCheckbox:SetPoint("TOPLEFT", 0, yOffset)
-    deadCheckbox:SetValue(GetSettings().checkDead)
-    yOffset = yOffset - ROW_HEIGHT
+                local function GetSettings()
+                    return PRT:GetSetting("readyScreen")
+                end
 
-    -- Refresh all widget values from saved settings on show
-    container:SetScript("OnShow", function()
-        local settings = GetSettings()
-        enabledCheckbox:SetValue(settings.enabled)
-        snarkyCheckbox:SetValue(settings.snarkyMessages)
-        for _, buff in ipairs(RAID_BUFFS) do
-            buffCheckboxes[buff.key]:SetValue(settings[buff.key])
-        end
-        soulstoneCheckbox:SetValue(settings.checkSoulstones)
-        deadCheckbox:SetValue(settings.checkDead)
-    end)
+                local enabledCheckbox = PRT.Components.GetCheckbox(panel, "Enabled", function(value)
+                    GetSettings().enabled = value
+                    PRT:ApplySettings("readyScreen")
+                end)
+                enabledCheckbox:SetPoint("TOPLEFT", 0, yOffset)
+                enabledCheckbox:SetValue(GetSettings().enabled)
+                yOffset = yOffset - ROW_HEIGHT
 
-    return container
+                local autoDismissCheckbox = PRT.Components.GetCheckbox(panel, "Auto-dismiss after ready check", function(value)
+                    GetSettings().autoDismiss = value
+                end)
+                autoDismissCheckbox:SetPoint("TOPLEFT", 0, yOffset)
+                autoDismissCheckbox:SetValue(GetSettings().autoDismiss)
+                yOffset = yOffset - ROW_HEIGHT
+
+                panel:SetScript("OnShow", function()
+                    local settings = GetSettings()
+                    enabledCheckbox:SetValue(settings.enabled)
+                    autoDismissCheckbox:SetValue(settings.autoDismiss)
+                end)
+            end,
+        },
+    })
 end)
 
 --------------------------------------------------------------------------------

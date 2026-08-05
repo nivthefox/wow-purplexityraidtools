@@ -376,6 +376,13 @@ SlashCmdList["PURPLEXITYRAIDTOOLS"] = function(msg)
         return
     end
 
+    if cmd == "ready" then
+        if PRT.ReadyScreen then
+            PRT.ReadyScreen:ShowAudit()
+        end
+        return
+    end
+
     if PurplexityRaidToolsConfigFrame then
         if PurplexityRaidToolsConfigFrame:IsShown() then
             PurplexityRaidToolsConfigFrame:Hide()

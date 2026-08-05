@@ -20,6 +20,7 @@ SpellData.lua
 Modules/GroupInspect.lua
 Modules/DontRelease.lua
 Modules/ReadyCheck.lua
+Modules/ReadyScreen.lua
 Modules/AutoInvite.lua
 Modules/CooldownTracker.lua
 Modules/BattleResCounter.lua

@@ -22,12 +22,30 @@ local READY_ICONS = {
     offline = { atlas = "disconnected" },
 }
 
+-- Question-mark icon shown when spell data has not loaded yet. A nil texture
+-- must never hide a column or a has-the-buff cell: an invisible column reads
+-- as "this buff is not audited", which is a lie.
+local FALLBACK_ICON = 134400
+
 local function SpellTexture(spellId)
     if not spellId then return nil end
     if C_Spell and C_Spell.GetSpellTexture then
         return C_Spell.GetSpellTexture(spellId)
     end
     return nil
+end
+
+-- GetSpellTexture returns nil for spells not in the client's spell cache
+-- (anything outside your own spellbook on a fresh session). Request an async
+-- load for every audited buff; SPELL_DATA_LOAD_RESULT refreshes the frame
+-- when the data arrives. Re-requesting already-cached spells is a no-op.
+local function RequestBuffSpellData(columns)
+    if not (C_Spell and C_Spell.RequestLoadSpellData) then return end
+    for _, col in ipairs(columns) do
+        if col.spellId then
+            C_Spell.RequestLoadSpellData(col.spellId)
+        end
+    end
 end
 
 local function DecodeVersion(encoded)
@@ -223,13 +241,8 @@ local function LayoutHeaderColumns(row, showReady, columns)
         local icon = row.buffHeaders[i]
         icon:ClearAllPoints()
         icon:SetPoint("LEFT", row, "LEFT", x + 2, 0)
-        local tex = SpellTexture(col.spellId)
-        if tex then
-            icon:SetTexture(tex)
-            icon:Show()
-        else
-            icon:Hide()
-        end
+        icon:SetTexture(SpellTexture(col.spellId) or FALLBACK_ICON)
+        icon:Show()
         x = x + COL_ICON_WIDTH + COLUMN_PADDING
     end
 
@@ -295,6 +308,19 @@ local function InitFrame()
     headerRow = CreateHeaderRow(frame)
     headerRow:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -(BACKDROP_PADDING + HEADER_HEIGHT + 4))
     headerRow:SetPoint("RIGHT", frame, "RIGHT", 0, 0)
+
+    -- Swap the question-mark fallbacks for real icons once requested spell
+    -- data arrives. Refresh already no-ops while the frame is hidden.
+    frame:RegisterEvent("SPELL_DATA_LOAD_RESULT")
+    frame:SetScript("OnEvent", function(_, event, spellId, success)
+        if event ~= "SPELL_DATA_LOAD_RESULT" or not success then return end
+        for _, col in ipairs(buffColumns) do
+            if col.spellId == spellId then
+                PRT.ReadyScreenFrame:Refresh()
+                return
+            end
+        end
+    end)
 end
 
 local ReadyScreenFrame = {}
@@ -328,6 +354,7 @@ end
 function ReadyScreenFrame:Show(mode)
     InitFrame()
     currentMode = mode
+    RequestBuffSpellData(GetBuffColumns())
 
     if mode == "audit" then
         frame.title:SetText("Raid Audit")
@@ -485,13 +512,8 @@ function ReadyScreenFrame:Refresh()
             end
 
             if hasBuff then
-                local tex = SpellTexture(col.spellId)
-                if tex then
-                    buffIcon:SetTexture(tex)
-                    buffIcon:Show()
-                else
-                    buffIcon:Hide()
-                end
+                buffIcon:SetTexture(SpellTexture(col.spellId) or FALLBACK_ICON)
+                buffIcon:Show()
             else
                 buffIcon:Hide()
             end

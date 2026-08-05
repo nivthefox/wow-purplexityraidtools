@@ -470,7 +470,7 @@ end
 --------------------------------------------------------------------------------
 
 local function OnEvent(_, event, ...)
-    if event == "GROUP_ROSTER_UPDATE" then
+    if event == "GROUP_ROSTER_UPDATE" or event == "PLAYER_ENTERING_WORLD" then
         GroupInspect:ScanRoster()
 
     elseif event == "INSPECT_READY" then
@@ -490,6 +490,7 @@ end
 
 function GroupInspect:Initialize()
     self.eventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
+    self.eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
     self.eventFrame:RegisterEvent("INSPECT_READY")
     self.eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
     self.eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")

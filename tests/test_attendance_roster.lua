@@ -9,9 +9,14 @@
 -- therefore never satisfy this suite, which is the constraint the spec states and
 -- nothing else here can enforce.
 --
--- Specialization data is reachable only through C_SpecializationInfo. The
--- deprecated bare globals are defined nowhere in this harness, so a module
--- reaching for one fails on every spec test rather than in-game on 12.0.0+.
+-- The two specialization calls live behind different doors, which is surprising
+-- enough to be worth stating. The count is namespaced as
+-- C_SpecializationInfo.GetNumSpecializationsForClassID (the bare form was
+-- deprecated in 11.0.5), while the info call is the bare global
+-- GetSpecializationInfoForClassID; no namespaced form of it exists on 12.x and
+-- it must never be reached for. Each door the client lacks is left undefined
+-- here, so a module knocking on the wrong one fails on every spec test rather
+-- than in-game.
 --
 -- The group source fixture mirrors what GroupInspect stores after Phase 0 --
 -- records keyed by GUID, each carrying a full "Name-Realm" and a class token --
@@ -115,15 +120,16 @@ if C_SpecializationInfo.GetNumSpecializationsForClassID == nil then
     end
 end
 
-if C_SpecializationInfo.GetSpecializationInfoForClassID == nil then
-    C_SpecializationInfo.GetSpecializationInfoForClassID = function(classID, specIndex)
+if GetSpecializationInfoForClassID == nil then
+    function GetSpecializationInfoForClassID(classID, specIndex)
         local specs = SPECS_BY_CLASS_ID[classID]
         local spec = specs and specs[specIndex]
         if not spec then
             return nil
         end
-        local description, icon, role, primaryStat = "", 0, "DAMAGER", 1
-        return spec.id, spec.name, description, icon, role, primaryStat
+        local description, icon, role = "", 0, "DAMAGER"
+        local recommended, allowedForBoost = false, true
+        return spec.id, spec.name, description, icon, role, recommended, allowedForBoost
     end
 end
 
@@ -336,10 +342,27 @@ tests["the stubbed specialization data is unreachable by a hardcoded spec table"
     assertEquals(C_SpecializationInfo.GetNumSpecializationsForClassID(7), 0,
         "Shaman is a real class the stub gives no specs, so hardcoded spec data cannot agree")
 
-    local id, name = C_SpecializationInfo.GetSpecializationInfoForClassID(5, 3)
+    local id, name = GetSpecializationInfoForClassID(5, 3)
     assertEquals(id, UMBRAL)
     assertEquals(name, "Umbral",
         "a specialization no live client ships, so hardcoded spec data cannot produce it")
+end
+
+tests["the specialization stubs match the doors and signature the client provides"] = function()
+    assertNotNil(C_SpecializationInfo.GetNumSpecializationsForClassID,
+        "the count is namespaced; the bare form was deprecated in 11.0.5")
+    assertNil(C_SpecializationInfo.GetSpecializationInfoForClassID,
+        "this function does not exist on 12.x, so reaching for it must fail here too")
+
+    assertNotNil(rawget(_G, "GetSpecializationInfoForClassID"),
+        "the info call is a bare global and is the only door to spec details")
+    assertNil(rawget(_G, "GetNumSpecializationsForClassID"),
+        "the deprecated bare count global must stay undefined")
+
+    local _, _, _, _, role, recommended = GetSpecializationInfoForClassID(5, 1)
+    assertEquals(role, "DAMAGER", "position 5 is the role string")
+    assertEquals(type(recommended), "boolean",
+        "position 6 is the recommended flag, not the primaryStat number of a different function")
 end
 
 --------------------------------------------------------------------------------

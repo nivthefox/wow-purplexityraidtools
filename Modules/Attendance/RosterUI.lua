@@ -46,6 +46,7 @@ local listContainer
 local entryModal
 local entryModalTarget
 local importModal
+local offSpecModal
 
 local function PrintMessage(message)
     print("|cFF00FF00PurplexityRaidTools:|r " .. message)
@@ -185,6 +186,11 @@ local function EnsureEntryModal()
     local scrollFrame = CreateFrame("ScrollFrame", nil, entryModal, "UIPanelScrollFrameTemplate")
     scrollFrame:SetPoint("TOPLEFT", 16, -98)
     scrollFrame:SetPoint("BOTTOMRIGHT", -32, 72)
+    scrollFrame:EnableMouse(true)
+    scrollFrame:SetScript("OnMouseDown", function()
+        entryModal.characters:SetFocus()
+        entryModal.characters:SetCursorPosition(#entryModal.characters:GetText())
+    end)
 
     local textBg = CreateFrame("Frame", nil, entryModal, "BackdropTemplate")
     textBg:SetPoint("TOPLEFT", scrollFrame, -4, 4)
@@ -373,6 +379,80 @@ local function EnsureImportModal()
 end
 
 --------------------------------------------------------------------------------
+-- Off-spec picker
+--------------------------------------------------------------------------------
+
+local OFF_SPEC_MODAL_WIDTH = 200
+local OFF_SPEC_OPTION_HEIGHT = 24
+
+local function EnsureOffSpecModal()
+    if offSpecModal then
+        return
+    end
+
+    offSpecModal = CreateFrame("Frame", "PRT_RosterOffSpecModal", UIParent, "ButtonFrameTemplate")
+    ButtonFrameTemplate_HidePortrait(offSpecModal)
+    ButtonFrameTemplate_HideButtonBar(offSpecModal)
+    offSpecModal.Inset:Hide()
+    offSpecModal:SetWidth(OFF_SPEC_MODAL_WIDTH)
+    offSpecModal:SetPoint("CENTER")
+    offSpecModal:SetTitle("Add Off-Spec")
+    offSpecModal:SetFrameStrata("DIALOG")
+    offSpecModal:SetToplevel(true)
+    offSpecModal:SetMovable(true)
+    offSpecModal:SetClampedToScreen(true)
+    offSpecModal:EnableMouse(true)
+    offSpecModal:RegisterForDrag("LeftButton")
+    offSpecModal:SetScript("OnDragStart", offSpecModal.StartMoving)
+    offSpecModal:SetScript("OnDragStop", function(self)
+        self:StopMovingOrSizing()
+        self:SetUserPlaced(false)
+    end)
+    offSpecModal:Hide()
+
+    table.insert(UISpecialFrames, "PRT_RosterOffSpecModal")
+
+    offSpecModal.options = {}
+end
+
+local function OpenOffSpecModal(character, specs, mainSpecID, offSpecs)
+    EnsureOffSpecModal()
+
+    local placed = 0
+    for _, spec in ipairs(specs or {}) do
+        if spec.id ~= mainSpecID and not HasSpec(offSpecs, spec.id) then
+            placed = placed + 1
+            local option = offSpecModal.options[placed]
+            if not option then
+                option = CreateFrame("Button", nil, offSpecModal, "UIPanelButtonTemplate")
+                option:SetHeight(OFF_SPEC_OPTION_HEIGHT - 2)
+                offSpecModal.options[placed] = option
+            end
+
+            option:ClearAllPoints()
+            option:SetPoint("TOPLEFT", 16, -32 - (placed - 1) * OFF_SPEC_OPTION_HEIGHT)
+            option:SetPoint("RIGHT", -16, 0)
+
+            local specID = spec.id
+            option:SetText(spec.name)
+            option:SetScript("OnClick", function()
+                PRT.Roster:AddOffSpec(character, specID)
+                offSpecModal:Hide()
+                RosterUI:Refresh()
+            end)
+            option:Show()
+        end
+    end
+
+    for index = placed + 1, #offSpecModal.options do
+        offSpecModal.options[index]:Hide()
+    end
+
+    offSpecModal:SetHeight(32 + placed * OFF_SPEC_OPTION_HEIGHT + 14)
+    offSpecModal:Show()
+end
+
+--------------------------------------------------------------------------------
 -- Entry list
 --------------------------------------------------------------------------------
 
@@ -445,19 +525,12 @@ local function CreateCharacterRow(parent)
         end
     end)
 
-    row.addOffSpec = CreateFrame("DropdownButton", nil, row, "WowStyle1DropdownTemplate")
+    row.addOffSpec = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
     row.addOffSpec:SetSize(70, 20)
     row.addOffSpec:SetPoint("LEFT", OFF_SPEC_COLUMN, 0)
-    row.addOffSpec:SetDefaultText("+ Off-Spec")
-    row.addOffSpec:SetupMenu(function(_, rootDescription)
-        for _, spec in ipairs(row.specs or {}) do
-            if spec.id ~= row.mainSpecID and not HasSpec(row.offSpecs, spec.id) then
-                rootDescription:CreateButton(spec.name, function()
-                    PRT.Roster:AddOffSpec(row.character, spec.id)
-                    RefreshListAfterMenuCloses()
-                end)
-            end
-        end
+    row.addOffSpec:SetText("+ Off-Spec")
+    row.addOffSpec:SetScript("OnClick", function()
+        OpenOffSpecModal(row.character, row.specs, row.mainSpecID, row.offSpecs)
     end)
 
     row.unknownClass = row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
@@ -524,7 +597,14 @@ local function FillCharacterRow(row, character, record)
     row.specs = PRT.Roster:GetSpecsForCharacter(character)
     row.unknownClass:Hide()
     row.mainSpec:SetEnabled(true)
-    row.addOffSpec:SetEnabled(true)
+
+    local remaining = 0
+    for _, spec in ipairs(row.specs) do
+        if spec.id ~= row.mainSpecID and not HasSpec(row.offSpecs, spec.id) then
+            remaining = remaining + 1
+        end
+    end
+    row.addOffSpec:SetEnabled(remaining > 0)
 
     row.mainSpec:GenerateMenu()
 
@@ -576,8 +656,7 @@ PRT:RegisterTab("Roster", function(parent)
 
     local scrollFrame = CreateFrame("ScrollFrame", nil, container, "UIPanelScrollFrameTemplate")
     scrollFrame:SetPoint("TOPLEFT", 20, -40)
-    scrollFrame:SetPoint("RIGHT", container, "RIGHT", -26, 0)
-    scrollFrame:SetHeight(LIST_HEIGHT)
+    scrollFrame:SetPoint("BOTTOMRIGHT", container, "BOTTOMRIGHT", -26, 76)
 
     local scrollChild = CreateFrame("Frame", nil, scrollFrame)
     scrollChild:SetSize(container:GetWidth() - 60, LIST_HEIGHT)
@@ -587,8 +666,6 @@ PRT:RegisterTab("Roster", function(parent)
     emptyLabel:SetPoint("TOPLEFT", scrollFrame, "TOPLEFT", 4, -4)
     emptyLabel:SetText("No players on the roster. Add one, or import from an attendance record.")
 
-    local settingsTop = -(40 + LIST_HEIGHT + 16)
-
     local autoSyncCheckbox = PRT.Components.GetCheckbox(
         container, "Automatically Sync From Leader",
         function(checked)
@@ -596,7 +673,7 @@ PRT:RegisterTab("Roster", function(parent)
             PRT:ApplySettings("attendance")
         end
     )
-    autoSyncCheckbox:SetPoint("TOPLEFT", 0, settingsTop)
+    autoSyncCheckbox:SetPoint("BOTTOMLEFT", 0, 38)
 
     local confirmCheckbox = PRT.Components.GetCheckbox(
         container, "Confirm Before Syncing",
@@ -605,7 +682,7 @@ PRT:RegisterTab("Roster", function(parent)
             PRT:ApplySettings("attendance")
         end
     )
-    confirmCheckbox:SetPoint("TOPLEFT", 0, settingsTop - 30)
+    confirmCheckbox:SetPoint("BOTTOMLEFT", 0, 8)
 
     local headerRows, characterRows = {}, {}
 

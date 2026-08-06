@@ -186,6 +186,64 @@ function Components.GetSliderWithInput(parent, labelText, min, max, step, isDeci
     return holder
 end
 
+function Components.GetIntegerInput(parent, labelText, min, max, callback)
+    local holder = CreateFrame("Frame", nil, parent)
+    holder:SetHeight(ROW_HEIGHT)
+    holder:SetPoint("LEFT", 20, 0)
+    holder:SetPoint("RIGHT", -20, 0)
+
+    holder.Label = holder:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    holder.Label:SetJustifyH("RIGHT")
+    holder.Label:SetPoint("LEFT", 0, 0)
+    holder.Label:SetPoint("RIGHT", holder, "LEFT", LABEL_WIDTH - 40, 0)
+    holder.Label:SetText(labelText)
+
+    local editBox = CreateFrame("EditBox", nil, holder, "InputBoxTemplate")
+    editBox:SetSize(50, 20)
+    editBox:SetPoint("LEFT", holder, "LEFT", LABEL_WIDTH - 20, 0)
+    editBox:SetAutoFocus(false)
+    editBox:SetNumeric(true)
+    editBox:SetMaxLetters(6)
+
+    local currentValue = min
+
+    local function ApplyInputValue()
+        local value = tonumber(editBox:GetText())
+        if not value then
+            editBox:SetText(tostring(currentValue))
+            return
+        end
+        currentValue = math.max(min, math.min(max, math.floor(value)))
+        editBox:SetText(tostring(currentValue))
+        if callback then callback(currentValue) end
+    end
+
+    editBox:SetScript("OnEnterPressed", function(self)
+        ApplyInputValue()
+        self:ClearFocus()
+    end)
+
+    editBox:SetScript("OnEscapePressed", function(self)
+        self:SetText(tostring(currentValue))
+        self:ClearFocus()
+    end)
+
+    editBox:SetScript("OnEditFocusLost", ApplyInputValue)
+
+    function holder:GetValue()
+        return currentValue
+    end
+
+    function holder:SetValue(value)
+        currentValue = math.max(min, math.min(max, math.floor(tonumber(value) or min)))
+        editBox:SetText(tostring(currentValue))
+    end
+
+    holder.EditBox = editBox
+
+    return holder
+end
+
 function Components.GetColorPicker(parent, labelText, hasAlpha, callback)
     local holder = CreateFrame("Frame", nil, parent)
     holder:SetHeight(ROW_HEIGHT)

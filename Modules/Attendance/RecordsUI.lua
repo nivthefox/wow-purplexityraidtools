@@ -22,7 +22,7 @@ local COLUMN_COPIES = 250
 local COLUMN_ACTIONS = 450
 
 local MIN_EXPIRY_DAYS, MAX_EXPIRY_DAYS = 1, 365
-local MIN_ROLLOVER_HOUR, MAX_ROLLOVER_HOUR = 0, 12
+local MIN_ROLLOVER_HOUR, MAX_ROLLOVER_HOUR = 0, 23
 
 local ISO_DAY_PATTERN = "^(%d%d%d%d)%-(%d%d)%-(%d%d)$"
 
@@ -450,23 +450,23 @@ function RecordsUI:Build(panel)
 
     local settingsTop = -(36 + HEADER_HEIGHT + LIST_HEIGHT + 16)
 
-    local expirySlider = PRT.Components.GetSliderWithInput(
+    local expiryInput = PRT.Components.GetIntegerInput(
         panel, "Auto-expire after (days):",
-        MIN_EXPIRY_DAYS, MAX_EXPIRY_DAYS, 1, false,
+        MIN_EXPIRY_DAYS, MAX_EXPIRY_DAYS,
         function(value)
-            AttendanceSettings().expiryDays = math.floor(value)
+            AttendanceSettings().expiryDays = value
         end
     )
-    expirySlider:SetPoint("TOPLEFT", 0, settingsTop)
+    expiryInput:SetPoint("TOPLEFT", 0, settingsTop)
 
-    local rolloverSlider = PRT.Components.GetSliderWithInput(
+    local rolloverInput = PRT.Components.GetIntegerInput(
         panel, "Day rollover hour:",
-        MIN_ROLLOVER_HOUR, MAX_ROLLOVER_HOUR, 1, false,
+        MIN_ROLLOVER_HOUR, MAX_ROLLOVER_HOUR,
         function(value)
-            AttendanceSettings().rolloverHour = math.floor(value)
+            AttendanceSettings().rolloverHour = value
         end
     )
-    rolloverSlider:SetPoint("TOPLEFT", 0, settingsTop - 32)
+    rolloverInput:SetPoint("TOPLEFT", 0, settingsTop - 32)
 
     local rolloverHint = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     rolloverHint:SetPoint("TOPLEFT", 20, settingsTop - 60)
@@ -497,8 +497,8 @@ function RecordsUI:Build(panel)
         end
 
         local settings = AttendanceSettings()
-        expirySlider:SetValue(settings.expiryDays)
-        rolloverSlider:SetValue(settings.rolloverHour)
+        expiryInput:SetValue(settings.expiryDays)
+        rolloverInput:SetValue(settings.rolloverHour)
     end
 
     panel:SetScript("OnShow", function()

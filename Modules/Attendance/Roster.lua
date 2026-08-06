@@ -55,9 +55,9 @@ local function SpecsForClass(classToken)
 
     local specs = {}
     for specIndex = 1, C_SpecializationInfo.GetNumSpecializationsForClassID(classID) do
-        local specID, specName = SpecInfoForClass(classID, specIndex)
+        local specID, specName, _, specIcon = SpecInfoForClass(classID, specIndex)
         if specID then
-            specs[#specs + 1] = { id = specID, name = specName }
+            specs[#specs + 1] = { id = specID, name = specName, icon = specIcon }
         end
     end
     return specs

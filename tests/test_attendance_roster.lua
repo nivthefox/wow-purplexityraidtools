@@ -127,7 +127,7 @@ if GetSpecializationInfoForClassID == nil then
         if not spec then
             return nil
         end
-        local description, icon, role = "", 0, "DAMAGER"
+        local description, icon, role = "", 1000 + spec.id, "DAMAGER"
         local recommended, allowedForBoost = false, true
         return spec.id, spec.name, description, icon, role, recommended, allowedForBoost
     end
@@ -844,9 +844,9 @@ end
 tests["the offered specs for a character are exactly its class's specializations"] = function()
     withGroupRoster({ { "Niv", { OMNIVICENT } } }, function()
         assertTableEquals(Roster:GetSpecsForCharacter(OMNIVICENT), {
-            { id = DISCIPLINE, name = "Discipline" },
-            { id = HOLY, name = "Holy" },
-            { id = UMBRAL, name = "Umbral" },
+            { id = DISCIPLINE, name = "Discipline", icon = 1000 + DISCIPLINE },
+            { id = HOLY, name = "Holy", icon = 1000 + HOLY },
+            { id = UMBRAL, name = "Umbral", icon = 1000 + UMBRAL },
         }, "the specialization API is the only source of the offered set")
     end)
 end
@@ -854,14 +854,14 @@ end
 tests["the offered spec set follows the character's own class"] = function()
     withGroupRoster({ { "Randy", { RANDOPUG } }, { "Dym", { DYMLOS } } }, function()
         assertTableEquals(Roster:GetSpecsForCharacter(RANDOPUG), {
-            { id = HAVOC, name = "Havoc" },
-            { id = VENGEANCE, name = "Vengeance" },
+            { id = HAVOC, name = "Havoc", icon = 1000 + HAVOC },
+            { id = VENGEANCE, name = "Vengeance", icon = 1000 + VENGEANCE },
         })
         assertTableEquals(Roster:GetSpecsForCharacter(DYMLOS), {
-            { id = BALANCE, name = "Balance" },
-            { id = FERAL, name = "Feral" },
-            { id = GUARDIAN, name = "Guardian" },
-            { id = RESTORATION, name = "Restoration" },
+            { id = BALANCE, name = "Balance", icon = 1000 + BALANCE },
+            { id = FERAL, name = "Feral", icon = 1000 + FERAL },
+            { id = GUARDIAN, name = "Guardian", icon = 1000 + GUARDIAN },
+            { id = RESTORATION, name = "Restoration", icon = 1000 + RESTORATION },
         })
     end)
 end

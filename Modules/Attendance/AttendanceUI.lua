@@ -108,8 +108,21 @@ local function ClassColoredName(character)
     return classColor:WrapTextInColorCode(character)
 end
 
+--- Sorted at the presentation seam rather than in the roster: GetEntries hands
+--- out the live database, whose array order is data that sync preserves.
+local function AlphabeticalEntries()
+    local entries = {}
+    for index, entry in ipairs(PRT.Roster:GetEntries()) do
+        entries[index] = entry
+    end
+    table.sort(entries, function(a, b)
+        return strcmputf8i(a.nickname, b.nickname) < 0
+    end)
+    return entries
+end
+
 local function BuildReport()
-    return PRT.AttendanceReport:Build(PurplexityRaidToolsAttendanceDB or {}, PRT.Roster:GetEntries())
+    return PRT.AttendanceReport:Build(PurplexityRaidToolsAttendanceDB or {}, AlphabeticalEntries())
 end
 
 --------------------------------------------------------------------------------

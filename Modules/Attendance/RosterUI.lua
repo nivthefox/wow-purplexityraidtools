@@ -18,9 +18,9 @@ local ENTRY_SPACING = 6
 
 local NAME_COLUMN = 16
 local MAIN_SPEC_COLUMN = 190
-local OFF_SPEC_COLUMN = 330
+local OFF_SPEC_COLUMN = 340
 local MAIN_SPEC_WIDTH = 130
-local TAG_HEIGHT = 18
+local TAG_HEIGHT = 24
 
 local MODAL_WIDTH = 380
 local MODAL_HEIGHT = 300
@@ -76,12 +76,12 @@ local function ClassColoredName(character, classToken)
     return classColor:WrapTextInColorCode(character)
 end
 
-local function SpecNameLookup(specs)
-    local names = {}
+local function SpecsByID(specs)
+    local byID = {}
     for _, spec in ipairs(specs or {}) do
-        names[spec.id] = spec.name
+        byID[spec.id] = spec
     end
-    return names
+    return byID
 end
 
 local function HasSpec(specs, specID)
@@ -111,9 +111,21 @@ local function RefreshDependentViews()
     end
 end
 
---- The spec controls run this from inside a dropdown's own selection callback,
---- where the menu is still closing. Rebuilding the row calls GenerateMenu on
---- that very dropdown, so the rebuild waits for the next frame instead.
+--- Sorted at the presentation seam rather than in the roster: GetEntries hands
+--- out the live database, whose array order is data that sync preserves.
+local function AlphabeticalEntries()
+    local entries = {}
+    for index, entry in ipairs(PRT.Roster:GetEntries()) do
+        entries[index] = entry
+    end
+    table.sort(entries, function(a, b)
+        return strcmputf8i(a.nickname, b.nickname) < 0
+    end)
+    return entries
+end
+
+--- The main-spec menu runs this from inside its own selection callback, where
+--- the menu is still closing, so the row rebuild waits for the next frame.
 local function RefreshListAfterMenuCloses()
     C_Timer.After(0, function()
         RosterUI:Refresh()
@@ -506,35 +518,46 @@ local function CreateCharacterRow(parent)
     row.name:SetJustifyH("LEFT")
     row.name:SetWordWrap(false)
 
-    row.mainSpec = CreateFrame("DropdownButton", nil, row, "WowStyle1DropdownTemplate")
+    row.mainSpec = CreateFrame("Button", nil, row)
     row.mainSpec:SetSize(MAIN_SPEC_WIDTH, 20)
     row.mainSpec:SetPoint("LEFT", MAIN_SPEC_COLUMN, 0)
-    row.mainSpec:SetDefaultText("No main spec")
-    row.mainSpec:SetupMenu(function(_, rootDescription)
-        for _, spec in ipairs(row.specs or {}) do
-            rootDescription:CreateRadio(
-                spec.name,
-                function()
-                    return row.mainSpecID == spec.id
-                end,
-                function()
-                    PRT.Roster:SetMainSpec(row.character, spec.id)
-                    RefreshListAfterMenuCloses()
-                end
-            )
-        end
+    row.mainSpec:SetNormalFontObject(GameFontHighlightSmall)
+    row.mainSpec:SetHighlightFontObject(GameFontNormalSmall)
+    row.mainSpec:SetDisabledFontObject(GameFontDisableSmall)
+    row.mainSpec:SetText("No main spec")
+    local mainSpecText = row.mainSpec:GetFontString()
+    mainSpecText:ClearAllPoints()
+    mainSpecText:SetPoint("LEFT", 0, 0)
+    row.mainSpec:SetScript("OnClick", function()
+        MenuUtil.CreateContextMenu(row.mainSpec, function(_, rootDescription)
+            for _, spec in ipairs(row.specs or {}) do
+                rootDescription:CreateRadio(
+                    spec.name,
+                    function()
+                        return row.mainSpecID == spec.id
+                    end,
+                    function()
+                        PRT.Roster:SetMainSpec(row.character, spec.id)
+                        RefreshListAfterMenuCloses()
+                    end
+                )
+            end
+        end)
     end)
 
-    row.addOffSpec = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
-    row.addOffSpec:SetSize(70, 20)
+    row.addOffSpec = CreateFrame("Button", nil, row)
+    row.addOffSpec:SetSize(16, 14)
     row.addOffSpec:SetPoint("LEFT", OFF_SPEC_COLUMN, 0)
-    row.addOffSpec:SetText("+ Off-Spec")
+    row.addOffSpec:SetNormalFontObject(GameFontHighlightSmall)
+    row.addOffSpec:SetHighlightFontObject(GameFontNormalSmall)
+    row.addOffSpec:SetDisabledFontObject(GameFontDisableSmall)
+    row.addOffSpec:SetText("+")
     row.addOffSpec:SetScript("OnClick", function()
         OpenOffSpecModal(row.character, row.specs, row.mainSpecID, row.offSpecs)
     end)
 
     row.unknownClass = row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    row.unknownClass:SetPoint("LEFT", OFF_SPEC_COLUMN + 76, 0)
+    row.unknownClass:SetPoint("LEFT", OFF_SPEC_COLUMN, 0)
     row.unknownClass:SetText("Class unknown until seen in a group or the guild")
 
     row.tags = {}
@@ -542,22 +565,41 @@ local function CreateCharacterRow(parent)
     return row
 end
 
-local function FillTags(row, specNames)
+local function FillTags(row, specsByID)
     local placed = 0
-    local offset = OFF_SPEC_COLUMN + 76
+    local offset = OFF_SPEC_COLUMN
 
     for _, specID in ipairs(row.offSpecs or {}) do
         placed = placed + 1
         local tag = row.tags[placed]
         if not tag then
-            tag = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+            tag = CreateFrame("Button", nil, row)
             tag:SetHeight(TAG_HEIGHT)
+            tag:SetNormalFontObject(GameFontHighlightSmall)
+            tag:SetHighlightFontObject(GameFontNormalSmall)
+            tag:SetScript("OnEnter", function(self)
+                if not self.specName then
+                    return
+                end
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                GameTooltip:SetText(self.specName)
+                GameTooltip:AddLine("Click to remove", 0.7, 0.7, 0.7)
+                GameTooltip:Show()
+            end)
+            tag:SetScript("OnLeave", function()
+                GameTooltip:Hide()
+            end)
             row.tags[placed] = tag
         end
 
-        local label = specNames[specID] or tostring(specID)
-        tag:SetText(label)
-        tag:SetWidth(math.max(50, tag:GetFontString():GetStringWidth() + 16))
+        local spec = specsByID[specID]
+        tag.specName = spec and spec.name or nil
+        if spec and spec.icon then
+            tag:SetText("|T" .. spec.icon .. ":24:24|t")
+        else
+            tag:SetText(spec and spec.name or tostring(specID))
+        end
+        tag:SetWidth(tag:GetFontString():GetStringWidth())
         tag:ClearAllPoints()
         tag:SetPoint("LEFT", offset, 0)
         tag:SetScript("OnClick", function()
@@ -566,12 +608,15 @@ local function FillTags(row, specNames)
         end)
         tag:Show()
 
-        offset = offset + tag:GetWidth() + 4
+        offset = offset + tag:GetWidth() + 3
     end
 
     for index = placed + 1, #row.tags do
         row.tags[index]:Hide()
     end
+
+    row.addOffSpec:ClearAllPoints()
+    row.addOffSpec:SetPoint("LEFT", offset, 0)
 end
 
 local function FillCharacterRow(row, character, record)
@@ -584,8 +629,8 @@ local function FillCharacterRow(row, character, record)
     if not record.class then
         row.specs = nil
         row.mainSpec:SetEnabled(false)
-        row.addOffSpec:SetEnabled(false)
-        row.mainSpec:GenerateMenu()
+        row.mainSpec:SetText("No main spec")
+        row.addOffSpec:Hide()
         row.unknownClass:Show()
         for _, tag in ipairs(row.tags) do
             tag:Hide()
@@ -595,8 +640,20 @@ local function FillCharacterRow(row, character, record)
     end
 
     row.specs = PRT.Roster:GetSpecsForCharacter(character)
+    local specsByID = SpecsByID(row.specs)
+    local mainSpec = specsByID[record.mainSpec]
     row.unknownClass:Hide()
     row.mainSpec:SetEnabled(true)
+
+    local mainSpecLabel = "|cFF808080No main spec|r"
+    if mainSpec then
+        local className = LOCALIZED_CLASS_NAMES_MALE[record.class] or record.class
+        mainSpecLabel = ClassColoredName(mainSpec.name .. " " .. className, record.class)
+        if mainSpec.icon then
+            mainSpecLabel = "|T" .. mainSpec.icon .. ":24:24|t " .. mainSpecLabel
+        end
+    end
+    row.mainSpec:SetText(mainSpecLabel)
 
     local remaining = 0
     for _, spec in ipairs(row.specs) do
@@ -604,11 +661,10 @@ local function FillCharacterRow(row, character, record)
             remaining = remaining + 1
         end
     end
-    row.addOffSpec:SetEnabled(remaining > 0)
+    row.addOffSpec:SetEnabled(true)
+    row.addOffSpec:SetShown(remaining > 0)
 
-    row.mainSpec:GenerateMenu()
-
-    FillTags(row, SpecNameLookup(row.specs))
+    FillTags(row, specsByID)
     row:Show()
 end
 
@@ -654,8 +710,23 @@ PRT:RegisterTab("Roster", function(parent)
         PrintMessage("Pushed your roster to the raid.")
     end)
 
+    local header = CreateFrame("Frame", nil, container)
+    header:SetHeight(20)
+    header:SetPoint("TOPLEFT", 20, -40)
+    header:SetPoint("RIGHT", container, "RIGHT", -26, 0)
+
+    local function AddHeading(text, offset)
+        local label = header:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        label:SetPoint("LEFT", offset, 0)
+        label:SetText(text)
+    end
+
+    AddHeading("Name", NAME_COLUMN)
+    AddHeading("Main Spec", MAIN_SPEC_COLUMN)
+    AddHeading("Off Specs", OFF_SPEC_COLUMN)
+
     local scrollFrame = CreateFrame("ScrollFrame", nil, container, "UIPanelScrollFrameTemplate")
-    scrollFrame:SetPoint("TOPLEFT", 20, -40)
+    scrollFrame:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -4)
     scrollFrame:SetPoint("BOTTOMRIGHT", container, "BOTTOMRIGHT", -26, 76)
 
     local scrollChild = CreateFrame("Frame", nil, scrollFrame)
@@ -684,13 +755,15 @@ PRT:RegisterTab("Roster", function(parent)
     )
     confirmCheckbox:SetPoint("BOTTOMLEFT", 0, 8)
 
-    local headerRows, characterRows = {}, {}
+    local headerRows, characterRows, stripes = {}, {}, {}
 
     RefreshList = function()
-        local entries = PRT.Roster:GetEntries()
-        local placedHeaders, placedCharacters, yOffset = 0, 0, 0
+        local entries = AlphabeticalEntries()
+        local placedHeaders, placedCharacters, placedStripes, yOffset = 0, 0, 0, 0
 
-        for _, entry in ipairs(entries) do
+        for entryIndex, entry in ipairs(entries) do
+            local entryTop = yOffset
+
             placedHeaders = placedHeaders + 1
             local header = headerRows[placedHeaders]
             if not header then
@@ -717,6 +790,21 @@ PRT:RegisterTab("Roster", function(parent)
                 yOffset = yOffset + CHARACTER_ROW_HEIGHT
             end
 
+            if entryIndex % 2 == 1 then
+                placedStripes = placedStripes + 1
+                local stripe = stripes[placedStripes]
+                if not stripe then
+                    stripe = scrollChild:CreateTexture(nil, "BACKGROUND")
+                    stripe:SetColorTexture(0, 0, 0, 0.35)
+                    stripes[placedStripes] = stripe
+                end
+                stripe:ClearAllPoints()
+                stripe:SetPoint("TOPLEFT", 0, -(entryTop - ENTRY_SPACING / 2))
+                stripe:SetPoint("RIGHT", scrollChild, "RIGHT", 0, 0)
+                stripe:SetHeight(yOffset - entryTop + ENTRY_SPACING)
+                stripe:Show()
+            end
+
             yOffset = yOffset + ENTRY_SPACING
         end
 
@@ -725,6 +813,9 @@ PRT:RegisterTab("Roster", function(parent)
         end
         for index = placedCharacters + 1, #characterRows do
             characterRows[index]:Hide()
+        end
+        for index = placedStripes + 1, #stripes do
+            stripes[index]:Hide()
         end
 
         scrollChild:SetHeight(math.max(LIST_HEIGHT, yOffset))

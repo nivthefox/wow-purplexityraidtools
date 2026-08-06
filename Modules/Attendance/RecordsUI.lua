@@ -437,8 +437,7 @@ function RecordsUI:Build(panel)
 
     local scrollFrame = CreateFrame("ScrollFrame", nil, panel, "UIPanelScrollFrameTemplate")
     scrollFrame:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -4)
-    scrollFrame:SetPoint("RIGHT", panel, "RIGHT", -26, 0)
-    scrollFrame:SetHeight(LIST_HEIGHT)
+    scrollFrame:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -26, 112)
 
     local scrollChild = CreateFrame("Frame", nil, scrollFrame)
     scrollChild:SetSize(panel:GetWidth() - 60, LIST_HEIGHT)
@@ -448,8 +447,6 @@ function RecordsUI:Build(panel)
     emptyLabel:SetPoint("TOPLEFT", scrollFrame, "TOPLEFT", 4, -4)
     emptyLabel:SetText("No attendance records yet. A pull countdown creates the first one.")
 
-    local settingsTop = -(36 + HEADER_HEIGHT + LIST_HEIGHT + 16)
-
     local expiryInput = PRT.Components.GetIntegerInput(
         panel, "Auto-expire after (days):",
         MIN_EXPIRY_DAYS, MAX_EXPIRY_DAYS,
@@ -457,7 +454,7 @@ function RecordsUI:Build(panel)
             AttendanceSettings().expiryDays = value
         end
     )
-    expiryInput:SetPoint("TOPLEFT", 0, settingsTop)
+    expiryInput:SetPoint("BOTTOMLEFT", 0, 72)
 
     local rolloverInput = PRT.Components.GetIntegerInput(
         panel, "Day rollover hour:",
@@ -466,10 +463,10 @@ function RecordsUI:Build(panel)
             AttendanceSettings().rolloverHour = value
         end
     )
-    rolloverInput:SetPoint("TOPLEFT", 0, settingsTop - 32)
+    rolloverInput:SetPoint("BOTTOMLEFT", 0, 40)
 
     local rolloverHint = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    rolloverHint:SetPoint("TOPLEFT", 20, settingsTop - 60)
+    rolloverHint:SetPoint("BOTTOMLEFT", 20, 24)
     rolloverHint:SetText("Pulls before this hour count toward the previous day.")
 
     RefreshList = function()

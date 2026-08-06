@@ -349,8 +349,7 @@ PRT:RegisterTab("Attendance", function(parent)
 
         local scrollFrame = CreateFrame("ScrollFrame", nil, panel, "UIPanelScrollFrameTemplate")
         scrollFrame:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -4)
-        scrollFrame:SetPoint("RIGHT", panel, "RIGHT", -26, 0)
-        scrollFrame:SetHeight(GRID_HEIGHT)
+        scrollFrame:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -26, 24)
 
         local scrollChild = CreateFrame("Frame", nil, scrollFrame)
         scrollChild:SetSize(panel:GetWidth() - 60, GRID_HEIGHT)

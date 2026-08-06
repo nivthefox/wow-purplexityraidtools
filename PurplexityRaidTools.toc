@@ -37,4 +37,5 @@ Modules/Notes/Notes.lua
 Modules/Notes/NotesConfig.lua
 Modules/Attendance/AttendanceStore.lua
 Modules/Attendance/Roster.lua
+Modules/Attendance/AttendanceReport.lua
 Modules/Profiles.lua

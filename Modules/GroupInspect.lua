@@ -8,6 +8,8 @@ PRT:RegisterModule("groupInspect", GroupInspect)
 --- Per-player data, keyed by GUID.
 --- Each entry: { name, class, specId (nil until inspect), talents (nil until inspect),
 ---               addonVersion (nil until a version response arrives) }
+--- name is always a non-empty string, "Name-Realm" once the client can resolve
+--- both halves; display sites must not render the raw stored name.
 GroupInspect.members = {}
 
 local listeners = {}
@@ -115,6 +117,44 @@ local function GetInspectSpecId(unit)
         return nil
     end
     return fn(unit)
+end
+
+--- Both the unit name cache and the local realm can be cold for the first frames
+--- after login, so this returns nil until the client can supply both halves.
+local function ResolvedFullName(unit)
+    local name, realm = UnitName(unit)
+    if not name or name == "" or name == UNKNOWNOBJECT then
+        return nil
+    end
+
+    if not realm or realm == "" then
+        realm = GetNormalizedRealmName()
+    end
+    if not realm or realm == "" then
+        return nil
+    end
+
+    return name .. "-" .. realm
+end
+
+--- A member is never stored with a nil or empty name: a nil collected into a
+--- name list silently drops the player instead of erroring.
+local function PlaceholderName(unit)
+    local name = UnitName(unit)
+    if not name or name == "" then
+        return UNKNOWNOBJECT
+    end
+    return name
+end
+
+--- A name that resolved once is never downgraded back to a placeholder.
+local function RefreshName(member, unit)
+    local fullName = ResolvedFullName(unit)
+    if not fullName or fullName == member.name then
+        return false
+    end
+    member.name = fullName
+    return true
 end
 
 local function UnitForGUID(guid)
@@ -252,6 +292,28 @@ local function RefillSweepQueue()
     end
 end
 
+--- Catch names that were unresolved when the member was added and whose one-shot
+--- retry also came up empty. Without this a placeholder survives until the next
+--- roster event, and a stable group produces none.
+local function RefreshMemberNames()
+    local changed = false
+    for unit in PRT:IterateGroup() do
+        local guid = UnitGUID(unit)
+        local member = guid and GroupInspect.members[guid]
+        if member and RefreshName(member, unit) then
+            changed = true
+        end
+    end
+    if changed then
+        NotifyListeners()
+    end
+end
+
+local function OnSweepTick()
+    RefillSweepQueue()
+    RefreshMemberNames()
+end
+
 local function ProcessNextInspect()
     if GroupInCombat() or inspectPending or IsInspectFrameOpen() then
         return
@@ -282,7 +344,7 @@ local function StartTickers()
         inspectTicker = C_Timer.NewTicker(INSPECT_TICK_SECONDS, ProcessNextInspect)
     end
     if not sweepTicker then
-        sweepTicker = C_Timer.NewTicker(SWEEP_INTERVAL_SECONDS, RefillSweepQueue)
+        sweepTicker = C_Timer.NewTicker(SWEEP_INTERVAL_SECONDS, OnSweepTick)
     end
 end
 
@@ -334,15 +396,35 @@ local function ReadLocalPlayer(guid)
     end
 end
 
+--- The unit token is looked up again rather than captured: the roster may have
+--- reshuffled it onto a different player while the retry was pending.
+local function ScheduleNameRetry(guid)
+    C_Timer.After(1, function()
+        local member = GroupInspect.members[guid]
+        if not member then
+            return
+        end
+        local unit = UnitForGUID(guid)
+        if unit and RefreshName(member, unit) then
+            NotifyListeners()
+        end
+    end)
+end
+
 local function AddNewMember(unit, guid)
     local _, classToken = UnitClass(unit)
+    local fullName = ResolvedFullName(unit)
     GroupInspect.members[guid] = {
-        name = UnitName(unit),
+        name = fullName or PlaceholderName(unit),
         class = classToken,
         specId = nil,
         talents = nil,
         addonVersion = nil,
     }
+
+    if not fullName then
+        ScheduleNameRetry(guid)
+    end
 
     if not UnitIsUnit(unit, "player") then
         table.insert(priorityQueue, guid)
@@ -372,8 +454,11 @@ function GroupInspect:ScanRoster()
         local guid = UnitGUID(unit)
         if guid then
             activeGUIDs[guid] = true
-            if not self.members[guid] then
+            local member = self.members[guid]
+            if not member then
                 AddNewMember(unit, guid)
+                changed = true
+            elseif RefreshName(member, unit) then
                 changed = true
             end
         end

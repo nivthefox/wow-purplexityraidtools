@@ -100,6 +100,8 @@ local function AddMemberCooldowns(member)
         return
     end
 
+    local playerName = member.name and Ambiguate(member.name, "short")
+
     for spellId, ability in pairs(specData.abilities) do
         local category = GetAbilityCategory(ability)
         -- With talent data, only show abilities in the player's talent set.
@@ -110,7 +112,7 @@ local function AddMemberCooldowns(member)
                 spellId = spellId,
                 name = ability.name,
                 category = category,
-                playerName = member.name,
+                playerName = playerName,
                 playerClass = member.class,
             })
         end

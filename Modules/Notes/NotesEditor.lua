@@ -139,7 +139,7 @@ local function ClassColorForTag(tag)
 
     if PRT.GroupInspect and PRT.GroupInspect.members then
         for _, member in pairs(PRT.GroupInspect.members) do
-            if member.name and member.name:lower() == lowerTag then
+            if member.name and Ambiguate(member.name, "short"):lower() == lowerTag then
                 local color = RAID_CLASS_COLORS and RAID_CLASS_COLORS[member.class]
                 if color then
                     return color.r, color.g, color.b
@@ -183,7 +183,7 @@ local function FindMemberByName(name)
     end
     local lowerName = name:lower()
     for _, member in pairs(PRT.GroupInspect.members) do
-        if member.name and member.name:lower() == lowerName then
+        if member.name and Ambiguate(member.name, "short"):lower() == lowerName then
             return member
         end
     end

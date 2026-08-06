@@ -275,6 +275,20 @@ local function GetRaidLeaderVersion()
     return nil
 end
 
+--- Reproduce GetUnitName(unit, true): a name from the player's own realm shows
+--- bare, any other realm keeps its suffix. GroupInspect built the stored name
+--- from these same two sources, so the comparison agrees with the client.
+local function DisplayName(fullName)
+    if not fullName then
+        return ""
+    end
+    local realm = fullName:match("%-(.+)$")
+    if not realm or realm == GetNormalizedRealmName() then
+        return Ambiguate(fullName, "short")
+    end
+    return fullName
+end
+
 local function BuildRoster()
     local unitMap = {}
     for unit in PRT:IterateGroup() do
@@ -286,18 +300,13 @@ local function BuildRoster()
 
     local roster = {}
     for guid, member in pairs(PRT.GroupInspect.members) do
-        local unit = unitMap[guid]
-        local displayName = member.name
-        if unit then
-            displayName = GetUnitName(unit, true) or member.name
-        end
         table.insert(roster, {
             guid = guid,
-            name = displayName,
+            name = DisplayName(member.name),
             class = member.class,
             specId = member.specId,
             addonVersion = member.addonVersion,
-            unit = unit,
+            unit = unitMap[guid],
         })
     end
 

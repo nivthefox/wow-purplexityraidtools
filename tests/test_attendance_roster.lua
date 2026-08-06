@@ -437,6 +437,21 @@ tests["a save with no nickname is rejected and changes nothing"] = function()
     assertTableEquals(PurplexityRaidToolsRosterDB, before)
 end
 
+tests["a save listing the same character twice is rejected and changes nothing"] = function()
+    resetDB()
+    Roster:AddEntry("Niv", { OMNIVICENT })
+    local before = snapshot()
+
+    local ok, err = Roster:AddEntry("Elsie", { ELSIE, ELSIE })
+
+    assertFalse(ok,
+        "a character listed twice makes the entry's character array lie about its membership")
+    assertEquals(type(err), "string", "a rejected save must explain itself")
+    assertNotNil(err:find(ELSIE, 1, true),
+        "the officer has to be told which character is duplicated, got: " .. tostring(err))
+    assertTableEquals(PurplexityRaidToolsRosterDB, before, "a rejected save writes nothing")
+end
+
 --------------------------------------------------------------------------------
 -- Edit semantics
 --------------------------------------------------------------------------------

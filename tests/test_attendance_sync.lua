@@ -2016,4 +2016,317 @@ tests["an inventory response holding no days is sound and replaces what was cach
     end)
 end
 
+--------------------------------------------------------------------------------
+-- Change notifications
+--
+-- The pending state is created by an arriving message rather than by anything
+-- the officer did, and the UI can neither poll for it nor sit in the path of
+-- every addon message, so the module announces its own changes.
+--
+-- Listen mirrors GroupInspect:Listen and likewise has no removal, so this
+-- section registers exactly ONE callback for the whole suite and reads the
+-- counter it feeds. A subscriber registered inside a test would outlive it and
+-- go on firing for every test that followed.
+--------------------------------------------------------------------------------
+
+local notifications = { count = 0, lastArgumentCount = nil }
+
+Sync:Listen(function(...)
+    notifications.count = notifications.count + 1
+    notifications.lastArgumentCount = select("#", ...)
+end)
+
+local function notificationsDuring(body)
+    notifications.count = 0
+    body()
+    return notifications.count
+end
+
+tests["a listener is called with no payload, so it must read the module for state"] = function()
+    withDatabases(localDatabase(), {}, function()
+        freshSync()
+        notifications.lastArgumentCount = nil
+
+        withGlobals(LEADER_GLOBALS, function()
+            dispatch(DAY_PUSH, { day = AUG_05, records = incomingRecord() }, LEADER)
+        end)
+
+        assertEquals(notifications.lastArgumentCount, 0,
+            "a payload would let a listener act on state the module had already moved past")
+    end)
+end
+
+tests["a day push held for confirmation notifies listeners"] = function()
+    withDatabases(localDatabase(), {}, function()
+        freshSync()
+
+        local fired = notificationsDuring(function()
+            withGlobals(LEADER_GLOBALS, function()
+                dispatch(DAY_PUSH, { day = AUG_05, records = incomingRecord() }, LEADER)
+            end)
+        end)
+
+        assertEquals(fired, 1, "an unannounced pending day is one the officer never sees")
+    end)
+end
+
+tests["a pull response notifies listeners"] = function()
+    withDatabases(localDatabase(), {}, function()
+        freshSync()
+
+        local fired = notificationsDuring(function()
+            withGlobals(UNPRIVILEGED_GLOBALS, function()
+                dispatch(PULL_RESPONSE, { day = AUG_05, records = incomingRecord() }, PLAIN_MEMBER)
+            end)
+        end)
+
+        assertEquals(fired, 1,
+            "the answer to a Pull the officer just clicked is the one arrival they are waiting on")
+    end)
+end
+
+tests["accepting a pending day notifies listeners"] = function()
+    withDatabases(localDatabase(), {}, function()
+        freshSync()
+        withGlobals(LEADER_GLOBALS, function()
+            dispatch(DAY_PUSH, { day = AUG_05, records = incomingRecord() }, LEADER)
+        end)
+
+        local fired = notificationsDuring(function()
+            Sync:AcceptPendingDay()
+        end)
+
+        assertEquals(fired, 1, "the accepted records are now the local ones and every view is stale")
+    end)
+end
+
+tests["declining a pending day notifies listeners"] = function()
+    withDatabases(localDatabase(), {}, function()
+        freshSync()
+        withGlobals(LEADER_GLOBALS, function()
+            dispatch(DAY_PUSH, { day = AUG_05, records = incomingRecord() }, LEADER)
+        end)
+
+        local fired = notificationsDuring(function()
+            Sync:DeclinePendingDay()
+        end)
+
+        assertEquals(fired, 1, "the offer is gone, so anything still presenting it is wrong")
+    end)
+end
+
+tests["declining a day with nothing pending notifies nobody"] = function()
+    withDatabases(localDatabase(), {}, function()
+        freshSync()
+
+        local fired = notificationsDuring(function()
+            Sync:DeclinePendingDay()
+        end)
+
+        assertEquals(fired, 0, "nothing changed, so nothing needs redrawing")
+    end)
+end
+
+tests["a roster push held for confirmation notifies listeners"] = function()
+    withDatabases({}, localRoster(), function()
+        withoutClassSources(function()
+            freshSync()
+            Sync.confirmBeforeSyncing = true
+
+            local fired = notificationsDuring(function()
+                withGlobals(LEADER_GLOBALS, function()
+                    dispatch(ROSTER_PUSH, { entries = incomingRoster() }, LEADER)
+                end)
+            end)
+
+            assertEquals(fired, 1)
+        end)
+    end)
+end
+
+--- The silent path: with confirmation off the roster is replaced outright and no
+--- modal ever appears, so the notification is the only thing that can tell a
+--- roster view its entries just became somebody else's.
+tests["a roster push applied immediately notifies listeners"] = function()
+    withDatabases({}, localRoster(), function()
+        withoutClassSources(function()
+            freshSync()
+            Sync.confirmBeforeSyncing = false
+
+            local fired = notificationsDuring(function()
+                withGlobals(LEADER_GLOBALS, function()
+                    dispatch(ROSTER_PUSH, { entries = incomingRoster() }, LEADER)
+                end)
+            end)
+
+            assertEquals(fired, 1,
+                "an unannounced wholesale replacement leaves the roster view showing entries "
+                    .. "that are no longer in the database")
+        end)
+    end)
+end
+
+tests["accepting a pending roster notifies listeners"] = function()
+    withDatabases({}, localRoster(), function()
+        withoutClassSources(function()
+            freshSync()
+            Sync.confirmBeforeSyncing = true
+            withGlobals(LEADER_GLOBALS, function()
+                dispatch(ROSTER_PUSH, { entries = incomingRoster() }, LEADER)
+            end)
+
+            local fired = notificationsDuring(function()
+                Sync:AcceptPendingRoster()
+            end)
+
+            assertEquals(fired, 1)
+        end)
+    end)
+end
+
+tests["declining a pending roster notifies listeners"] = function()
+    withDatabases({}, localRoster(), function()
+        withoutClassSources(function()
+            freshSync()
+            Sync.confirmBeforeSyncing = true
+            withGlobals(LEADER_GLOBALS, function()
+                dispatch(ROSTER_PUSH, { entries = incomingRoster() }, LEADER)
+            end)
+
+            local fired = notificationsDuring(function()
+                Sync:DeclinePendingRoster()
+            end)
+
+            assertEquals(fired, 1)
+        end)
+    end)
+end
+
+tests["declining a roster with nothing pending notifies nobody"] = function()
+    withDatabases({}, localRoster(), function()
+        freshSync()
+
+        local fired = notificationsDuring(function()
+            Sync:DeclinePendingRoster()
+        end)
+
+        assertEquals(fired, 0)
+    end)
+end
+
+tests["an inventory response notifies listeners"] = function()
+    withDatabases(localDatabase(), {}, function()
+        freshSync()
+
+        local fired = notificationsDuring(function()
+            withGlobals(UNPRIVILEGED_GLOBALS, function()
+                dispatch(INVENTORY_RESPONSE, { days = { [AUG_05] = 5 } }, PLAIN_MEMBER)
+            end)
+        end)
+
+        assertEquals(fired, 1,
+            "responses arrive one per raid member, and each adds a copy the officer can pull")
+    end)
+end
+
+tests["requesting the inventory notifies listeners, having just emptied it"] = function()
+    withDatabases(localDatabase(), {}, function()
+        freshSync()
+        withGlobals(UNPRIVILEGED_GLOBALS, function()
+            dispatch(INVENTORY_RESPONSE, { days = { [AUG_05] = 5 } }, PLAIN_MEMBER)
+        end)
+
+        local fired = notificationsDuring(function()
+            withCapturedSends(function()
+                Sync:RequestInventory()
+            end)
+        end)
+
+        assertEquals(fired, 1,
+            "the cached copies are gone before any answer returns, and a view still offering "
+                .. "them offers pulls from an inventory nobody claims")
+    end)
+end
+
+tests["a pull-missing response that drops a held day notifies listeners"] = function()
+    withDatabases(localDatabase(), {}, function()
+        freshSync()
+        withGlobals(UNPRIVILEGED_GLOBALS, function()
+            dispatch(INVENTORY_RESPONSE, { days = { [AUG_05] = 5 } }, PLAIN_MEMBER)
+        end)
+
+        local fired = notificationsDuring(function()
+            withCapturedPrint(function()
+                withGlobals(UNPRIVILEGED_GLOBALS, function()
+                    dispatch(PULL_MISSING, { day = AUG_05 }, PLAIN_MEMBER)
+                end)
+            end)
+        end)
+
+        assertEquals(fired, 1, "that copy just stopped existing and must stop being offered")
+    end)
+end
+
+tests["a pull-missing response for a day nobody offered notifies nobody"] = function()
+    withDatabases(localDatabase(), {}, function()
+        freshSync()
+
+        local fired = notificationsDuring(function()
+            withCapturedPrint(function()
+                withGlobals(UNPRIVILEGED_GLOBALS, function()
+                    dispatch(PULL_MISSING, { day = JUL_29 }, PLAIN_MEMBER)
+                end)
+            end)
+        end)
+
+        assertEquals(fired, 0, "no cached copy was removed, so no view changed")
+    end)
+end
+
+tests["a day push from an unprivileged sender notifies nobody"] = function()
+    withDatabases(localDatabase(), {}, function()
+        freshSync()
+
+        local fired = notificationsDuring(function()
+            withGlobals(UNPRIVILEGED_GLOBALS, function()
+                dispatch(DAY_PUSH, { day = AUG_05, records = incomingRecord() }, PLAIN_MEMBER)
+            end)
+        end)
+
+        assertEquals(fired, 0,
+            "a push that is ignored must not reach the officer as a prompt about nothing")
+    end)
+end
+
+tests["a malformed day push notifies nobody"] = function()
+    withDatabases(localDatabase(), {}, function()
+        freshSync()
+
+        local fired = notificationsDuring(function()
+            withGlobals(LEADER_GLOBALS, function()
+                dispatch(DAY_PUSH, { day = "yesterday", records = incomingRecord() }, LEADER)
+            end)
+        end)
+
+        assertEquals(fired, 0, "rejected input creates no pending state to announce")
+    end)
+end
+
+tests["a rejected roster notifies nobody"] = function()
+    withDatabases({}, localRoster(), function()
+        withoutClassSources(function()
+            freshSync()
+            Sync.confirmBeforeSyncing = true
+
+            local fired = notificationsDuring(function()
+                withGlobals(LEADER_GLOBALS, function()
+                    dispatch(ROSTER_PUSH, { entries = { { nickname = "Broken" } } }, LEADER)
+                end)
+            end)
+
+            assertEquals(fired, 0)
+        end)
+    end)
+end
+
 return tests

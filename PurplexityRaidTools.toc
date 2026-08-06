@@ -3,7 +3,7 @@
 ## Notes: Raid tools for Purplexity
 ## Author: Niv
 ## Version: 1.0.1
-## SavedVariables: PurplexityRaidToolsDB, PurplexityRaidToolsAttendanceDB
+## SavedVariables: PurplexityRaidToolsDB, PurplexityRaidToolsAttendanceDB, PurplexityRaidToolsRosterDB
 
 Libs/LibStub/LibStub.lua
 Libs/CallbackHandler-1.0/CallbackHandler-1.0.lua
@@ -36,4 +36,5 @@ Modules/Notes/NotesEditor.lua
 Modules/Notes/Notes.lua
 Modules/Notes/NotesConfig.lua
 Modules/Attendance/AttendanceStore.lua
+Modules/Attendance/Roster.lua
 Modules/Profiles.lua

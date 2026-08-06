@@ -1814,4 +1814,206 @@ tests["an inventory or roster request is answered whatever its payload carries"]
     end
 end
 
+--------------------------------------------------------------------------------
+-- The player's own broadcast coming back to them
+--
+-- A RAID message is delivered to its sender along with everyone else; Notes.lua
+-- depends on exactly that, broadcasting without activating locally and letting
+-- the loopback do it. Both push doors are therefore reachable by the officer's
+-- own copy, and every fixture above dispatches from a name the player does not
+-- answer to, so the whole class is invisible without stubbing the identity.
+--------------------------------------------------------------------------------
+
+--- Makes the local player answer to the given character's ambiguated name for
+--- the duration of a nested withGlobals. Scoped rather than installed at file
+--- scope: UnitName is read by suites that run after this one, and a leaked stub
+--- would follow them.
+local function playerIs(character)
+    return {
+        UnitName = function(unit)
+            if unit == "player" then
+                return Ambiguate(character, "short"), nil
+            end
+            return unit, nil
+        end,
+    }
+end
+
+tests["a day push the player broadcast themselves is ignored rather than offered back"] = function()
+    local db = localDatabase()
+    local before = CopyTable(db)
+
+    withDatabases(db, {}, function()
+        freshSync()
+        local sent = withCapturedSends(function()
+            withGlobals(LEADER_GLOBALS, function()
+                withGlobals(playerIs(LEADER), function()
+                    dispatch(DAY_PUSH, { day = AUG_05, records = incomingRecord() }, LEADER)
+                end)
+            end)
+        end)
+
+        assertNil(Sync:GetPendingDay(),
+            "the officer who pushed a day already has it; the modal would ask them to replace "
+                .. "their own record with itself")
+        assertEquals(#sent, 0)
+    end)
+
+    assertTableEquals(db, before)
+end
+
+tests["a roster push the player broadcast themselves raises no confirmation"] = function()
+    local roster = localRoster()
+    local before = CopyTable(roster)
+
+    withDatabases({}, roster, function()
+        freshSync()
+        Sync.confirmBeforeSyncing = true
+        withGlobals(LEADER_GLOBALS, function()
+            withGlobals(playerIs(LEADER), function()
+                dispatch(ROSTER_PUSH, { entries = incomingRoster() }, LEADER)
+            end)
+        end)
+
+        assertNil(Sync:GetPendingRoster(),
+            "pressing Sync Roster must not ask the officer to accept their own roster")
+    end)
+
+    assertTableEquals(roster, before)
+end
+
+--- The entry-identity assertion is the point of this one. With confirmation
+--- disabled a self-replace is silent and lands on an equal-looking roster, so
+--- deep equality alone reports success while every entry table the grid is
+--- holding has been swapped for a decoded copy.
+tests["a roster push the player broadcast themselves leaves the live entry tables in place"] = function()
+    local roster = localRoster()
+    local before = CopyTable(roster)
+    local firstEntry, secondEntry = roster[1], roster[2]
+
+    withDatabases({}, roster, function()
+        freshSync()
+        Sync.confirmBeforeSyncing = false
+        withGlobals(LEADER_GLOBALS, function()
+            withGlobals(playerIs(LEADER), function()
+                dispatch(ROSTER_PUSH, { entries = incomingRoster() }, LEADER)
+            end)
+        end)
+    end)
+
+    assertTableEquals(roster, before)
+    assertTrue(roster[1] == firstEntry and roster[2] == secondEntry,
+        "a silent self-replace strands every reference taken from Roster:GetEntries")
+end
+
+--------------------------------------------------------------------------------
+-- Payloads that reach the chat frame or the pull list
+--------------------------------------------------------------------------------
+
+--- Chat escape codes are markup: a hyperlink sequence renders as a clickable
+--- player link rather than as its own text.
+local NON_ISO_MISSING_DAYS = {
+    { name = "a day carrying chat escape codes",
+        day = "|cffff0000|Hplayer:Gullible-Proudmoore|h[Click here]|h|r" },
+    { name = "a day that is not a date", day = "yesterday" },
+    { name = "an unpadded day", day = "2026-8-5" },
+    { name = "a day carrying a time", day = "2026-08-05T20:00" },
+}
+
+tests["a missing-record answer names its day in the officer's chat, so a non-ISO day is dropped"] =
+    function()
+        for _, case in ipairs(NON_ISO_MISSING_DAYS) do
+            local db = localDatabase()
+            local before = CopyTable(db)
+
+            withDatabases(db, {}, function()
+                freshSync()
+                withGlobals(UNPRIVILEGED_GLOBALS, function()
+                    dispatch(INVENTORY_RESPONSE, { days = { [AUG_05] = 5 } }, PLAIN_MEMBER)
+                end)
+
+                local messages = withCapturedPrint(function()
+                    withGlobals(UNPRIVILEGED_GLOBALS, function()
+                        dispatch(PULL_MISSING, { day = case.day }, PLAIN_MEMBER)
+                    end)
+                end)
+
+                assertEquals(#messages, 0,
+                    case.name .. " must never reach the chat frame")
+                assertTableEquals(Sync:GetInventory()[PLAIN_MEMBER], { [AUG_05] = 5 },
+                    case.name .. " must drop nothing from the cache")
+            end)
+
+            assertTableEquals(db, before, case.name .. " must leave the database deep-equal")
+        end
+    end
+
+--- An inventory is read back as a list of days to offer for pull, with counts
+--- rendered beside them. A day key that is not a date names nothing pullable,
+--- and a count that is not a whole number has nothing to render.
+local MALFORMED_INVENTORIES = {
+    { name = "a numeric day key", days = { [20260805] = 2 } },
+    { name = "a day key that is not a date", days = { yesterday = 2 } },
+    { name = "a count written as a string", days = { [AUG_05] = "2" } },
+    { name = "a negative count", days = { [AUG_05] = -1 } },
+    { name = "a fractional count", days = { [AUG_05] = 1.5 } },
+}
+
+tests["a malformed inventory response is refused whether or not that sender is cached"] = function()
+    for _, cached in ipairs({ "with no inventory cached", "with an inventory cached" }) do
+        for _, case in ipairs(MALFORMED_INVENTORIES) do
+            local label = case.name .. " " .. cached
+
+            withDatabases(localDatabase(), {}, function()
+                freshSync()
+                if cached == "with an inventory cached" then
+                    withGlobals(UNPRIVILEGED_GLOBALS, function()
+                        dispatch(INVENTORY_RESPONSE, { days = { [JUL_31] = 4 } }, PLAIN_MEMBER)
+                    end)
+                end
+                local heldBefore = CopyTable(Sync:GetInventory()[PLAIN_MEMBER] or {})
+
+                local sent = withCapturedSends(function()
+                    withGlobals(UNPRIVILEGED_GLOBALS, function()
+                        dispatch(INVENTORY_RESPONSE, { days = case.days }, PLAIN_MEMBER)
+                    end)
+                end)
+
+                assertTableEquals(Sync:GetInventory()[PLAIN_MEMBER] or {}, heldBefore,
+                    label .. " must leave the cached inventory as it found it")
+                assertEquals(#sent, 0, label .. " must be answered with silence")
+            end)
+        end
+    end
+end
+
+tests["one unusable day in an inventory response rejects the whole response"] = function()
+    withDatabases(localDatabase(), {}, function()
+        freshSync()
+        withGlobals(UNPRIVILEGED_GLOBALS, function()
+            dispatch(INVENTORY_RESPONSE, { days = { [JUL_31] = 4 } }, PLAIN_MEMBER)
+            dispatch(INVENTORY_RESPONSE,
+                { days = { [AUG_05] = 2, [AUG_03] = 1, yesterday = 7 } }, PLAIN_MEMBER)
+        end)
+
+        assertTableEquals(Sync:GetInventory()[PLAIN_MEMBER], { [JUL_31] = 4 },
+            "the sound days travel with the unusable one; keeping them would offer pulls from "
+                .. "an inventory the sender never sent")
+    end)
+end
+
+tests["an inventory response holding no days is sound and replaces what was cached"] = function()
+    withDatabases(localDatabase(), {}, function()
+        freshSync()
+        withGlobals(UNPRIVILEGED_GLOBALS, function()
+            dispatch(INVENTORY_RESPONSE, { days = { [AUG_05] = 5 } }, PLAIN_MEMBER)
+            dispatch(INVENTORY_RESPONSE, { days = {} }, PLAIN_MEMBER)
+        end)
+
+        assertTableEquals(Sync:GetInventory()[PLAIN_MEMBER], {},
+            "an empty list is how a member who has deleted every record says so, and it must "
+                .. "clear what they previously offered")
+    end)
+end
+
 return tests

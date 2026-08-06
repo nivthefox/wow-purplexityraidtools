@@ -1030,4 +1030,199 @@ tests["off-specs are kept per character rather than per entry"] = function()
     end)
 end
 
+--------------------------------------------------------------------------------
+-- Character reassignment
+--------------------------------------------------------------------------------
+
+tests["moving a character transfers it from source to destination"] = function()
+    withGroupRoster({
+        { "Niv", { OMNIVICENT, NIVEN } },
+        { "Elsie", { ELSIE } },
+    }, function()
+        local ok, err = Roster:MoveCharacter(OMNIVICENT, "Niv", "Elsie")
+
+        assertTrue(ok, tostring(err))
+        assertTableEquals(entryNamed("Niv").characters, { NIVEN })
+        assertTableEquals(entryNamed("Elsie").characters, { ELSIE, OMNIVICENT })
+    end)
+end
+
+tests["moving a character preserves its class and spec assignments"] = function()
+    withGroupRoster({
+        { "Niv", { OMNIVICENT } },
+        { "Elsie", { ELSIE } },
+    }, function()
+        Roster:SetMainSpec(OMNIVICENT, UMBRAL)
+        Roster:AddOffSpec(OMNIVICENT, HOLY)
+
+        local ok, err = Roster:MoveCharacter(OMNIVICENT, "Niv", "Elsie")
+
+        assertTrue(ok, tostring(err))
+        local data = dataFor("Elsie", OMNIVICENT)
+        assertEquals(data.class, "PRIEST")
+        assertEquals(data.mainSpec, UMBRAL)
+        assertTableEquals(data.offSpecs, { HOLY })
+    end)
+end
+
+tests["moving a character with nil class and nil specs preserves those nils"] = function()
+    resetDB()
+    Roster:AddEntry("Niv", { OMNIVICENT })
+    Roster:AddEntry("Elsie", { ELSIE })
+
+    local ok, err = Roster:MoveCharacter(OMNIVICENT, "Niv", "Elsie")
+
+    assertTrue(ok, tostring(err))
+    local data = dataFor("Elsie", OMNIVICENT)
+    assertNil(data.class)
+    assertNil(data.mainSpec)
+    assertNil(data.offSpecs)
+end
+
+tests["moving the last character auto-deletes the source member"] = function()
+    withGroupRoster({
+        { "Niv", { OMNIVICENT } },
+        { "Elsie", { ELSIE } },
+    }, function()
+        local ok, err = Roster:MoveCharacter(OMNIVICENT, "Niv", "Elsie")
+
+        assertTrue(ok, tostring(err))
+        assertNil(entryNamed("Niv"))
+        assertEquals(#Roster:GetEntries(), 1)
+    end)
+end
+
+tests["an auto-deleted member's nickname is available for reuse"] = function()
+    withGroupRoster({
+        { "Niv", { OMNIVICENT } },
+        { "Elsie", { ELSIE } },
+    }, function()
+        Roster:MoveCharacter(OMNIVICENT, "Niv", "Elsie")
+
+        local ok, err = Roster:AddEntry("Niv", { GRIMGRACE })
+
+        assertTrue(ok, tostring(err))
+        assertNotNil(entryNamed("Niv"))
+    end)
+end
+
+tests["after a move the character appears in exactly one member's list"] = function()
+    withGroupRoster({
+        { "Niv", { OMNIVICENT, NIVEN } },
+        { "Elsie", { ELSIE } },
+    }, function()
+        Roster:MoveCharacter(OMNIVICENT, "Niv", "Elsie")
+
+        local owners = 0
+        for _, entry in ipairs(Roster:GetEntries()) do
+            for _, character in ipairs(entry.characters) do
+                if character == OMNIVICENT then
+                    owners = owners + 1
+                end
+            end
+        end
+        assertEquals(owners, 1)
+    end)
+end
+
+tests["moving a character to the same member is a no-op"] = function()
+    withGroupRoster({
+        { "Niv", { OMNIVICENT, NIVEN } },
+    }, function()
+        local before = snapshot()
+
+        local ok = Roster:MoveCharacter(OMNIVICENT, "Niv", "Niv")
+
+        assertTrue(ok)
+        assertTableEquals(PurplexityRaidToolsRosterDB, before)
+    end)
+end
+
+tests["moving a character does not modify attendance records"] = function()
+    withGroupRoster({
+        { "Niv", { OMNIVICENT } },
+        { "Elsie", { ELSIE } },
+    }, function()
+        PurplexityRaidToolsAttendanceDB = {
+            ["2026-08-01"] = { [OMNIVICENT] = 3, [ELSIE] = 3 },
+        }
+        local attendanceBefore = CopyTable(PurplexityRaidToolsAttendanceDB)
+
+        Roster:MoveCharacter(OMNIVICENT, "Niv", "Elsie")
+
+        assertTableEquals(PurplexityRaidToolsAttendanceDB, attendanceBefore)
+        PurplexityRaidToolsAttendanceDB = nil
+    end)
+end
+
+tests["moving a character not in the source's list is rejected"] = function()
+    withGroupRoster({
+        { "Niv", { OMNIVICENT } },
+        { "Elsie", { ELSIE } },
+    }, function()
+        local before = snapshot()
+
+        local ok, err = Roster:MoveCharacter(ELSIE, "Niv", "Elsie")
+
+        assertFalse(ok)
+        assertEquals(type(err), "string")
+        assertTableEquals(PurplexityRaidToolsRosterDB, before)
+    end)
+end
+
+tests["moving from a nonexistent source member is rejected"] = function()
+    withGroupRoster({
+        { "Elsie", { ELSIE } },
+    }, function()
+        local before = snapshot()
+
+        local ok, err = Roster:MoveCharacter(OMNIVICENT, "Nobody", "Elsie")
+
+        assertFalse(ok)
+        assertEquals(type(err), "string")
+        assertTableEquals(PurplexityRaidToolsRosterDB, before)
+    end)
+end
+
+tests["moving to a nonexistent destination member is rejected"] = function()
+    withGroupRoster({
+        { "Niv", { OMNIVICENT } },
+    }, function()
+        local before = snapshot()
+
+        local ok, err = Roster:MoveCharacter(OMNIVICENT, "Niv", "Nobody")
+
+        assertFalse(ok)
+        assertEquals(type(err), "string")
+        assertTableEquals(PurplexityRaidToolsRosterDB, before)
+    end)
+end
+
+tests["the source character data is cleaned up after a move"] = function()
+    withGroupRoster({
+        { "Niv", { OMNIVICENT, NIVEN } },
+        { "Elsie", { ELSIE } },
+    }, function()
+        Roster:MoveCharacter(OMNIVICENT, "Niv", "Elsie")
+
+        assertNil(entryNamed("Niv").characterData[OMNIVICENT],
+            "the source entry must not retain stale characterData for the moved character")
+    end)
+end
+
+tests["the destination's existing characters are unaffected by a move"] = function()
+    withGroupRoster({
+        { "Niv", { OMNIVICENT } },
+        { "Elsie", { ELSIE } },
+    }, function()
+        Roster:SetMainSpec(ELSIE, ASSASSINATION)
+
+        Roster:MoveCharacter(OMNIVICENT, "Niv", "Elsie")
+
+        local data = dataFor("Elsie", ELSIE)
+        assertEquals(data.class, "ROGUE")
+        assertEquals(data.mainSpec, ASSASSINATION)
+    end)
+end
+
 return tests

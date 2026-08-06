@@ -353,3 +353,57 @@ function Roster:RemoveOffSpec(character, specID)
     RemoveSpec(record.offSpecs, specID)
     return true
 end
+
+function Roster:MoveCharacter(character, sourceNickname, destNickname)
+    if sourceNickname == destNickname then
+        return true
+    end
+
+    local db = EnsureDB()
+
+    local source = FindEntryByNickname(db, sourceNickname)
+    if not source then
+        return false, "No roster entry named " .. tostring(sourceNickname) .. "."
+    end
+
+    local dest = FindEntryByNickname(db, destNickname)
+    if not dest then
+        return false, "No roster entry named " .. tostring(destNickname) .. "."
+    end
+
+    local charIndex
+    for i, owned in ipairs(source.characters) do
+        if owned == character then
+            charIndex = i
+            break
+        end
+    end
+    if not charIndex then
+        return false, character .. " is not in " .. sourceNickname .. "'s character list."
+    end
+
+    for _, owned in ipairs(dest.characters) do
+        if owned == character then
+            return false
+        end
+    end
+
+    table.remove(source.characters, charIndex)
+
+    local data = source.characterData[character]
+    source.characterData[character] = nil
+    dest.characterData[character] = data
+
+    dest.characters[#dest.characters + 1] = character
+
+    if #source.characters == 0 then
+        for i, entry in ipairs(db) do
+            if entry == source then
+                table.remove(db, i)
+                break
+            end
+        end
+    end
+
+    return true
+end

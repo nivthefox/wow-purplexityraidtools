@@ -48,6 +48,11 @@ local entryModalTarget
 local importModal
 local offSpecModal
 
+local dragState
+local dragHighlight
+local dragCursor
+local memberBounds = {}
+
 local function PrintMessage(message)
     print("|cFF00FF00PurplexityRaidTools:|r " .. message)
 end
@@ -130,6 +135,107 @@ local function RefreshListAfterMenuCloses()
     C_Timer.After(0, function()
         RosterUI:Refresh()
     end)
+end
+
+local function EnsureDragCursor()
+    if dragCursor then
+        return
+    end
+    dragCursor = CreateFrame("Frame", nil, UIParent)
+    dragCursor:SetSize(200, 20)
+    dragCursor:SetFrameStrata("TOOLTIP")
+    dragCursor:EnableMouse(false)
+
+    dragCursor.text = dragCursor:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    dragCursor.text:SetPoint("LEFT", 8, 0)
+    dragCursor.text:SetJustifyH("LEFT")
+
+    dragCursor:SetScript("OnUpdate", function(self)
+        local scale = self:GetEffectiveScale()
+        local x, y = GetCursorPosition()
+        self:ClearAllPoints()
+        self:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", x / scale + 12, y / scale)
+    end)
+
+    dragCursor:Hide()
+end
+
+local function CancelDrag()
+    if not dragState then
+        return
+    end
+    if dragState.sourceRow then
+        dragState.sourceRow:SetAlpha(1)
+    end
+    if dragHighlight then
+        dragHighlight:Hide()
+    end
+    if dragCursor then
+        dragCursor:Hide()
+    end
+    dragState = nil
+end
+
+local function CompleteDrag()
+    if not dragState then
+        return
+    end
+
+    local character = dragState.character
+    local sourceNickname = dragState.sourceNickname
+    local destNickname = dragState.hoverNickname
+    CancelDrag()
+
+    if not destNickname or destNickname == sourceNickname then
+        return
+    end
+
+    local ok, err = PRT.Roster:MoveCharacter(character, sourceNickname, destNickname)
+    if not ok and err then
+        PrintError(err)
+    end
+    RefreshDependentViews()
+end
+
+local function ShowDragHighlight(frame, nickname)
+    if not dragState or nickname == dragState.sourceNickname then
+        if dragHighlight then
+            dragHighlight:Hide()
+        end
+        if dragState then
+            dragState.hoverNickname = nil
+        end
+        return
+    end
+
+    dragState.hoverNickname = nickname
+
+    local bounds = memberBounds[nickname]
+    if not bounds then
+        return
+    end
+
+    local parent = frame:GetParent()
+    if not dragHighlight then
+        dragHighlight = parent:CreateTexture(nil, "OVERLAY")
+        dragHighlight:SetColorTexture(0.2, 0.6, 1.0, 0.15)
+    end
+
+    dragHighlight:SetParent(parent)
+    dragHighlight:ClearAllPoints()
+    dragHighlight:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -bounds.top)
+    dragHighlight:SetPoint("RIGHT", parent, "RIGHT", 0, 0)
+    dragHighlight:SetHeight(bounds.height)
+    dragHighlight:Show()
+end
+
+local function HideDragHighlight()
+    if dragState then
+        dragState.hoverNickname = nil
+    end
+    if dragHighlight then
+        dragHighlight:Hide()
+    end
 end
 
 --------------------------------------------------------------------------------
@@ -471,6 +577,19 @@ end
 local function CreateHeaderRow(parent)
     local header = CreateFrame("Frame", nil, parent)
     header:SetHeight(HEADER_ROW_HEIGHT)
+    header:EnableMouse(true)
+
+    header:SetScript("OnEnter", function(self)
+        if dragState and self.ownerNickname then
+            ShowDragHighlight(self, self.ownerNickname)
+        end
+    end)
+
+    header:SetScript("OnLeave", function()
+        if dragState then
+            HideDragHighlight()
+        end
+    end)
 
     header.nickname = header:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     header.nickname:SetPoint("LEFT", NAME_COLUMN, 0)
@@ -491,6 +610,7 @@ end
 
 local function FillHeaderRow(header, entry)
     header.nickname:SetText(entry.nickname)
+    header.ownerNickname = entry.nickname
 
     local nickname = entry.nickname
     local characters = {}
@@ -511,6 +631,40 @@ end
 local function CreateCharacterRow(parent)
     local row = CreateFrame("Frame", nil, parent)
     row:SetHeight(CHARACTER_ROW_HEIGHT)
+    row:EnableMouse(true)
+    row:RegisterForDrag("LeftButton")
+
+    row:SetScript("OnDragStart", function(self)
+        if not self.character or not self.ownerNickname then
+            return
+        end
+        dragState = {
+            character = self.character,
+            sourceNickname = self.ownerNickname,
+            sourceRow = self,
+        }
+        self:SetAlpha(0.4)
+
+        EnsureDragCursor()
+        dragCursor.text:SetText(self.character)
+        dragCursor:Show()
+    end)
+
+    row:SetScript("OnDragStop", function()
+        CompleteDrag()
+    end)
+
+    row:SetScript("OnEnter", function(self)
+        if dragState and self.ownerNickname then
+            ShowDragHighlight(self, self.ownerNickname)
+        end
+    end)
+
+    row:SetScript("OnLeave", function()
+        if dragState then
+            HideDragHighlight()
+        end
+    end)
 
     row.name = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     row.name:SetPoint("LEFT", NAME_COLUMN + 12, 0)
@@ -619,8 +773,9 @@ local function FillTags(row, specsByID)
     row.addOffSpec:SetPoint("LEFT", offset, 0)
 end
 
-local function FillCharacterRow(row, character, record)
+local function FillCharacterRow(row, character, record, nickname)
     row.character = character
+    row.ownerNickname = nickname
     row.mainSpecID = record.mainSpec
     row.offSpecs = record.offSpecs
 
@@ -758,6 +913,9 @@ PRT:RegisterTab("Roster", function(parent)
     local headerRows, characterRows, stripes = {}, {}, {}
 
     RefreshList = function()
+        CancelDrag()
+        memberBounds = {}
+
         local entries = AlphabeticalEntries()
         local placedHeaders, placedCharacters, placedStripes, yOffset = 0, 0, 0, 0
 
@@ -786,9 +944,14 @@ PRT:RegisterTab("Roster", function(parent)
                 row:ClearAllPoints()
                 row:SetPoint("TOPLEFT", 0, -yOffset)
                 row:SetPoint("RIGHT", scrollChild, "RIGHT", 0, 0)
-                FillCharacterRow(row, character, entry.characterData[character])
+                FillCharacterRow(row, character, entry.characterData[character], entry.nickname)
                 yOffset = yOffset + CHARACTER_ROW_HEIGHT
             end
+
+            memberBounds[entry.nickname] = {
+                top = entryTop,
+                height = yOffset - entryTop,
+            }
 
             if entryIndex % 2 == 1 then
                 placedStripes = placedStripes + 1

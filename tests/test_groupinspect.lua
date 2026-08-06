@@ -23,10 +23,11 @@ local PRT = PurplexityRaidTools
 local GroupInspect = PRT.GroupInspect
 local Comms = PRT.Comms
 
+local onEventHandler
 GroupInspect.eventFrame = {
     RegisterEvent = function() end,
     UnregisterAllEvents = function() end,
-    SetScript = function() end,
+    SetScript = function(_, _, handler) onEventHandler = handler end,
 }
 GroupInspect:Initialize()
 
@@ -156,6 +157,9 @@ local function makeStubs()
             table.insert(sim.inspectedUnits, unitToken)
         end,
         ClearInspectPlayer = function() end,
+        Constants = { TraitConsts = { INSPECT_TRAIT_CONFIG_ID = -1 } },
+        C_Traits = { GetConfigInfo = function() return nil end },
+        GetInspectSpecialization = function() return SPEC_ID end,
         C_SpecializationInfo = {
             GetSpecialization = function() return 1 end,
             GetSpecializationInfo = function() return SPEC_ID end,
@@ -523,6 +527,23 @@ tests["logins for the local player or a non-member are ignored"] = function()
         driveInspectTick()
         assertEquals(#sim.inspectedUnits, 1,
             "neither the local player nor a stranger may be queued by a login")
+    end)
+end
+
+tests["INSPECT_READY updates the member specId"] = function()
+    runSim(function()
+        sim.units = { "raid1", "raid2" }
+        GroupInspect:ScanRoster()
+        driveInspectTick()
+
+        local record = GroupInspect.members["GUID-BOB"]
+        assertNil(record.specId, "specId must be nil before inspect resolves")
+
+        -- Fire INSPECT_READY with the GUID of the unit we inspected.
+        onEventHandler(nil, "INSPECT_READY", "GUID-BOB")
+
+        assertEquals(record.specId, SPEC_ID,
+            "INSPECT_READY must populate the member specId")
     end)
 end
 

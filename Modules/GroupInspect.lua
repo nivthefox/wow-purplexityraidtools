@@ -105,6 +105,18 @@ local function GetPlayerSpecId()
     return C_SpecializationInfo.GetSpecializationInfo(specIndex)
 end
 
+-- TODO: C_SpecializationInfo should have a namespaced replacement for
+-- GetInspectSpecialization, but we haven't found it yet. Fall back to the
+-- global until the C_ equivalent is identified.
+local function GetInspectSpecId(unit)
+    local fn = (C_SpecializationInfo and C_SpecializationInfo.GetInspectSpecialization)
+        or GetInspectSpecialization
+    if not fn then
+        return nil
+    end
+    return fn(unit)
+end
+
 local function UnitForGUID(guid)
     for unit in PRT:IterateGroup() do
         if UnitGUID(unit) == guid then
@@ -418,7 +430,7 @@ local function OnInspectReady(eventGUID)
         return
     end
 
-    local specId = C_SpecializationInfo.GetInspectSpecialization(inspectPending)
+    local specId = GetInspectSpecId(inspectPending)
     local talents = ReadInspectTalents()
     inspectPending = nil
 

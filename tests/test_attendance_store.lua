@@ -8,33 +8,36 @@ local tests = {}
 -- Prerequisite globals
 --
 -- WoW's Lua environment has no os library, so the implementation must call the
--- globals date() and time(). Alias them here (never into wow_stubs.lua),
--- mirroring how test_comms.lua supplies strmatch.
+-- global date(). Day keys are derived in the server frame through date()'s "!"
+-- forms: the spec requires every client to agree on which day a pull belongs to,
+-- and a local-timezone decomposition splits one raid across two keys.
 --------------------------------------------------------------------------------
 
 if date == nil then
     date = os.date
 end
 
-if time == nil then
-    time = os.time
-end
+local HOUR = 3600
+local DAY = 86400
 
--- os.time reads the table as local time and os.date converts back to local
--- time, so fixtures round-trip identically in any timezone.
-local function serverTimeAt(year, month, day, hour)
-    return os.time({ year = year, month = month, day = day, hour = hour, min = 0, sec = 0 })
-end
+local AUGUST_5_2026 = 1785888000
+local JANUARY_1_2026 = 1767225600
+local AUGUST_1_2026 = AUGUST_5_2026 - 4 * DAY
 
-local PULL_TIME = serverTimeAt(2026, 8, 5, 20)
+local PULL_TIME = AUGUST_5_2026 + 20 * HOUR
 local PULL_DAY = "2026-08-05"
 
-local EXPIRY_NOON = serverTimeAt(2026, 8, 5, 12)
+local EXPIRY_MIDDAY = AUGUST_5_2026 + 12 * HOUR
+local EXPIRY_BEFORE_ROLLOVER = AUGUST_5_2026 + 3 * HOUR
 local EXACTLY_90_DAYS_OLD = "2026-05-07"
 local NINETY_ONE_DAYS_OLD = "2026-05-06"
 
-if GetServerTime == nil then
-    GetServerTime = function()
+if C_DateAndTime == nil then
+    C_DateAndTime = {}
+end
+
+if C_DateAndTime.GetServerTimeLocal == nil then
+    C_DateAndTime.GetServerTimeLocal = function()
         return PULL_TIME
     end
 end
@@ -64,7 +67,15 @@ local function withGlobals(overrides, body)
 end
 
 local function atServerTime(timestamp, body)
-    withGlobals({ GetServerTime = function() return timestamp end }, body)
+    local saved = C_DateAndTime.GetServerTimeLocal
+    C_DateAndTime.GetServerTimeLocal = function()
+        return timestamp
+    end
+    local ok, err = pcall(body)
+    C_DateAndTime.GetServerTimeLocal = saved
+    if not ok then
+        error(err, 0)
+    end
 end
 
 local function resetDB()
@@ -95,6 +106,12 @@ tests["the status enum exposes the spec's integer values"] = function()
     assertEquals(Store.STATUS.PRESENT, 3)
 end
 
+tests["the fixture epochs are the UTC instants they are named for"] = function()
+    assertEquals(date("!%Y-%m-%d %H:%M:%S", AUGUST_5_2026), "2026-08-05 00:00:00")
+    assertEquals(date("!%Y-%m-%d %H:%M:%S", AUGUST_1_2026), "2026-08-01 00:00:00")
+    assertEquals(date("!%Y-%m-%d %H:%M:%S", JANUARY_1_2026), "2026-01-01 00:00:00")
+end
+
 tests["no store operation reads addon settings"] = function()
     resetDB()
     local savedGetSetting = PRT.GetSetting
@@ -108,7 +125,7 @@ tests["no store operation reads addon settings"] = function()
             { rosterEntry("Niv", "Omnivicent-Proudmoore") }, 6)
         Store:OnCountdownCancel({ "Elsie-Proudmoore" }, {}, 6)
         Store:SetStatus(PULL_DAY, "Elsie-Proudmoore", 1)
-        Store:ExpireOldDays(90)
+        Store:ExpireOldDays(90, 6)
         Store:DeleteDay(PULL_DAY)
     end)
 
@@ -116,38 +133,91 @@ tests["no store operation reads addon settings"] = function()
     assertTrue(ok, tostring(err))
 end
 
+tests["no store operation reads the client-frame GetServerTime"] = function()
+    resetDB()
+
+    local ok, err = pcall(function()
+        withGlobals({
+            GetServerTime = function()
+                error("the store must read C_DateAndTime.GetServerTimeLocal(), not GetServerTime()", 0)
+            end,
+        }, function()
+            Store:GetRaidDay(6)
+            Store:OnCountdownStart({ "Elsie-Proudmoore" }, {}, 6)
+            Store:ExpireOldDays(90, 6)
+        end)
+    end)
+
+    assertTrue(ok, tostring(err))
+end
+
+tests["the raid day key is derived in the server frame, not the client's timezone"] = function()
+    atServerTime(AUGUST_5_2026 + 5 * HOUR + 30 * 60, function()
+        assertEquals(Store:GetRaidDay(6), "2026-08-04",
+            "05:30 server time is before the rollover hour wherever the client sits")
+    end)
+    atServerTime(AUGUST_5_2026 + 6 * HOUR + 30 * 60, function()
+        assertEquals(Store:GetRaidDay(6), "2026-08-05",
+            "06:30 server time is after the rollover hour wherever the client sits")
+    end)
+end
+
+tests["day keys are derived through date()'s server-frame forms"] = function()
+    local db = resetDB()
+    db[PULL_DAY] = { ["Elsie-Proudmoore"] = 3 }
+
+    local formats = {}
+    local realDate = date
+
+    withGlobals({
+        date = function(format, timestamp)
+            formats[#formats + 1] = tostring(format)
+            return realDate(format, timestamp)
+        end,
+    }, function()
+        Store:GetRaidDay(6)
+        Store:ExpireOldDays(90, 6)
+    end)
+
+    assertTrue(#formats > 0, "day-key derivation must go through date()")
+    for _, format in ipairs(formats) do
+        assertEquals(format:sub(1, 1), "!",
+            "the server frame is only reachable through date()'s \"!\" form, got: " .. format)
+    end
+end
+
 tests["a server time before the rollover hour resolves to the previous calendar date"] = function()
-    atServerTime(serverTimeAt(2026, 8, 5, 3), function()
+    atServerTime(AUGUST_5_2026 + 3 * HOUR, function()
         assertEquals(Store:GetRaidDay(6), "2026-08-04")
     end)
 end
 
 tests["a server time exactly at the rollover hour resolves to the current calendar date"] = function()
-    atServerTime(serverTimeAt(2026, 8, 5, 6), function()
+    atServerTime(AUGUST_5_2026 + 6 * HOUR, function()
         assertEquals(Store:GetRaidDay(6), "2026-08-05")
     end)
 end
 
 tests["a server time after the rollover hour resolves to the current calendar date"] = function()
-    atServerTime(serverTimeAt(2026, 8, 5, 23), function()
+    atServerTime(AUGUST_5_2026 + 23 * HOUR, function()
         assertEquals(Store:GetRaidDay(6), "2026-08-05")
     end)
 end
 
 tests["a pre-rollover server time steps back across a month boundary"] = function()
-    atServerTime(serverTimeAt(2026, 8, 1, 0), function()
+    atServerTime(AUGUST_1_2026, function()
         assertEquals(Store:GetRaidDay(6), "2026-07-31")
     end)
 end
 
 tests["a pre-rollover server time steps back across a year boundary"] = function()
-    atServerTime(serverTimeAt(2026, 1, 1, 2), function()
+    atServerTime(JANUARY_1_2026 + 2 * HOUR, function()
         assertEquals(Store:GetRaidDay(6), "2025-12-31")
     end)
 end
 
 tests["the rollover hour parameter is honoured rather than fixed at 6"] = function()
-    atServerTime(serverTimeAt(2026, 8, 5, 5), function()
+    atServerTime(AUGUST_5_2026 + 5 * HOUR, function()
         assertEquals(Store:GetRaidDay(4), "2026-08-05",
             "05:00 is after a rollover hour of 4, so the pull belongs to the current date")
         assertEquals(Store:GetRaidDay(6), "2026-08-04",
@@ -156,10 +226,10 @@ tests["the rollover hour parameter is honoured rather than fixed at 6"] = functi
 end
 
 tests["the rollover hour defaults to 6 when none is supplied"] = function()
-    atServerTime(serverTimeAt(2026, 8, 5, 5), function()
+    atServerTime(AUGUST_5_2026 + 5 * HOUR, function()
         assertEquals(Store:GetRaidDay(), "2026-08-04")
     end)
-    atServerTime(serverTimeAt(2026, 8, 5, 6), function()
+    atServerTime(AUGUST_5_2026 + 6 * HOUR, function()
         assertEquals(Store:GetRaidDay(), "2026-08-05")
     end)
 end
@@ -418,13 +488,50 @@ tests["a manual status write against an empty database creates no day"] = functi
     assertTableEquals(db, {})
 end
 
+tests["every status in the enum is accepted by a manual write"] = function()
+    local db = resetDB()
+    db[PULL_DAY] = {}
+
+    for _, status in ipairs({ 0, 1, 2, 3 }) do
+        local ok, err = Store:SetStatus(PULL_DAY, "Elsie-Proudmoore", status)
+        assertTrue(ok, "status " .. status .. " is a valid write")
+        assertNil(err)
+        assertEquals(db[PULL_DAY]["Elsie-Proudmoore"], status)
+    end
+end
+
+tests["a manual status write outside the status enum is rejected and changes nothing"] = function()
+    local db = resetDB()
+    db[PULL_DAY] = { ["Elsie-Proudmoore"] = 3 }
+
+    for _, status in ipairs({ 4, -1, 7, 1.5, "3", true }) do
+        local ok, err = Store:SetStatus(PULL_DAY, "Elsie-Proudmoore", status)
+        assertFalse(ok, "a status outside the enum must be rejected: " .. tostring(status))
+        assertEquals(type(err), "string", "a rejected write must explain itself")
+        assertEquals(db[PULL_DAY]["Elsie-Proudmoore"], 3,
+            "the existing record survives a rejected write")
+    end
+end
+
+tests["a manual status write of nil is rejected and does not delete the record"] = function()
+    local db = resetDB()
+    db[PULL_DAY] = { ["Elsie-Proudmoore"] = 3 }
+
+    local ok, err = Store:SetStatus(PULL_DAY, "Elsie-Proudmoore", nil)
+
+    assertFalse(ok, "deleting a record is not an operation the spec defines")
+    assertEquals(type(err), "string", "a rejected write must explain itself")
+    assertEquals(db[PULL_DAY]["Elsie-Proudmoore"], 3,
+        "a nil status must never silently erase the character's record")
+end
+
 tests["the expiry routine deletes a day older than the threshold"] = function()
     local db = resetDB()
     db[NINETY_ONE_DAYS_OLD] = { ["Elsie-Proudmoore"] = 3 }
     db[PULL_DAY] = { ["Elsie-Proudmoore"] = 3 }
 
-    atServerTime(EXPIRY_NOON, function()
-        Store:ExpireOldDays(90)
+    atServerTime(EXPIRY_MIDDAY, function()
+        Store:ExpireOldDays(90, 6)
     end)
 
     assertNil(db[NINETY_ONE_DAYS_OLD],
@@ -436,8 +543,8 @@ tests["the expiry routine retains a day exactly at the threshold age"] = functio
     local db = resetDB()
     db[EXACTLY_90_DAYS_OLD] = { ["Elsie-Proudmoore"] = 3, ["Grimgrace-Proudmoore"] = 0 }
 
-    atServerTime(EXPIRY_NOON, function()
-        Store:ExpireOldDays(90)
+    atServerTime(EXPIRY_MIDDAY, function()
+        Store:ExpireOldDays(90, 6)
     end)
 
     assertTableEquals(db[EXACTLY_90_DAYS_OLD], {
@@ -446,12 +553,36 @@ tests["the expiry routine retains a day exactly at the threshold age"] = functio
     }, "a day exactly at the threshold age is retained intact")
 end
 
+tests["the expiry routine anchors its threshold on the raid day, not the calendar date"] = function()
+    local db = resetDB()
+    db[NINETY_ONE_DAYS_OLD] = { ["Elsie-Proudmoore"] = 3 }
+
+    atServerTime(EXPIRY_BEFORE_ROLLOVER, function()
+        Store:ExpireOldDays(90, 6)
+    end)
+
+    assertNotNil(db[NINETY_ONE_DAYS_OLD],
+        "before the rollover hour the raid day is still the previous date, leaving this day exactly at the threshold")
+end
+
+tests["the expiry rollover hour defaults to 6 when none is supplied"] = function()
+    local db = resetDB()
+    db[NINETY_ONE_DAYS_OLD] = { ["Elsie-Proudmoore"] = 3 }
+
+    atServerTime(EXPIRY_BEFORE_ROLLOVER, function()
+        Store:ExpireOldDays(90)
+    end)
+
+    assertNotNil(db[NINETY_ONE_DAYS_OLD],
+        "under the default rollover hour 03:00 still belongs to the previous raid day, leaving this day exactly at the threshold")
+end
+
 tests["the expiry threshold defaults to 90 days when none is supplied"] = function()
     local db = resetDB()
     db[NINETY_ONE_DAYS_OLD] = { ["Elsie-Proudmoore"] = 3 }
     db[EXACTLY_90_DAYS_OLD] = { ["Grimgrace-Proudmoore"] = 3 }
 
-    atServerTime(EXPIRY_NOON, function()
+    atServerTime(EXPIRY_MIDDAY, function()
         Store:ExpireOldDays()
     end)
 
@@ -463,8 +594,8 @@ tests["the expiry routine tolerates a nil database"] = function()
     PurplexityRaidToolsAttendanceDB = nil
 
     local ok, err = pcall(function()
-        atServerTime(EXPIRY_NOON, function()
-            Store:ExpireOldDays(90)
+        atServerTime(EXPIRY_MIDDAY, function()
+            Store:ExpireOldDays(90, 6)
         end)
     end)
     resetDB()

@@ -36,6 +36,22 @@ local VALID_STATUSES = { [MISSING] = true, [ABSENT] = true, [LATE] = true, [PRES
 
 AttendanceSync.inventory = {}
 
+local listeners = {}
+
+--- Register a callback to be notified when the sync state changes: a pending
+--- replacement appearing or being resolved, a roster replaced outright, or the
+--- inventory moving. Callbacks fire synchronously in registration order with no
+--- payload.
+function AttendanceSync:Listen(callback)
+    table.insert(listeners, callback)
+end
+
+local function NotifyListeners()
+    for i = 1, #listeners do
+        listeners[i]()
+    end
+end
+
 --- A RAID broadcast is delivered back to its sender, so without this an officer
 --- pushing a day is offered their own records. The bare-name compare cannot
 --- tell a same-named character on a connected realm from the local player; that
@@ -228,6 +244,7 @@ local function OnInventoryResponse(data, sender)
         return
     end
     AttendanceSync.inventory[sender] = data.days
+    NotifyListeners()
 end
 
 local function OnPullRequest(data, sender)
@@ -256,8 +273,9 @@ local function OnPullMissing(data, sender)
     end
 
     local held = AttendanceSync.inventory[sender]
-    if held then
+    if held and held[data.day] ~= nil then
         held[data.day] = nil
+        NotifyListeners()
     end
 
     print("|cFF00FF00PurplexityRaidTools:|r " .. sender
@@ -276,6 +294,7 @@ local function PendDayReplacement(data, sender)
         incomingCount = CountRecords(data.records),
         records = data.records,
     }
+    NotifyListeners()
 end
 
 local function OnDayPush(data, sender)
@@ -301,6 +320,7 @@ local function OnRosterPush(data, sender)
 
     if AttendanceSync.confirmBeforeSyncing == false then
         ReplaceRoster(data.entries)
+        NotifyListeners()
         return
     end
 
@@ -310,6 +330,7 @@ local function OnRosterPush(data, sender)
         incomingCount = #data.entries,
         entries = data.entries,
     }
+    NotifyListeners()
 end
 
 local function OnRosterRequest(_, sender)
@@ -330,6 +351,7 @@ end
 function AttendanceSync:RequestInventory()
     wipe(self.inventory)
     PRT.Comms:Send(INVENTORY_REQUEST, {}, "RAID")
+    NotifyListeners()
 end
 
 function AttendanceSync:GetInventory()
@@ -374,11 +396,16 @@ function AttendanceSync:AcceptPendingDay()
 
     EnsureAttendanceDB()[pending.day] = pending.records
     self.pendingDay = nil
+    NotifyListeners()
     return true
 end
 
 function AttendanceSync:DeclinePendingDay()
+    if not self.pendingDay then
+        return
+    end
     self.pendingDay = nil
+    NotifyListeners()
 end
 
 function AttendanceSync:GetPendingRoster()
@@ -393,9 +420,14 @@ function AttendanceSync:AcceptPendingRoster()
 
     ReplaceRoster(pending.entries)
     self.pendingRoster = nil
+    NotifyListeners()
     return true
 end
 
 function AttendanceSync:DeclinePendingRoster()
+    if not self.pendingRoster then
+        return
+    end
     self.pendingRoster = nil
+    NotifyListeners()
 end

@@ -39,4 +39,8 @@ Modules/Attendance/AttendanceStore.lua
 Modules/Attendance/Roster.lua
 Modules/Attendance/AttendanceReport.lua
 Modules/Attendance/AttendanceSync.lua
+Modules/Attendance/AttendanceWiring.lua
+Modules/Attendance/RecordsUI.lua
+Modules/Attendance/AttendanceUI.lua
+Modules/Attendance/RosterUI.lua
 Modules/Profiles.lua

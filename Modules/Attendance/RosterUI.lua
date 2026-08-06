@@ -1,0 +1,682 @@
+-- RosterUI: the Roster sidebar tab. Lists the officer's player entries in the
+-- order they hold in the roster array -- that arrangement is the officer's own,
+-- and the attendance grid presents the same one -- and owns the add/edit modal,
+-- the import picker, the per-character spec controls, and the two sync settings.
+--
+-- Every control addresses an entry by its nickname rather than by holding the
+-- entry table: an incoming roster sync replaces all of them at once, and a
+-- captured table would go on being edited after it left the roster.
+
+local PRT = PurplexityRaidTools
+local RosterUI = {}
+PRT.RosterUI = RosterUI
+
+local HEADER_ROW_HEIGHT = 24
+local CHARACTER_ROW_HEIGHT = 24
+local LIST_HEIGHT = 300
+local ENTRY_SPACING = 6
+
+local NAME_COLUMN = 16
+local MAIN_SPEC_COLUMN = 190
+local OFF_SPEC_COLUMN = 330
+local MAIN_SPEC_WIDTH = 130
+local TAG_HEIGHT = 18
+
+local MODAL_WIDTH = 380
+local MODAL_HEIGHT = 300
+local IMPORT_MODAL_WIDTH = 320
+local IMPORT_ROW_HEIGHT = 22
+
+local ISO_DAY_PATTERN = "^(%d%d%d%d)%-(%d%d)%-(%d%d)$"
+
+local MONTH_NAMES = {
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
+}
+
+local BACKDROP_INFO = {
+    bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+    edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+    tile = true, tileSize = 16, edgeSize = 12,
+    insets = { left = 3, right = 3, top = 3, bottom = 3 },
+}
+
+local RefreshList
+local listContainer
+local entryModal
+local entryModalTarget
+local importModal
+
+local function PrintMessage(message)
+    print("|cFF00FF00PurplexityRaidTools:|r " .. message)
+end
+
+local function PrintError(message)
+    print("|cFFFF0000PurplexityRaidTools:|r " .. message)
+end
+
+local function LongDate(day)
+    local year, month, dayOfMonth = tostring(day):match(ISO_DAY_PATTERN)
+    if not year or not MONTH_NAMES[tonumber(month)] then
+        return tostring(day)
+    end
+    return MONTH_NAMES[tonumber(month)] .. " " .. tonumber(dayOfMonth) .. ", " .. year
+end
+
+local function AttendanceSettings()
+    return PRT:GetSetting("attendance")
+end
+
+local function ClassColoredName(character, classToken)
+    local classColor = classToken and RAID_CLASS_COLORS[classToken]
+    if not classColor then
+        return character
+    end
+    return classColor:WrapTextInColorCode(character)
+end
+
+local function SpecNameLookup(specs)
+    local names = {}
+    for _, spec in ipairs(specs or {}) do
+        names[spec.id] = spec.name
+    end
+    return names
+end
+
+local function HasSpec(specs, specID)
+    for _, existing in ipairs(specs or {}) do
+        if existing == specID then
+            return true
+        end
+    end
+    return false
+end
+
+local function ParseCharacterLines(text)
+    local characters = {}
+    for line in tostring(text):gmatch("[^\r\n]+") do
+        local trimmed = strtrim(line)
+        if trimmed ~= "" then
+            characters[#characters + 1] = trimmed
+        end
+    end
+    return characters
+end
+
+local function RefreshDependentViews()
+    RosterUI:Refresh()
+    if PRT.AttendanceUI then
+        PRT.AttendanceUI:Refresh()
+    end
+end
+
+--- The spec controls run this from inside a dropdown's own selection callback,
+--- where the menu is still closing. Rebuilding the row calls GenerateMenu on
+--- that very dropdown, so the rebuild waits for the next frame instead.
+local function RefreshListAfterMenuCloses()
+    C_Timer.After(0, function()
+        RosterUI:Refresh()
+    end)
+end
+
+--------------------------------------------------------------------------------
+-- Add / edit modal
+--------------------------------------------------------------------------------
+
+local function SubmitEntryModal()
+    local nickname = strtrim(entryModal.nickname:GetText())
+    local characters = ParseCharacterLines(entryModal.characters:GetText())
+
+    local ok, err
+    if entryModalTarget then
+        ok, err = PRT.Roster:UpdateEntry(entryModalTarget, nickname, characters)
+    else
+        ok, err = PRT.Roster:AddEntry(nickname, characters)
+    end
+
+    if not ok then
+        entryModal.errorText:SetText(err or "The roster rejected that entry.")
+        return
+    end
+
+    entryModal:Hide()
+    RefreshDependentViews()
+end
+
+local function EnsureEntryModal()
+    if entryModal then
+        return
+    end
+
+    entryModal = CreateFrame("Frame", "PRT_RosterEntryModal", UIParent, "ButtonFrameTemplate")
+    ButtonFrameTemplate_HidePortrait(entryModal)
+    ButtonFrameTemplate_HideButtonBar(entryModal)
+    entryModal.Inset:Hide()
+    entryModal:SetSize(MODAL_WIDTH, MODAL_HEIGHT)
+    entryModal:SetPoint("CENTER")
+    entryModal:SetFrameStrata("DIALOG")
+    entryModal:SetToplevel(true)
+    entryModal:SetMovable(true)
+    entryModal:SetClampedToScreen(true)
+    entryModal:EnableMouse(true)
+    entryModal:RegisterForDrag("LeftButton")
+    entryModal:SetScript("OnDragStart", entryModal.StartMoving)
+    entryModal:SetScript("OnDragStop", function(self)
+        self:StopMovingOrSizing()
+        self:SetUserPlaced(false)
+    end)
+    entryModal:Hide()
+
+    table.insert(UISpecialFrames, "PRT_RosterEntryModal")
+
+    local nicknameLabel = entryModal:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    nicknameLabel:SetPoint("TOPLEFT", 16, -32)
+    nicknameLabel:SetText("Nickname")
+
+    entryModal.nickname = CreateFrame("EditBox", nil, entryModal, "InputBoxTemplate")
+    entryModal.nickname:SetSize(MODAL_WIDTH - 44, 20)
+    entryModal.nickname:SetPoint("TOPLEFT", 20, -50)
+    entryModal.nickname:SetAutoFocus(false)
+
+    local charactersLabel = entryModal:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    charactersLabel:SetPoint("TOPLEFT", 16, -80)
+    charactersLabel:SetText("Characters (one Name-Realm per line)")
+
+    local scrollFrame = CreateFrame("ScrollFrame", nil, entryModal, "UIPanelScrollFrameTemplate")
+    scrollFrame:SetPoint("TOPLEFT", 16, -98)
+    scrollFrame:SetPoint("BOTTOMRIGHT", -32, 72)
+
+    local textBg = CreateFrame("Frame", nil, entryModal, "BackdropTemplate")
+    textBg:SetPoint("TOPLEFT", scrollFrame, -4, 4)
+    textBg:SetPoint("BOTTOMRIGHT", scrollFrame, 26, -4)
+    textBg:SetBackdrop(BACKDROP_INFO)
+    textBg:SetBackdropColor(0, 0, 0, 0.5)
+    textBg:SetBackdropBorderColor(0.3, 0.3, 0.3, 0.8)
+    textBg:SetFrameLevel(entryModal:GetFrameLevel() + 1)
+    textBg:EnableMouse(false)
+
+    entryModal.characters = CreateFrame("EditBox", nil, scrollFrame)
+    entryModal.characters:SetMultiLine(true)
+    entryModal.characters:SetAutoFocus(false)
+    entryModal.characters:SetFontObject(ChatFontNormal)
+    entryModal.characters:SetWidth(MODAL_WIDTH - 60)
+    entryModal.characters:SetScript("OnEscapePressed", function()
+        entryModal:Hide()
+    end)
+    scrollFrame:SetScrollChild(entryModal.characters)
+
+    entryModal.errorText = entryModal:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    entryModal.errorText:SetPoint("BOTTOMLEFT", 16, 42)
+    entryModal.errorText:SetPoint("RIGHT", -16, 0)
+    entryModal.errorText:SetJustifyH("LEFT")
+    entryModal.errorText:SetTextColor(1, 0.3, 0.3, 1)
+
+    local saveButton = CreateFrame("Button", nil, entryModal, "UIPanelButtonTemplate")
+    saveButton:SetSize(80, 22)
+    saveButton:SetPoint("BOTTOMRIGHT", -16, 12)
+    saveButton:SetText("Save")
+    saveButton:SetScript("OnClick", SubmitEntryModal)
+
+    local cancelButton = CreateFrame("Button", nil, entryModal, "UIPanelButtonTemplate")
+    cancelButton:SetSize(80, 22)
+    cancelButton:SetPoint("RIGHT", saveButton, "LEFT", -6, 0)
+    cancelButton:SetText("Cancel")
+    cancelButton:SetScript("OnClick", function()
+        entryModal:Hide()
+    end)
+end
+
+local function OpenEntryModal(nickname, characters)
+    EnsureEntryModal()
+
+    entryModalTarget = nickname
+    entryModal:SetTitle(nickname and "Edit Player" or "Add Player")
+    entryModal.nickname:SetText(nickname or "")
+    entryModal.characters:SetText(table.concat(characters or {}, "\n"))
+    entryModal.errorText:SetText("")
+    entryModal:Show()
+end
+
+StaticPopupDialogs["PRT_ROSTER_REMOVE_ENTRY"] = {
+    text = "Remove %s from the roster?",
+    button1 = "Remove",
+    button2 = "Cancel",
+    timeout = 0,
+    whileDead = true,
+    hideOnEscape = true,
+    showAlert = true,
+    OnAccept = function(_, nickname)
+        PRT.Roster:RemoveEntry(nickname)
+        RefreshDependentViews()
+    end,
+}
+
+--------------------------------------------------------------------------------
+-- Import picker
+--------------------------------------------------------------------------------
+
+local function ImportFromDay(day)
+    local dayRecord = (PurplexityRaidToolsAttendanceDB or {})[day]
+    if not dayRecord then
+        return
+    end
+
+    local result = PRT.Roster:ImportFromRecord(dayRecord)
+    importModal:Hide()
+    RefreshDependentViews()
+
+    if #result.added == 0 and #result.skipped == 0 then
+        PrintMessage("Every character in " .. LongDate(day) .. " is already on the roster.")
+        return
+    end
+
+    PrintMessage("Imported " .. #result.added .. " character(s) from " .. LongDate(day) .. ".")
+    for _, character in ipairs(result.skipped) do
+        PrintError("Skipped " .. character .. ": that nickname is already taken.")
+    end
+end
+
+local function RefreshImportModal()
+    local db = PurplexityRaidToolsAttendanceDB or {}
+
+    local days = {}
+    for day in pairs(db) do
+        days[#days + 1] = day
+    end
+    table.sort(days, function(a, b)
+        return a > b
+    end)
+
+    for index, day in ipairs(days) do
+        local row = importModal.rows[index]
+        if not row then
+            row = CreateFrame("Button", nil, importModal.scrollChild, "UIPanelButtonTemplate")
+            row:SetHeight(IMPORT_ROW_HEIGHT)
+            row:SetPoint("LEFT", 0, 0)
+            row:SetPoint("RIGHT", 0, 0)
+            importModal.rows[index] = row
+        end
+
+        local count = 0
+        for _ in pairs(db[day]) do
+            count = count + 1
+        end
+
+        row:ClearAllPoints()
+        row:SetPoint("TOPLEFT", 0, -(index - 1) * IMPORT_ROW_HEIGHT)
+        row:SetPoint("RIGHT", importModal.scrollChild, "RIGHT", 0, 0)
+        row:SetText(LongDate(day) .. " (" .. count .. ")")
+        row:SetScript("OnClick", function()
+            ImportFromDay(day)
+        end)
+        row:Show()
+    end
+
+    for index = #days + 1, #importModal.rows do
+        importModal.rows[index]:Hide()
+    end
+
+    importModal.scrollChild:SetHeight(math.max(1, #days * IMPORT_ROW_HEIGHT))
+    if #days == 0 then
+        importModal.emptyText:Show()
+    else
+        importModal.emptyText:Hide()
+    end
+end
+
+local function EnsureImportModal()
+    if importModal then
+        return
+    end
+
+    importModal = CreateFrame("Frame", "PRT_RosterImportModal", UIParent, "ButtonFrameTemplate")
+    ButtonFrameTemplate_HidePortrait(importModal)
+    ButtonFrameTemplate_HideButtonBar(importModal)
+    importModal.Inset:Hide()
+    importModal:SetSize(IMPORT_MODAL_WIDTH, 320)
+    importModal:SetPoint("CENTER")
+    importModal:SetTitle("Import from Record")
+    importModal:SetFrameStrata("DIALOG")
+    importModal:SetToplevel(true)
+    importModal:SetMovable(true)
+    importModal:SetClampedToScreen(true)
+    importModal:EnableMouse(true)
+    importModal:RegisterForDrag("LeftButton")
+    importModal:SetScript("OnDragStart", importModal.StartMoving)
+    importModal:SetScript("OnDragStop", function(self)
+        self:StopMovingOrSizing()
+        self:SetUserPlaced(false)
+    end)
+    importModal:Hide()
+
+    table.insert(UISpecialFrames, "PRT_RosterImportModal")
+
+    local hint = importModal:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    hint:SetPoint("TOPLEFT", 16, -32)
+    hint:SetPoint("RIGHT", -16, 0)
+    hint:SetJustifyH("LEFT")
+    hint:SetText("Adds one entry per character not already on the roster.")
+
+    local scrollFrame = CreateFrame("ScrollFrame", nil, importModal, "UIPanelScrollFrameTemplate")
+    scrollFrame:SetPoint("TOPLEFT", 16, -54)
+    scrollFrame:SetPoint("BOTTOMRIGHT", -32, 16)
+
+    importModal.scrollChild = CreateFrame("Frame", nil, scrollFrame)
+    importModal.scrollChild:SetSize(IMPORT_MODAL_WIDTH - 60, 1)
+    scrollFrame:SetScrollChild(importModal.scrollChild)
+
+    importModal.emptyText = importModal:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    importModal.emptyText:SetPoint("TOPLEFT", scrollFrame, "TOPLEFT", 4, -4)
+    importModal.emptyText:SetText("No attendance records to import from yet.")
+
+    importModal.rows = {}
+end
+
+--------------------------------------------------------------------------------
+-- Entry list
+--------------------------------------------------------------------------------
+
+local function CreateHeaderRow(parent)
+    local header = CreateFrame("Frame", nil, parent)
+    header:SetHeight(HEADER_ROW_HEIGHT)
+
+    header.nickname = header:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    header.nickname:SetPoint("LEFT", NAME_COLUMN, 0)
+    header.nickname:SetJustifyH("LEFT")
+
+    header.remove = CreateFrame("Button", nil, header, "UIPanelButtonTemplate")
+    header.remove:SetSize(70, 20)
+    header.remove:SetPoint("RIGHT", -4, 0)
+    header.remove:SetText("Remove")
+
+    header.edit = CreateFrame("Button", nil, header, "UIPanelButtonTemplate")
+    header.edit:SetSize(60, 20)
+    header.edit:SetPoint("RIGHT", header.remove, "LEFT", -4, 0)
+    header.edit:SetText("Edit")
+
+    return header
+end
+
+local function FillHeaderRow(header, entry)
+    header.nickname:SetText(entry.nickname)
+
+    local nickname = entry.nickname
+    local characters = {}
+    for index, character in ipairs(entry.characters) do
+        characters[index] = character
+    end
+
+    header.edit:SetScript("OnClick", function()
+        OpenEntryModal(nickname, characters)
+    end)
+    header.remove:SetScript("OnClick", function()
+        StaticPopup_Show("PRT_ROSTER_REMOVE_ENTRY", nickname, nil, nickname)
+    end)
+
+    header:Show()
+end
+
+local function CreateCharacterRow(parent)
+    local row = CreateFrame("Frame", nil, parent)
+    row:SetHeight(CHARACTER_ROW_HEIGHT)
+
+    row.name = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    row.name:SetPoint("LEFT", NAME_COLUMN + 12, 0)
+    row.name:SetWidth(MAIN_SPEC_COLUMN - NAME_COLUMN - 20)
+    row.name:SetJustifyH("LEFT")
+    row.name:SetWordWrap(false)
+
+    row.mainSpec = CreateFrame("DropdownButton", nil, row, "WowStyle1DropdownTemplate")
+    row.mainSpec:SetSize(MAIN_SPEC_WIDTH, 20)
+    row.mainSpec:SetPoint("LEFT", MAIN_SPEC_COLUMN, 0)
+    row.mainSpec:SetDefaultText("No main spec")
+    row.mainSpec:SetupMenu(function(_, rootDescription)
+        for _, spec in ipairs(row.specs or {}) do
+            rootDescription:CreateRadio(
+                spec.name,
+                function()
+                    return row.mainSpecID == spec.id
+                end,
+                function()
+                    PRT.Roster:SetMainSpec(row.character, spec.id)
+                    RefreshListAfterMenuCloses()
+                end
+            )
+        end
+    end)
+
+    row.addOffSpec = CreateFrame("DropdownButton", nil, row, "WowStyle1DropdownTemplate")
+    row.addOffSpec:SetSize(70, 20)
+    row.addOffSpec:SetPoint("LEFT", OFF_SPEC_COLUMN, 0)
+    row.addOffSpec:SetDefaultText("+ Off-Spec")
+    row.addOffSpec:SetupMenu(function(_, rootDescription)
+        for _, spec in ipairs(row.specs or {}) do
+            if spec.id ~= row.mainSpecID and not HasSpec(row.offSpecs, spec.id) then
+                rootDescription:CreateButton(spec.name, function()
+                    PRT.Roster:AddOffSpec(row.character, spec.id)
+                    RefreshListAfterMenuCloses()
+                end)
+            end
+        end
+    end)
+
+    row.unknownClass = row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    row.unknownClass:SetPoint("LEFT", OFF_SPEC_COLUMN + 76, 0)
+    row.unknownClass:SetText("Class unknown until seen in a group or the guild")
+
+    row.tags = {}
+
+    return row
+end
+
+local function FillTags(row, specNames)
+    local placed = 0
+    local offset = OFF_SPEC_COLUMN + 76
+
+    for _, specID in ipairs(row.offSpecs or {}) do
+        placed = placed + 1
+        local tag = row.tags[placed]
+        if not tag then
+            tag = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+            tag:SetHeight(TAG_HEIGHT)
+            row.tags[placed] = tag
+        end
+
+        local label = specNames[specID] or tostring(specID)
+        tag:SetText(label)
+        tag:SetWidth(math.max(50, tag:GetFontString():GetStringWidth() + 16))
+        tag:ClearAllPoints()
+        tag:SetPoint("LEFT", offset, 0)
+        tag:SetScript("OnClick", function()
+            PRT.Roster:RemoveOffSpec(row.character, specID)
+            RosterUI:Refresh()
+        end)
+        tag:Show()
+
+        offset = offset + tag:GetWidth() + 4
+    end
+
+    for index = placed + 1, #row.tags do
+        row.tags[index]:Hide()
+    end
+end
+
+local function FillCharacterRow(row, character, record)
+    row.character = character
+    row.mainSpecID = record.mainSpec
+    row.offSpecs = record.offSpecs
+
+    row.name:SetText(ClassColoredName(character, record.class))
+
+    if not record.class then
+        row.specs = nil
+        row.mainSpec:SetEnabled(false)
+        row.addOffSpec:SetEnabled(false)
+        row.mainSpec:GenerateMenu()
+        row.unknownClass:Show()
+        for _, tag in ipairs(row.tags) do
+            tag:Hide()
+        end
+        row:Show()
+        return
+    end
+
+    row.specs = PRT.Roster:GetSpecsForCharacter(character)
+    row.unknownClass:Hide()
+    row.mainSpec:SetEnabled(true)
+    row.addOffSpec:SetEnabled(true)
+
+    row.mainSpec:GenerateMenu()
+
+    FillTags(row, SpecNameLookup(row.specs))
+    row:Show()
+end
+
+--------------------------------------------------------------------------------
+-- Tab
+--------------------------------------------------------------------------------
+
+PRT:RegisterTab("Roster", function(parent)
+    local container = CreateFrame("Frame", nil, parent)
+    container:SetAllPoints()
+    container:Hide()
+    listContainer = container
+
+    local addButton = CreateFrame("Button", nil, container, "UIPanelButtonTemplate")
+    addButton:SetSize(100, 22)
+    addButton:SetPoint("TOPLEFT", 20, -10)
+    addButton:SetText("Add Player")
+    addButton:SetScript("OnClick", function()
+        OpenEntryModal(nil, nil)
+    end)
+
+    local importButton = CreateFrame("Button", nil, container, "UIPanelButtonTemplate")
+    importButton:SetSize(140, 22)
+    importButton:SetPoint("LEFT", addButton, "RIGHT", 6, 0)
+    importButton:SetText("Import from Record")
+    importButton:SetScript("OnClick", function()
+        EnsureImportModal()
+        RefreshImportModal()
+        importModal:Show()
+    end)
+
+    local syncButton = CreateFrame("Button", nil, container, "UIPanelButtonTemplate")
+    syncButton:SetSize(100, 22)
+    syncButton:SetPoint("LEFT", importButton, "RIGHT", 6, 0)
+    syncButton:SetText("Sync Roster")
+    syncButton:SetScript("OnClick", function()
+        if not PRT.AttendanceWiring:CanPushToRaid() then
+            PrintError("Only a raid leader or assistant can sync the roster.")
+            RosterUI:Refresh()
+            return
+        end
+        PRT.AttendanceSync:PushRoster()
+        PrintMessage("Pushed your roster to the raid.")
+    end)
+
+    local scrollFrame = CreateFrame("ScrollFrame", nil, container, "UIPanelScrollFrameTemplate")
+    scrollFrame:SetPoint("TOPLEFT", 20, -40)
+    scrollFrame:SetPoint("RIGHT", container, "RIGHT", -26, 0)
+    scrollFrame:SetHeight(LIST_HEIGHT)
+
+    local scrollChild = CreateFrame("Frame", nil, scrollFrame)
+    scrollChild:SetSize(container:GetWidth() - 60, LIST_HEIGHT)
+    scrollFrame:SetScrollChild(scrollChild)
+
+    local emptyLabel = container:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    emptyLabel:SetPoint("TOPLEFT", scrollFrame, "TOPLEFT", 4, -4)
+    emptyLabel:SetText("No players on the roster. Add one, or import from an attendance record.")
+
+    local settingsTop = -(40 + LIST_HEIGHT + 16)
+
+    local autoSyncCheckbox = PRT.Components.GetCheckbox(
+        container, "Automatically Sync From Leader",
+        function(checked)
+            AttendanceSettings().autoSyncFromLeader = checked and true or false
+            PRT:ApplySettings("attendance")
+        end
+    )
+    autoSyncCheckbox:SetPoint("TOPLEFT", 0, settingsTop)
+
+    local confirmCheckbox = PRT.Components.GetCheckbox(
+        container, "Confirm Before Syncing",
+        function(checked)
+            AttendanceSettings().confirmBeforeSyncing = checked and true or false
+            PRT:ApplySettings("attendance")
+        end
+    )
+    confirmCheckbox:SetPoint("TOPLEFT", 0, settingsTop - 30)
+
+    local headerRows, characterRows = {}, {}
+
+    RefreshList = function()
+        local entries = PRT.Roster:GetEntries()
+        local placedHeaders, placedCharacters, yOffset = 0, 0, 0
+
+        for _, entry in ipairs(entries) do
+            placedHeaders = placedHeaders + 1
+            local header = headerRows[placedHeaders]
+            if not header then
+                header = CreateHeaderRow(scrollChild)
+                headerRows[placedHeaders] = header
+            end
+            header:ClearAllPoints()
+            header:SetPoint("TOPLEFT", 0, -yOffset)
+            header:SetPoint("RIGHT", scrollChild, "RIGHT", 0, 0)
+            FillHeaderRow(header, entry)
+            yOffset = yOffset + HEADER_ROW_HEIGHT
+
+            for _, character in ipairs(entry.characters) do
+                placedCharacters = placedCharacters + 1
+                local row = characterRows[placedCharacters]
+                if not row then
+                    row = CreateCharacterRow(scrollChild)
+                    characterRows[placedCharacters] = row
+                end
+                row:ClearAllPoints()
+                row:SetPoint("TOPLEFT", 0, -yOffset)
+                row:SetPoint("RIGHT", scrollChild, "RIGHT", 0, 0)
+                FillCharacterRow(row, character, entry.characterData[character])
+                yOffset = yOffset + CHARACTER_ROW_HEIGHT
+            end
+
+            yOffset = yOffset + ENTRY_SPACING
+        end
+
+        for index = placedHeaders + 1, #headerRows do
+            headerRows[index]:Hide()
+        end
+        for index = placedCharacters + 1, #characterRows do
+            characterRows[index]:Hide()
+        end
+
+        scrollChild:SetHeight(math.max(LIST_HEIGHT, yOffset))
+
+        if #entries == 0 then
+            emptyLabel:Show()
+        else
+            emptyLabel:Hide()
+        end
+
+        syncButton:SetEnabled(PRT.AttendanceWiring:CanPushToRaid())
+
+        local settings = AttendanceSettings()
+        autoSyncCheckbox:SetValue(settings.autoSyncFromLeader)
+        confirmCheckbox:SetValue(settings.confirmBeforeSyncing)
+    end
+
+    container:SetScript("OnShow", function()
+        RefreshList()
+    end)
+
+    return container
+end)
+
+--- A hidden roster is rebuilt by its own OnShow, so an incoming sync that lands
+--- while the officer is somewhere else costs nothing here.
+function RosterUI:Refresh()
+    if not RefreshList or not listContainer or not listContainer:IsVisible() then
+        return
+    end
+    RefreshList()
+end

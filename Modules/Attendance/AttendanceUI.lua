@@ -1,0 +1,461 @@
+-- AttendanceUI: the Attendance sidebar tab. Owns the two top tabs (Grid and
+-- Records), the audit grid itself, and the per-character status modal a cell
+-- click opens. The Records tab's content belongs to RecordsUI.
+--
+-- The grid is rebuilt only on a data change -- the panel being shown, an edit,
+-- or an accepted sync. AttendanceReport:Build walks the un-rostered characters
+-- once per day, so rebuilding it per frame or per keystroke would be felt.
+--
+-- Statuses are edited per character rather than per player: a displayed status
+-- is the maximum across a player's characters, so a player-level edit could not
+-- lower one without silently choosing which record underneath to rewrite.
+
+local PRT = PurplexityRaidTools
+local AttendanceUI = {}
+PRT.AttendanceUI = AttendanceUI
+
+local ROW_HEIGHT = 20
+local HEADER_HEIGHT = 22
+local SECTION_HEIGHT = 22
+local GRID_HEIGHT = 380
+local NAME_WIDTH = 116
+local PCT_WIDTH = 46
+local CELL_WIDTH = 42
+
+local MODAL_WIDTH = 340
+local MODAL_CHARACTER_HEIGHT = 52
+local MODAL_HEADER_HEIGHT = 66
+local MODAL_FOOTER_HEIGHT = 40
+local STATUS_BUTTON_WIDTH = 72
+
+local MISSING, ABSENT, LATE, PRESENT = 0, 1, 2, 3
+local STATUS_ORDER = { PRESENT, LATE, ABSENT, MISSING }
+
+local STATUS_NAMES = {
+    [MISSING] = "Missing",
+    [ABSENT] = "Absent",
+    [LATE] = "Late",
+    [PRESENT] = "Present",
+}
+
+local STATUS_LETTERS = {
+    [MISSING] = "M",
+    [ABSENT] = "A",
+    [LATE] = "L",
+    [PRESENT] = "P",
+}
+
+local STATUS_COLORS = {
+    [MISSING] = "FFF44336",
+    [ABSENT] = "FF9E9E9E",
+    [LATE] = "FFFF9800",
+    [PRESENT] = "FF4CAF50",
+}
+
+local MUTED_COLOR = "FF808080"
+local HIGH_PERCENTAGE_COLOR = "FF4CAF50"
+local MID_PERCENTAGE_COLOR = "FFFF9800"
+local LOW_PERCENTAGE_COLOR = "FFF44336"
+
+local HIGH_PERCENTAGE, MID_PERCENTAGE = 90, 75
+
+local ISO_DAY_PATTERN = "^(%d%d%d%d)%-(%d%d)%-(%d%d)$"
+
+local RefreshGrid
+local gridPanel
+local editModal
+local editState
+
+local function Colored(color, text)
+    return "|c" .. color .. text .. "|r"
+end
+
+local function ColumnDate(day)
+    local _, month, dayOfMonth = tostring(day):match(ISO_DAY_PATTERN)
+    if not month then
+        return tostring(day)
+    end
+    return tonumber(month) .. "/" .. tonumber(dayOfMonth)
+end
+
+local function PercentageText(percentage)
+    if not percentage then
+        return Colored(MUTED_COLOR, "-")
+    end
+
+    local color = LOW_PERCENTAGE_COLOR
+    if percentage >= HIGH_PERCENTAGE then
+        color = HIGH_PERCENTAGE_COLOR
+    elseif percentage >= MID_PERCENTAGE then
+        color = MID_PERCENTAGE_COLOR
+    end
+    return Colored(color, percentage .. "%")
+end
+
+local function StatusText(status)
+    if status == nil then
+        return Colored(MUTED_COLOR, "-")
+    end
+    return Colored(STATUS_COLORS[status], STATUS_LETTERS[status])
+end
+
+local function ClassColoredName(character)
+    local classToken = PRT.Roster:GetCharacterClass(character)
+    local classColor = classToken and RAID_CLASS_COLORS[classToken]
+    if not classColor then
+        return character
+    end
+    return classColor:WrapTextInColorCode(character)
+end
+
+local function BuildReport()
+    return PRT.AttendanceReport:Build(PurplexityRaidToolsAttendanceDB or {}, PRT.Roster:GetEntries())
+end
+
+--------------------------------------------------------------------------------
+-- Per-character status modal
+--------------------------------------------------------------------------------
+
+local function RenderEditModal()
+    local rows = editModal.characterRows
+
+    for index, character in ipairs(editState.characters) do
+        local row = rows[index]
+        if not row then
+            row = CreateFrame("Frame", nil, editModal)
+            row:SetHeight(MODAL_CHARACTER_HEIGHT)
+
+            row.name = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            row.name:SetPoint("TOPLEFT", 0, 0)
+            row.name:SetJustifyH("LEFT")
+
+            row.buttons = {}
+            for order, status in ipairs(STATUS_ORDER) do
+                local button = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+                button:SetSize(STATUS_BUTTON_WIDTH, 22)
+                button:SetPoint("TOPLEFT", (order - 1) * (STATUS_BUTTON_WIDTH + 4), -18)
+                button:SetText(STATUS_NAMES[status])
+                button:SetScript("OnClick", function()
+                    local ok, err = PRT.AttendanceStore:SetStatus(editState.day, row.character, status)
+                    if not ok then
+                        print("|cFFFF0000PurplexityRaidTools:|r " .. tostring(err))
+                        return
+                    end
+                    AttendanceUI:Refresh()
+                end)
+                row.buttons[order] = button
+            end
+
+            rows[index] = row
+        end
+
+        row.character = character
+        row:ClearAllPoints()
+        row:SetPoint("TOPLEFT", editModal, "TOPLEFT", 16,
+            -(MODAL_HEADER_HEIGHT + (index - 1) * MODAL_CHARACTER_HEIGHT))
+        row:SetPoint("RIGHT", editModal, "RIGHT", -16, 0)
+
+        local dayRecord = (PurplexityRaidToolsAttendanceDB or {})[editState.day] or {}
+        local status = dayRecord[character]
+
+        local label = ClassColoredName(character)
+        if status == nil then
+            label = label .. " " .. Colored(MUTED_COLOR, "(no record)")
+        end
+        row.name:SetText(label)
+
+        for order, button in ipairs(row.buttons) do
+            button:SetEnabled(STATUS_ORDER[order] ~= status)
+        end
+
+        row:Show()
+    end
+
+    for index = #editState.characters + 1, #rows do
+        rows[index]:Hide()
+    end
+
+    editModal.title:SetText(editState.title)
+    editModal.subtitle:SetText(editState.dateLabel)
+    editModal:SetHeight(MODAL_HEADER_HEIGHT
+        + #editState.characters * MODAL_CHARACTER_HEIGHT
+        + MODAL_FOOTER_HEIGHT)
+end
+
+local function EnsureEditModal()
+    if editModal then
+        return
+    end
+
+    editModal = CreateFrame("Frame", "PRT_AttendanceStatusModal", UIParent, "ButtonFrameTemplate")
+    ButtonFrameTemplate_HidePortrait(editModal)
+    ButtonFrameTemplate_HideButtonBar(editModal)
+    editModal.Inset:Hide()
+    editModal:SetTitle("Edit Attendance")
+    editModal:SetWidth(MODAL_WIDTH)
+    editModal:SetPoint("CENTER")
+    editModal:SetFrameStrata("DIALOG")
+    editModal:SetToplevel(true)
+    editModal:SetMovable(true)
+    editModal:SetClampedToScreen(true)
+    editModal:EnableMouse(true)
+    editModal:RegisterForDrag("LeftButton")
+    editModal:SetScript("OnDragStart", editModal.StartMoving)
+    editModal:SetScript("OnDragStop", function(self)
+        self:StopMovingOrSizing()
+        self:SetUserPlaced(false)
+    end)
+    editModal:Hide()
+
+    table.insert(UISpecialFrames, "PRT_AttendanceStatusModal")
+
+    editModal.title = editModal:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    editModal.title:SetPoint("TOPLEFT", 16, -30)
+
+    editModal.subtitle = editModal:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    editModal.subtitle:SetPoint("TOPLEFT", 16, -46)
+
+    editModal.characterRows = {}
+
+    local closeButton = CreateFrame("Button", nil, editModal, "UIPanelButtonTemplate")
+    closeButton:SetSize(80, 22)
+    closeButton:SetPoint("BOTTOM", 0, 12)
+    closeButton:SetText("Close")
+    closeButton:SetScript("OnClick", function()
+        editModal:Hide()
+    end)
+end
+
+--- The modal holds character names and a day key -- never a roster entry table.
+--- An incoming roster sync replaces every entry table wholesale, so a captured
+--- entry would go on being edited after it stopped being the roster.
+local function OpenEditModal(entry, day, dateLabel)
+    EnsureEditModal()
+
+    editState = {
+        day = day,
+        dateLabel = dateLabel,
+        title = entry.name,
+        characters = entry.characters,
+    }
+
+    RenderEditModal()
+    editModal:Show()
+end
+
+--------------------------------------------------------------------------------
+-- Grid
+--------------------------------------------------------------------------------
+
+local function CreateGridRow(parent, cellCount)
+    local row = CreateFrame("Frame", nil, parent)
+    row:SetHeight(ROW_HEIGHT)
+
+    row.name = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    row.name:SetPoint("LEFT", 0, 0)
+    row.name:SetWidth(NAME_WIDTH)
+    row.name:SetJustifyH("LEFT")
+    row.name:SetWordWrap(false)
+
+    row.percentage = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    row.percentage:SetPoint("LEFT", NAME_WIDTH, 0)
+    row.percentage:SetWidth(PCT_WIDTH)
+    row.percentage:SetJustifyH("CENTER")
+
+    row.cells = {}
+    for index = 1, cellCount do
+        local cell = CreateFrame("Button", nil, row)
+        cell:SetSize(CELL_WIDTH, ROW_HEIGHT)
+        cell:SetPoint("LEFT", NAME_WIDTH + PCT_WIDTH + (index - 1) * CELL_WIDTH, 0)
+
+        cell.highlight = cell:CreateTexture(nil, "HIGHLIGHT")
+        cell.highlight:SetAllPoints()
+        cell.highlight:SetColorTexture(0.3, 0.3, 0.3, 0.5)
+
+        cell.text = cell:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        cell.text:SetAllPoints()
+        cell.text:SetJustifyH("CENTER")
+
+        row.cells[index] = cell
+    end
+
+    return row
+end
+
+local function FillGridRow(row, entry, days)
+    row.name:SetText(entry.name)
+    row.percentage:SetText(PercentageText(entry.percentage))
+
+    for index, cell in ipairs(row.cells) do
+        local day = days[index]
+        if day then
+            cell.text:SetText(StatusText(entry.statuses[day]))
+            cell:SetScript("OnClick", function()
+                OpenEditModal(entry, day, ColumnDate(day))
+            end)
+            cell:Show()
+        else
+            cell:Hide()
+        end
+    end
+
+    row:Show()
+end
+
+PRT:RegisterTab("Attendance", function(parent)
+    local function SetupGrid(panel)
+        gridPanel = panel
+
+        local gridRows = {}
+        local visibleDayCount = math.max(1,
+            math.floor((panel:GetWidth() - 46 - NAME_WIDTH - PCT_WIDTH) / CELL_WIDTH))
+
+        local header = CreateFrame("Frame", nil, panel)
+        header:SetHeight(HEADER_HEIGHT)
+        header:SetPoint("TOPLEFT", 20, -10)
+        header:SetPoint("RIGHT", panel, "RIGHT", -26, 0)
+
+        local nameHeading = header:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        nameHeading:SetPoint("LEFT", 0, 0)
+        nameHeading:SetText("Player")
+
+        local pctHeading = header:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        pctHeading:SetPoint("LEFT", NAME_WIDTH, 0)
+        pctHeading:SetWidth(PCT_WIDTH)
+        pctHeading:SetJustifyH("CENTER")
+        pctHeading:SetText("PCT")
+
+        local dayHeadings = {}
+        for index = 1, visibleDayCount do
+            local heading = header:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            heading:SetPoint("LEFT", NAME_WIDTH + PCT_WIDTH + (index - 1) * CELL_WIDTH, 0)
+            heading:SetWidth(CELL_WIDTH)
+            heading:SetJustifyH("CENTER")
+            dayHeadings[index] = heading
+        end
+
+        local scrollFrame = CreateFrame("ScrollFrame", nil, panel, "UIPanelScrollFrameTemplate")
+        scrollFrame:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -4)
+        scrollFrame:SetPoint("RIGHT", panel, "RIGHT", -26, 0)
+        scrollFrame:SetHeight(GRID_HEIGHT)
+
+        local scrollChild = CreateFrame("Frame", nil, scrollFrame)
+        scrollChild:SetSize(panel:GetWidth() - 60, GRID_HEIGHT)
+        scrollFrame:SetScrollChild(scrollChild)
+
+        local sectionLabel = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+        sectionLabel:SetJustifyH("LEFT")
+        sectionLabel:SetText("Not on roster")
+        sectionLabel:Hide()
+
+        local emptyLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+        emptyLabel:SetPoint("TOPLEFT", scrollFrame, "TOPLEFT", 4, -4)
+        emptyLabel:SetText("No attendance records yet. A pull countdown creates the first one.")
+
+        local truncationNote = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+        truncationNote:SetPoint("TOPLEFT", scrollFrame, "BOTTOMLEFT", 4, -8)
+        truncationNote:Hide()
+
+        RefreshGrid = function()
+            local report = BuildReport()
+            local days = {}
+            for index = 1, math.min(visibleDayCount, #report.days) do
+                days[index] = report.days[index]
+            end
+
+            for index, heading in ipairs(dayHeadings) do
+                if days[index] then
+                    heading:SetText(ColumnDate(days[index]))
+                    heading:Show()
+                else
+                    heading:Hide()
+                end
+            end
+
+            local placed, yOffset = 0, 0
+            local function PlaceRow(entry)
+                placed = placed + 1
+                local row = gridRows[placed]
+                if not row then
+                    row = CreateGridRow(scrollChild, visibleDayCount)
+                    gridRows[placed] = row
+                end
+                row:ClearAllPoints()
+                row:SetPoint("TOPLEFT", 0, -yOffset)
+                row:SetPoint("RIGHT", scrollChild, "RIGHT", 0, 0)
+                FillGridRow(row, entry, days)
+                yOffset = yOffset + ROW_HEIGHT
+            end
+
+            for _, entry in ipairs(report.players) do
+                PlaceRow(entry)
+            end
+
+            if #report.unrostered > 0 then
+                sectionLabel:ClearAllPoints()
+                sectionLabel:SetPoint("TOPLEFT", 0, -yOffset - 4)
+                sectionLabel:Show()
+                yOffset = yOffset + SECTION_HEIGHT
+
+                for _, entry in ipairs(report.unrostered) do
+                    PlaceRow(entry)
+                end
+            else
+                sectionLabel:Hide()
+            end
+
+            for index = placed + 1, #gridRows do
+                gridRows[index]:Hide()
+            end
+
+            scrollChild:SetHeight(math.max(GRID_HEIGHT, yOffset))
+
+            if placed == 0 then
+                emptyLabel:Show()
+            else
+                emptyLabel:Hide()
+            end
+
+            if #report.days > visibleDayCount then
+                truncationNote:SetText("Showing the " .. visibleDayCount .. " most recent of "
+                    .. #report.days .. " recorded days.")
+                truncationNote:Show()
+            else
+                truncationNote:Hide()
+            end
+        end
+
+        panel:SetScript("OnShow", function()
+            RefreshGrid()
+        end)
+    end
+
+    local function SetupRecords(panel)
+        PRT.RecordsUI:Build(panel)
+    end
+
+    return PRT.Components.GetSubTabGroup(parent, {
+        { name = "Grid", setup = SetupGrid },
+        { name = "Records", setup = SetupRecords },
+    })
+end)
+
+--- A hidden grid is rebuilt by its own OnShow, and Build's un-rostered walk is
+--- the costly one, so it is never rebuilt out of sight. The modal is a separate
+--- top-level frame and answers to its own visibility.
+function AttendanceUI:Refresh()
+    if RefreshGrid and gridPanel and gridPanel:IsVisible() then
+        RefreshGrid()
+    end
+
+    if not editModal or not editModal:IsShown() then
+        return
+    end
+
+    local db = PurplexityRaidToolsAttendanceDB or {}
+    if not db[editState.day] then
+        editModal:Hide()
+        return
+    end
+    RenderEditModal()
+end

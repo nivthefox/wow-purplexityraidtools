@@ -118,6 +118,45 @@ local function ParseTimeInput(text)
     return tonumber(text)
 end
 
+-- GroupInspect stores a placeholder without a realm until both the unit name and
+-- the local realm resolve (Modules/GroupInspect.lua PlaceholderName); a
+-- placeholder identifies nobody, so it must never answer to a tag.
+local function ResolvedBareName(name)
+    if not name or not name:match("^[^%-]+%-.+$") then
+        return nil
+    end
+    return Ambiguate(name, "short"):lower()
+end
+
+-- Ordering by full name and then GUID is a total order, so a bare name shared by
+-- two members resolves to the same one however pairs happens to hand them over.
+local function OutranksBest(name, guid, bestName, bestGuid)
+    if not bestName then
+        return true
+    end
+    if name ~= bestName then
+        return name < bestName
+    end
+    return guid < bestGuid
+end
+
+function NotesEditor.FindMemberByTag(members, tag)
+    if not members or not tag or tag == "" then
+        return nil
+    end
+
+    local lowerTag = tag:lower()
+    local bestGuid, bestMember
+    for guid, member in pairs(members) do
+        if ResolvedBareName(member.name) == lowerTag
+                and OutranksBest(member.name, guid, bestMember and bestMember.name, bestGuid) then
+            bestGuid, bestMember = guid, member
+        end
+    end
+
+    return bestGuid, bestMember
+end
+
 local function ClassColorForTag(tag)
     if not tag then
         return 0.8, 0.8, 0.8
@@ -137,14 +176,12 @@ local function ClassColorForTag(tag)
         return 0.77, 0.12, 0.23
     end
 
-    if PRT.GroupInspect and PRT.GroupInspect.members then
-        for _, member in pairs(PRT.GroupInspect.members) do
-            if member.name and Ambiguate(member.name, "short"):lower() == lowerTag then
-                local color = RAID_CLASS_COLORS and RAID_CLASS_COLORS[member.class]
-                if color then
-                    return color.r, color.g, color.b
-                end
-            end
+    local _, member = NotesEditor.FindMemberByTag(
+        PRT.GroupInspect and PRT.GroupInspect.members, tag)
+    if member then
+        local color = RAID_CLASS_COLORS and RAID_CLASS_COLORS[member.class]
+        if color then
+            return color.r, color.g, color.b
         end
     end
 
@@ -178,16 +215,9 @@ local function IsClassTag(tag)
 end
 
 local function FindMemberByName(name)
-    if not name or not PRT.GroupInspect or not PRT.GroupInspect.members then
-        return nil
-    end
-    local lowerName = name:lower()
-    for _, member in pairs(PRT.GroupInspect.members) do
-        if member.name and Ambiguate(member.name, "short"):lower() == lowerName then
-            return member
-        end
-    end
-    return nil
+    local _, member = NotesEditor.FindMemberByTag(
+        PRT.GroupInspect and PRT.GroupInspect.members, name)
+    return member
 end
 
 local function CollectAbilitiesFromSpec(specData)

@@ -2,9 +2,10 @@
 -- Addon version detection in Modules/GroupInspect.lua
 -- (docs/spec/2026-08-04-addon-detection.html): EncodeVersion, the versionQuery
 -- and versionResponse handshake that rides along with each inspect, and the
--- addonVersion field on member records. The inspect loop runs on file-local
--- C_Timer tickers, so this suite captures the ticker callbacks (1s drains the
--- inspect queues, 60s refills the sweep) and fires them by hand.
+-- addonVersion field on member records. Also the member-name contract required
+-- by docs/spec/2026-08-05-attendance-tracking.html. The inspect loop runs on
+-- file-local C_Timer tickers, so this suite captures the ticker callbacks (1s
+-- drains the inspect queues, 60s refills the sweep) and fires them by hand.
 
 local tests = {}
 
@@ -37,12 +38,23 @@ GroupInspect:Initialize()
 local LOCAL_VERSION_STRING = "3.7.2-beta-1"
 local LOCAL_ENCODED_VERSION = 3007002
 local SPEC_ID = 71
+local LOCAL_REALM = "Illidan"
+local UNKNOWN_UNIT_NAME = "Unknown"
 
 local UNITS = {
-    raid1 = { guid = "GUID-NIV", name = "Niv", fullName = "Niv", isPlayer = true },
-    raid2 = { guid = "GUID-BOB", name = "Bob", fullName = "Bob" },
-    raid3 = { guid = "GUID-ZED", name = "Zed", fullName = "Zed-Area52" },
+    raid1 = { guid = "GUID-NIV", name = "Niv", isPlayer = true },
+    raid2 = { guid = "GUID-BOB", name = "Bob" },
+    raid3 = { guid = "GUID-ZED", name = "Zed", realm = "Area52" },
+    raid4 = { guid = "GUID-MAE", name = "Mae", offline = true },
+    raid5 = { guid = "GUID-TEK", name = "Tek", realm = "" },
 }
+
+local function unitNameWithServer(unit)
+    if not unit.realm or unit.realm == "" then
+        return unit.name
+    end
+    return unit.name .. "-" .. unit.realm
+end
 
 local SENDER_GUIDS = {
     ["Bob-Illidan"] = "GUID-BOB",
@@ -54,6 +66,9 @@ local sim
 local function newSim()
     return {
         units = {},
+        unitsAwaitingNameData = {},
+        unitsAwaitingGuid = {},
+        localRealm = LOCAL_REALM,
         scheduledCallbacks = {},
         inspectedUnits = {},
         sentMessages = {},
@@ -99,11 +114,18 @@ local function countMembers()
     return count
 end
 
+local function nameDataUnavailable(unitToken)
+    return sim.unitsAwaitingNameData[unitToken] == true
+end
+
 local function makeStubs()
     return {
         UnitGUID = function(unitOrSender)
             local unit = UNITS[unitOrSender]
             if unit then
+                if sim.unitsAwaitingGuid[unitOrSender] then
+                    return nil
+                end
                 return unit.guid
             end
             return SENDER_GUIDS[unitOrSender]
@@ -113,22 +135,28 @@ local function makeStubs()
             if not unit then
                 return unitToken
             end
-            return unit.name
+            if nameDataUnavailable(unitToken) then
+                return UNKNOWN_UNIT_NAME, nil
+            end
+            return unit.name, unit.realm
         end,
+        GetNormalizedRealmName = function()
+            return sim.localRealm
+        end,
+        UNKNOWNOBJECT = UNKNOWN_UNIT_NAME,
         UnitClass = function()
             return "Warrior", "WARRIOR"
         end,
-        -- Real WoW semantics: without showServerName a cross-realm player's name
-        -- comes back bare ("Zed"), which is not a valid whisper target. The stub
-        -- must observe the flag, or the cross-realm target assertion passes
-        -- against an implementation that is broken in game.
         GetUnitName = function(unitToken, showServerName)
             local unit = UNITS[unitToken]
             if not unit then
                 return unitToken
             end
+            if nameDataUnavailable(unitToken) then
+                return UNKNOWN_UNIT_NAME
+            end
             if showServerName then
-                return unit.fullName
+                return unitNameWithServer(unit)
             end
             return unit.name
         end,
@@ -141,6 +169,13 @@ local function makeStubs()
                 return false
             end
             return unit.isPlayer == true
+        end,
+        UnitIsConnected = function(unitToken)
+            local unit = UNITS[unitToken]
+            if not unit then
+                return false
+            end
+            return not unit.offline
         end,
         UnitExists = function(unitToken)
             for i = 1, #sim.units do
@@ -249,6 +284,23 @@ local function encode(msgType, data)
     return Comms:Encode({ type = msgType, data = data })
 end
 
+local function addMemberWhileNameUnresolved()
+    sim.unitsAwaitingNameData["raid2"] = true
+    sim.localRealm = nil
+    assertEquals(UnitName("raid2"), UNKNOWNOBJECT,
+        "the fixture must actually present this member's name as unresolved")
+    assertNil(GetNormalizedRealmName(),
+        "the fixture must actually present the local realm as unresolved")
+
+    sim.units = { "raid1", "raid2" }
+    GroupInspect:ScanRoster()
+end
+
+local function resolveNameData()
+    sim.unitsAwaitingNameData["raid2"] = nil
+    sim.localRealm = LOCAL_REALM
+end
+
 tests["EncodeVersion: 1.0.0 encodes to 1000000"] = function()
     assertEquals(GroupInspect.EncodeVersion("1.0.0"), 1000000)
 end
@@ -282,6 +334,115 @@ tests["EncodeVersion: encoded versions sort in version order"] = function()
         "minor bump must outrank a higher patch")
     assertTrue(GroupInspect.EncodeVersion("2.0.0") > GroupInspect.EncodeVersion("1.9.9"),
         "major bump must outrank higher minor and patch")
+end
+
+tests["a roster scan stores every member's name as a full Name-Realm"] = function()
+    runSim(function()
+        sim.units = { "raid1", "raid2", "raid3" }
+        GroupInspect:ScanRoster()
+
+        assertEquals(GroupInspect.members["GUID-NIV"].name, "Niv-Illidan",
+            "the local player's name arrives bare and must gain the local realm")
+        assertEquals(GroupInspect.members["GUID-BOB"].name, "Bob-Illidan",
+            "a same-realm member's name arrives bare and must gain the local realm")
+        assertEquals(GroupInspect.members["GUID-ZED"].name, "Zed-Area52",
+            "a cross-realm member must keep their own realm, not be given the local one")
+    end)
+end
+
+tests["an offline member is stored and retained exactly like an online one"] = function()
+    runSim(function()
+        sim.units = { "raid1", "raid4" }
+        assertFalse(UnitIsConnected("raid4"),
+            "the fixture must actually present this member as disconnected")
+
+        GroupInspect:ScanRoster()
+
+        local record = GroupInspect.members["GUID-MAE"]
+        assertNotNil(record, "a disconnected member must still get a member record")
+        assertEquals(record.name, "Mae-Illidan",
+            "a disconnected member's name must be stored as a full Name-Realm")
+        assertEquals(record.class, "WARRIOR",
+            "a disconnected member must get the same record fields as a connected one")
+
+        GroupInspect:ScanRoster()
+        assertNotNil(GroupInspect.members["GUID-MAE"],
+            "a rescan must not prune a member who is offline but still in the group")
+        assertEquals(GroupInspect.members["GUID-MAE"].name, "Mae-Illidan",
+            "a rescan must not degrade a retained member's stored name")
+    end)
+end
+
+tests["a same-realm member whose realm resolves to an empty string still gets the local realm"] = function()
+    runSim(function()
+        sim.units = { "raid1", "raid5" }
+        local _, realm = UnitName("raid5")
+        assertEquals(realm, "", "the fixture must actually return an empty realm for this member")
+
+        GroupInspect:ScanRoster()
+
+        assertEquals(GroupInspect.members["GUID-TEK"].name, "Tek-Illidan",
+            "an empty realm means same realm, not a realm named ''")
+    end)
+end
+
+tests["a name unresolved at add time is repaired by the retry timer, with no further scan"] = function()
+    runSim(function()
+        addMemberWhileNameUnresolved()
+        resolveNameData()
+
+        flushTimers()
+
+        assertEquals(GroupInspect.members["GUID-BOB"].name, "Bob-Illidan",
+            "the retry scheduled at add time must re-resolve the name; no further roster event may come")
+    end)
+end
+
+tests["a name unresolved at add time is repaired by a later scan, with no retry timer"] = function()
+    runSim(function()
+        addMemberWhileNameUnresolved()
+        resolveNameData()
+
+        GroupInspect:ScanRoster()
+
+        assertEquals(GroupInspect.members["GUID-BOB"].name, "Bob-Illidan",
+            "a later scan must repair the name as a backstop, even if no retry timer fires")
+    end)
+end
+
+tests["an unresolved name is still stored as a non-nil string"] = function()
+    runSim(function()
+        addMemberWhileNameUnresolved()
+
+        local unresolved = GroupInspect.members["GUID-BOB"]
+        assertNotNil(unresolved, "a member whose name has not loaded yet must still be tracked")
+        assertEquals(type(unresolved.name), "string",
+            "a nil name silently drops the player from every consumer that table.inserts it")
+        assertTrue(#unresolved.name > 0, "an empty name drops them from display just as quietly")
+
+        local localPlayer = GroupInspect.members["GUID-NIV"]
+        assertEquals(type(localPlayer.name), "string",
+            "an unresolvable local realm must not nil out the local player's own name")
+        assertTrue(#localPlayer.name > 0, "the local player must not be left with an empty name")
+    end)
+end
+
+tests["a unit whose GUID has not resolved is skipped and picked up by a later scan"] = function()
+    runSim(function()
+        sim.unitsAwaitingGuid["raid2"] = true
+        sim.units = { "raid1", "raid2" }
+        assertNil(UnitGUID("raid2"), "the fixture must actually present this unit without a GUID")
+
+        GroupInspect:ScanRoster()
+        assertNil(GroupInspect.members["GUID-BOB"],
+            "a unit with no GUID cannot be keyed into the members table")
+
+        sim.unitsAwaitingGuid["raid2"] = nil
+        GroupInspect:ScanRoster()
+
+        assertEquals(GroupInspect.members["GUID-BOB"].name, "Bob-Illidan",
+            "the member must be added with a full name once their GUID resolves")
+    end)
 end
 
 tests["roster scan writes the local player's version directly and sends no comms"] = function()

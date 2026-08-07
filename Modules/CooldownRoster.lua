@@ -474,7 +474,7 @@ local function OnEvent(_, event)
     end
 end
 
-PRT:RegisterTab("Cooldown Roster", function(parent)
+function CooldownRoster.SetupConfig(parent)
     local function GetSettings()
         return PRT:GetSetting("cooldownRoster")
     end
@@ -497,109 +497,100 @@ PRT:RegisterTab("Cooldown Roster", function(parent)
 
     local ROW_HEIGHT = 24
 
-    return PRT.Components.GetSubTabGroup(parent, {
-        {
-            name = "General",
-            setup = function(panel)
-                local scrollFrame = CreateFrame("ScrollFrame", nil, panel, "UIPanelScrollFrameTemplate")
-                scrollFrame:SetPoint("TOPLEFT", 0, 0)
-                scrollFrame:SetPoint("BOTTOMRIGHT", -26, 0)
+    local scrollFrame = CreateFrame("ScrollFrame", nil, parent, "UIPanelScrollFrameTemplate")
+    scrollFrame:SetPoint("TOPLEFT", 0, 0)
+    scrollFrame:SetPoint("BOTTOMRIGHT", -26, 0)
 
-                local scrollChild = CreateFrame("Frame", nil, scrollFrame)
-                scrollChild:SetWidth(panel:GetWidth() - 40)
-                scrollChild:SetHeight(600)
-                scrollFrame:SetScrollChild(scrollChild)
+    local scrollChild = CreateFrame("Frame", nil, scrollFrame)
+    scrollChild:SetWidth(parent:GetWidth() - 40)
+    scrollChild:SetHeight(600)
+    scrollFrame:SetScrollChild(scrollChild)
 
-                local yOffset = 0
+    local yOffset = 0
 
-                local generalHeader = PRT.Components.GetHeader(scrollChild, "General")
-                generalHeader:SetPoint("TOPLEFT", 0, yOffset)
-                yOffset = yOffset - 28
+    local enabledCheckbox = PRT.Components.GetCheckbox(scrollChild, "Enabled", function(value)
+        GetSettings().enabled = value
+        PRT:ApplySettings("cooldownRoster")
+    end)
+    enabledCheckbox:SetPoint("TOPLEFT", 0, yOffset)
+    enabledCheckbox:SetValue(GetSettings().enabled)
+    yOffset = yOffset - ROW_HEIGHT
 
-                local enabledCheckbox = PRT.Components.GetCheckbox(scrollChild, "Enabled", function(value)
-                    GetSettings().enabled = value
-                    PRT:ApplySettings("cooldownRoster")
-                end)
-                enabledCheckbox:SetPoint("TOPLEFT", 0, yOffset)
-                enabledCheckbox:SetValue(GetSettings().enabled)
-                yOffset = yOffset - ROW_HEIGHT
+    local lockCheckbox = PRT.Components.GetCheckbox(scrollChild, "Locked", function(value)
+        GetSettings().lockFrames = value
+        CooldownRoster:UpdateDragging()
+    end)
+    lockCheckbox:SetPoint("TOPLEFT", 0, yOffset)
+    lockCheckbox:SetValue(GetSettings().lockFrames)
+    yOffset = yOffset - ROW_HEIGHT
 
-                local lockCheckbox = PRT.Components.GetCheckbox(scrollChild, "Locked", function(value)
-                    GetSettings().lockFrames = value
-                    CooldownRoster:UpdateDragging()
-                end)
-                lockCheckbox:SetPoint("TOPLEFT", 0, yOffset)
-                lockCheckbox:SetValue(GetSettings().lockFrames)
-                yOffset = yOffset - ROW_HEIGHT
+    yOffset = yOffset - 10
+    local catHeader = PRT.Components.GetHeader(scrollChild, "Categories")
+    catHeader:SetPoint("TOPLEFT", 0, yOffset)
+    yOffset = yOffset - 28
 
-                yOffset = yOffset - 10
-                local catHeader = PRT.Components.GetHeader(scrollChild, "Categories")
-                catHeader:SetPoint("TOPLEFT", 0, yOffset)
-                yOffset = yOffset - 28
+    local categoryCheckboxes = {}
 
-                local categoryCheckboxes = {}
+    for _, key in ipairs(OrderedCategoryKeys()) do
+        local checkbox = PRT.Components.GetCheckbox(scrollChild, CATEGORY_INFO[key].label, function(value)
+            local s = GetSettings()
+            if not s.categories then s.categories = {} end
+            s.categories[key] = value
+            PRT:ApplySettings("cooldownRoster")
+        end)
+        checkbox:SetPoint("TOPLEFT", 0, yOffset)
+        checkbox:SetValue(GetSettings().categories[key])
+        table.insert(categoryCheckboxes, { widget = checkbox, key = key })
+        yOffset = yOffset - ROW_HEIGHT
+    end
 
-                for _, key in ipairs(OrderedCategoryKeys()) do
-                    local checkbox = PRT.Components.GetCheckbox(scrollChild, CATEGORY_INFO[key].label, function(value)
-                        local s = GetSettings()
-                        if not s.categories then s.categories = {} end
-                        s.categories[key] = value
-                        PRT:ApplySettings("cooldownRoster")
-                    end)
-                    checkbox:SetPoint("TOPLEFT", 0, yOffset)
-                    checkbox:SetValue(GetSettings().categories[key])
-                    table.insert(categoryCheckboxes, { widget = checkbox, key = key })
-                    yOffset = yOffset - ROW_HEIGHT
-                end
+    yOffset = yOffset - 10
+    local contentHeader = PRT.Components.GetHeader(scrollChild, "Show In")
+    contentHeader:SetPoint("TOPLEFT", 0, yOffset)
+    yOffset = yOffset - 28
 
-                yOffset = yOffset - 10
-                local contentHeader = PRT.Components.GetHeader(scrollChild, "Show In")
-                contentHeader:SetPoint("TOPLEFT", 0, yOffset)
-                yOffset = yOffset - 28
+    local contentCheckboxes = {
+        { label = "Open World",        path = {"contentTypes", "openWorld"} },
+        { label = "Dungeon (Normal)",  path = {"contentTypes", "dungeon", "normal"} },
+        { label = "Dungeon (Heroic)",  path = {"contentTypes", "dungeon", "heroic"} },
+        { label = "Dungeon (Mythic)",  path = {"contentTypes", "dungeon", "mythic"} },
+        { label = "Dungeon (Mythic+)", path = {"contentTypes", "dungeon", "mythicPlus"} },
+        { label = "Raid (LFR)",        path = {"contentTypes", "raid", "lfr"} },
+        { label = "Raid (Normal)",     path = {"contentTypes", "raid", "normal"} },
+        { label = "Raid (Heroic)",     path = {"contentTypes", "raid", "heroic"} },
+        { label = "Raid (Mythic)",     path = {"contentTypes", "raid", "mythic"} },
+        { label = "Scenario (Normal)", path = {"contentTypes", "scenario", "normal"} },
+        { label = "Scenario (Heroic)", path = {"contentTypes", "scenario", "heroic"} },
+    }
 
-                local contentCheckboxes = {
-                    { label = "Open World",        path = {"contentTypes", "openWorld"} },
-                    { label = "Dungeon (Normal)",  path = {"contentTypes", "dungeon", "normal"} },
-                    { label = "Dungeon (Heroic)",  path = {"contentTypes", "dungeon", "heroic"} },
-                    { label = "Dungeon (Mythic)",  path = {"contentTypes", "dungeon", "mythic"} },
-                    { label = "Dungeon (Mythic+)", path = {"contentTypes", "dungeon", "mythicPlus"} },
-                    { label = "Raid (LFR)",        path = {"contentTypes", "raid", "lfr"} },
-                    { label = "Raid (Normal)",     path = {"contentTypes", "raid", "normal"} },
-                    { label = "Raid (Heroic)",     path = {"contentTypes", "raid", "heroic"} },
-                    { label = "Raid (Mythic)",     path = {"contentTypes", "raid", "mythic"} },
-                    { label = "Scenario (Normal)", path = {"contentTypes", "scenario", "normal"} },
-                    { label = "Scenario (Heroic)", path = {"contentTypes", "scenario", "heroic"} },
-                }
+    for i, info in ipairs(contentCheckboxes) do
+        local checkbox = PRT.Components.GetCheckbox(scrollChild, info.label, function(value)
+            SetContentValue(GetSettings(), info.path, value)
+            PRT:ApplySettings("cooldownRoster")
+        end)
+        checkbox:SetPoint("TOPLEFT", 0, yOffset)
+        contentCheckboxes[i].widget = checkbox
+        checkbox:SetValue(GetContentValue(GetSettings(), info.path))
 
-                for i, info in ipairs(contentCheckboxes) do
-                    local checkbox = PRT.Components.GetCheckbox(scrollChild, info.label, function(value)
-                        SetContentValue(GetSettings(), info.path, value)
-                        PRT:ApplySettings("cooldownRoster")
-                    end)
-                    checkbox:SetPoint("TOPLEFT", 0, yOffset)
-                    contentCheckboxes[i].widget = checkbox
-                    checkbox:SetValue(GetContentValue(GetSettings(), info.path))
+        yOffset = yOffset - ROW_HEIGHT
+    end
 
-                    yOffset = yOffset - ROW_HEIGHT
-                end
+    scrollChild:GetParent():GetParent():SetScript("OnShow", function()
+        local settings = GetSettings()
+        enabledCheckbox:SetValue(settings.enabled)
+        lockCheckbox:SetValue(settings.lockFrames)
 
-                panel:SetScript("OnShow", function()
-                    local settings = GetSettings()
-                    enabledCheckbox:SetValue(settings.enabled)
-                    lockCheckbox:SetValue(settings.lockFrames)
+        for _, cat in ipairs(categoryCheckboxes) do
+            cat.widget:SetValue(settings.categories[cat.key])
+        end
 
-                    for _, cat in ipairs(categoryCheckboxes) do
-                        cat.widget:SetValue(settings.categories[cat.key])
-                    end
+        for _, info in ipairs(contentCheckboxes) do
+            info.widget:SetValue(GetContentValue(settings, info.path))
+        end
+    end)
 
-                    for _, info in ipairs(contentCheckboxes) do
-                        info.widget:SetValue(GetContentValue(settings, info.path))
-                    end
-                end)
-            end,
-        },
-    })
-end)
+    return scrollFrame
+end
 
 PRT:RegisterApplyCallback("cooldownRoster", function()
     CooldownRoster:UpdateVisibility()

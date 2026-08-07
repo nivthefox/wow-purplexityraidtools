@@ -299,7 +299,7 @@ function BattleResCounter:OnDisable()
     NotifyCooldownRoster()
 end
 
-PRT:RegisterTab("Battle Res", function(parent)
+function BattleResCounter.SetupConfig(parent)
     local function GetSettings()
         return PRT:GetSetting("battleResCounter")
     end
@@ -316,10 +316,6 @@ PRT:RegisterTab("Battle Res", function(parent)
     scrollFrame:SetScrollChild(scrollChild)
 
     local yOffset = 0
-
-    local widgetHeader = PRT.Components.GetHeader(scrollChild, "Standalone Widget")
-    widgetHeader:SetPoint("TOPLEFT", 0, yOffset)
-    yOffset = yOffset - 28
 
     local widgetEnabledCheckbox = PRT.Components.GetCheckbox(scrollChild, "Enabled", function(value)
         GetSettings().widgetEnabled = value
@@ -353,12 +349,7 @@ PRT:RegisterTab("Battle Res", function(parent)
     overlayCheckbox:SetValue(GetSettings().zeroChargeOverlay)
     yOffset = yOffset - ROW_HEIGHT
 
-    yOffset = yOffset - 10
-    local rosterHeader = PRT.Components.GetHeader(scrollChild, "Cooldown Roster Row")
-    rosterHeader:SetPoint("TOPLEFT", 0, yOffset)
-    yOffset = yOffset - 28
-
-    local rosterEnabledCheckbox = PRT.Components.GetCheckbox(scrollChild, "Enabled", function(value)
+    local rosterEnabledCheckbox = PRT.Components.GetCheckbox(scrollChild, "Show in Cooldowns", function(value)
         GetSettings().rosterRowEnabled = value
         PRT:ApplySettings("battleResCounter")
     end)
@@ -376,7 +367,7 @@ PRT:RegisterTab("Battle Res", function(parent)
     end)
 
     return scrollFrame
-end)
+end
 
 PRT:RegisterApplyCallback("battleResCounter", function()
     UpdateWidget()

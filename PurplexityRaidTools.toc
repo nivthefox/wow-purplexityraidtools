@@ -26,6 +26,7 @@ Modules/AutoInvite.lua
 Modules/BattleResCounter.lua
 Modules/CooldownRoster.lua
 Modules/CombatTimer.lua
+Modules/CombatToolsConfig.lua
 Modules/Notes/NotesParser.lua
 Modules/Notes/NotesSerializer.lua
 Modules/Notes/NotesMerge.lua

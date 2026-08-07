@@ -102,6 +102,9 @@ PRT.defaults.combatTimer = {
     mode = "encounter",
     fontFace = "Friz Quadrata TT",
     fontSize = 16,
+    fontColor = { r = 1, g = 1, b = 1 },
+    bgColor = { r = 0, g = 0, b = 0, a = 0.5 },
+    frameStrata = "MEDIUM",
     lockFrames = true,
     widgetPosition = nil,
 }
@@ -156,6 +159,28 @@ local function UpdateWidgetFont()
     local size = settings and settings.fontSize or 16
     widgetFrame.timerText:SetFont(GetFontPath(face), size, "OUTLINE")
     ResizeToFitText()
+end
+
+local function UpdateWidgetColors()
+    if not widgetFrame then return end
+    local settings = GetSettings()
+
+    local fc = settings and settings.fontColor
+    if fc then
+        widgetFrame.timerText:SetTextColor(fc.r, fc.g, fc.b)
+    end
+
+    local bg = settings and settings.bgColor
+    if bg then
+        widgetFrame.bg:SetColorTexture(bg.r, bg.g, bg.b, bg.a or 0.5)
+    end
+end
+
+local function UpdateWidgetStrata()
+    if not widgetFrame then return end
+    local settings = GetSettings()
+    local strata = settings and settings.frameStrata or "MEDIUM"
+    widgetFrame:SetFrameStrata(strata)
 end
 
 local function UpdateCloseButton()
@@ -333,6 +358,8 @@ end
 function CombatTimer:Initialize()
     widgetFrame = CreateWidget()
     UpdateWidgetFont()
+    UpdateWidgetColors()
+    UpdateWidgetStrata()
     RestoreWidgetPosition()
     SetupWidgetDragging()
 end
@@ -369,7 +396,7 @@ function CombatTimer:OnDisable()
     end
 end
 
-PRT:RegisterTab("Combat Timer", function(parent)
+function CombatTimer.SetupConfig(parent)
     local ROW_HEIGHT = 24
 
     local scrollFrame = CreateFrame("ScrollFrame", nil, parent, "UIPanelScrollFrameTemplate")
@@ -383,16 +410,20 @@ PRT:RegisterTab("Combat Timer", function(parent)
 
     local yOffset = 0
 
-    local header = PRT.Components.GetHeader(scrollChild, "Combat Timer")
-    header:SetPoint("TOPLEFT", 0, yOffset)
-    yOffset = yOffset - 28
-
     local enabledCheckbox = PRT.Components.GetCheckbox(scrollChild, "Enabled", function(value)
         GetSettings().enabled = value
         PRT:ApplySettings("combatTimer")
     end)
     enabledCheckbox:SetPoint("TOPLEFT", 0, yOffset)
     enabledCheckbox:SetValue(GetSettings().enabled)
+    yOffset = yOffset - ROW_HEIGHT
+
+    local lockCheckbox = PRT.Components.GetCheckbox(scrollChild, "Locked", function(value)
+        GetSettings().lockFrames = value
+        SetupWidgetDragging()
+    end)
+    lockCheckbox:SetPoint("TOPLEFT", 0, yOffset)
+    lockCheckbox:SetValue(GetSettings().lockFrames)
     yOffset = yOffset - ROW_HEIGHT
 
     local modeDropdown = PRT.Components.GetBasicDropdown(scrollChild, "Timer Mode",
@@ -428,12 +459,38 @@ PRT:RegisterTab("Combat Timer", function(parent)
     fontSizeInput:SetValue(GetSettings().fontSize)
     yOffset = yOffset - ROW_HEIGHT
 
-    local lockCheckbox = PRT.Components.GetCheckbox(scrollChild, "Locked", function(value)
-        GetSettings().lockFrames = value
-        SetupWidgetDragging()
+    local fontColorPicker = PRT.Components.GetColorPicker(scrollChild, "Font Color", false, function(value)
+        GetSettings().fontColor = value
+        PRT:ApplySettings("combatTimer")
     end)
-    lockCheckbox:SetPoint("TOPLEFT", 0, yOffset)
-    lockCheckbox:SetValue(GetSettings().lockFrames)
+    fontColorPicker:SetPoint("TOPLEFT", 0, yOffset)
+    fontColorPicker:SetValue(GetSettings().fontColor)
+    yOffset = yOffset - ROW_HEIGHT
+
+    local bgColorPicker = PRT.Components.GetColorPicker(scrollChild, "Background", true, function(value)
+        GetSettings().bgColor = value
+        PRT:ApplySettings("combatTimer")
+    end)
+    bgColorPicker:SetPoint("TOPLEFT", 0, yOffset)
+    bgColorPicker:SetValue(GetSettings().bgColor)
+    yOffset = yOffset - ROW_HEIGHT
+
+    local strataDropdown = PRT.Components.GetBasicDropdown(scrollChild, "Frame Strata",
+        function()
+            return {
+                { name = "Background", value = "BACKGROUND" },
+                { name = "Low", value = "LOW" },
+                { name = "Medium", value = "MEDIUM" },
+                { name = "High", value = "HIGH" },
+                { name = "Dialog", value = "DIALOG" },
+            }
+        end,
+        function(value) return GetSettings().frameStrata == value end,
+        function(value)
+            GetSettings().frameStrata = value
+            PRT:ApplySettings("combatTimer")
+        end)
+    strataDropdown:SetPoint("TOPLEFT", 0, yOffset)
     yOffset = yOffset - ROW_HEIGHT
 
     scrollChild:GetParent():GetParent():SetScript("OnShow", function()
@@ -442,14 +499,19 @@ PRT:RegisterTab("Combat Timer", function(parent)
         modeDropdown:SetValue()
         fontDropdown:SetValue()
         fontSizeInput:SetValue(settings.fontSize)
+        fontColorPicker:SetValue(settings.fontColor)
+        bgColorPicker:SetValue(settings.bgColor)
+        strataDropdown:SetValue()
         lockCheckbox:SetValue(settings.lockFrames)
     end)
 
     return scrollFrame
-end)
+end
 
 PRT:RegisterApplyCallback("combatTimer", function()
     UpdateWidgetFont()
+    UpdateWidgetColors()
+    UpdateWidgetStrata()
     UpdateWidgetVisibility()
     SetupWidgetDragging()
 end)

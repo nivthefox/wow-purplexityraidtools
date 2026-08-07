@@ -8,8 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Combat Timer widget that shows elapsed fight duration as a small, movable overlay. Supports encounter-only mode (boss fights) and all-combat mode (any engagement).
 - Attendance Tracking module that automatically records raid attendance based on pull countdowns, with per-character status tracking, configurable rollover hour, and record syncing between raiders.
-- Roster tab where officers group a raider's alts under one nickname with observed class, main spec, and off-spec tags. Rosters sync via addon comms and can optionally auto-request from the raid leader on ready check.
+- Roster tab where officers group a raider's alts under one nickname with observed class, main spec, and off-spec tags. Characters can be dragged between roster members to reassign them. Rosters sync via addon comms and can optionally auto-request from the raid leader on ready check.
+
+### Changed
+
+- Cooldown Roster, Battle Res Counter, and Combat Timer settings are now grouped under a single "Combat Tools" sidebar entry with Cooldowns, Battle Res, and Timer sub-tabs.
 
 ## [1.0.1] - 2026-08-06
 

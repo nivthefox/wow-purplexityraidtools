@@ -8,14 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- **Attendance Tracking** that records who turned up to each raid night without anyone maintaining a spreadsheet.
-  - A pull countdown is what counts as a pull. The first one of the night records everyone in the group as Present, later pulls record new arrivals as Late, and cancelling a countdown still counts—the snapshot was taken when it started.
-  - Raid nights are keyed by server time with a configurable rollover hour (default 6:00 AM), so a raid that runs past midnight stays one night's record and raiders in different timezones agree on the date.
-  - **Roster** tab where officers group a raider's alts under one nickname, so someone who swapped characters mid-tier reads as one person instead of three. Classes are observed from your group or your guild rather than typed in, and each character carries a main spec and off-spec tags.
-  - **Attendance** tab with a grid of players against dates and an attendance percentage, resolving each player's status as the best across their characters. Clicking a cell edits statuses per character, which is how an excused Absent gets recorded and how any automatic status gets corrected.
-  - **Records** view listing every day you hold plus the days other raiders hold, so you can pull a more complete copy from someone who was there for the early pulls, push yours out to the raid, or delete a day. Replacements are wholesale and always confirmed with both record counts.
-  - Rosters share the same way via Sync Roster, with an optional setting to request the raid leader's roster automatically on every ready check. Incoming rosters and records are accepted only from a raid leader or assistant.
-  - Records older than a configurable threshold (default 90 days) are pruned when the addon loads.
+- Attendance Tracking module that automatically records raid attendance based on pull countdowns, with per-character status tracking, configurable rollover hour, and record syncing between raiders.
+- Roster tab where officers group a raider's alts under one nickname with observed class, main spec, and off-spec tags. Rosters sync via addon comms and can optionally auto-request from the raid leader on ready check.
 
 ## [1.0.1] - 2026-08-06
 

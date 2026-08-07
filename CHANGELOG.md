@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-08-07
+
 ### Added
 
 - Combat Timer widget that shows elapsed fight duration as a small, movable overlay. Supports encounter-only mode (boss fights) and all-combat mode (any engagement).
@@ -149,7 +151,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Initial alpha release with Don't Release and Ready Check modules.
 
-[Unreleased]: https://github.com/nivthefox/wow-purplexityraidtools/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/nivthefox/wow-purplexityraidtools/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/nivthefox/wow-purplexityraidtools/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/nivthefox/wow-purplexityraidtools/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/nivthefox/wow-purplexityraidtools/compare/v1.0.0-beta-2...v1.0.0
 [1.0.0-beta-2]: https://github.com/nivthefox/wow-purplexityraidtools/compare/v1.0.0-beta-1...v1.0.0-beta-2

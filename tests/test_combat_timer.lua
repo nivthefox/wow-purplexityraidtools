@@ -20,6 +20,7 @@
 
 dofile("Modules/CombatTimer.lua")
 
+local PRT = PurplexityRaidTools
 local CombatTimerCore = PRT.CombatTimerCore
 
 local function timerWithMode(initialMode)

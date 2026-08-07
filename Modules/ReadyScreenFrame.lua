@@ -41,6 +41,14 @@ local function SpellTexture(spellId)
     return nil
 end
 
+local function ColumnTexture(column)
+    return column.texture or SpellTexture(column.spellId) or FALLBACK_ICON
+end
+
+local function ColumnWidth(column)
+    return column.width or COL_ICON_WIDTH
+end
+
 -- GetSpellTexture returns nil for spells not in the client's spell cache
 -- (anything outside your own spellbook on a fresh session). Request an async
 -- load for every audited buff; SPELL_DATA_LOAD_RESULT refreshes the frame
@@ -68,6 +76,17 @@ local function GetBuffColumns()
         table.insert(columns, { name = buff.name, spellId = buff.spellId })
     end
     table.insert(columns, { name = PRT.SOULSTONE_BUFF_NAME, spellId = PRT.SOULSTONE_SPELL_ID })
+    for _, buff in ipairs(PRT.ReadyScreen.GetPersonalBuffColumns()) do
+        table.insert(columns, {
+            kind = "personal",
+            key = buff.key,
+            name = buff.name,
+            spellId = buff.spellId,
+            texture = buff.texture,
+            display = buff.display,
+            width = buff.width,
+        })
+    end
     return columns
 end
 
@@ -122,11 +141,12 @@ local function CreateRow(parent, index)
     row.readyIcon = readyIcon
 
     row.buffIcons = {}
+    row.buffTexts = {}
 
     return row
 end
 
-local function LayoutRowColumns(row, showReady, buffCount)
+local function LayoutRowColumns(row, showReady, columns)
     local x = BACKDROP_PADDING
 
     row.nameText:ClearAllPoints()
@@ -154,16 +174,25 @@ local function LayoutRowColumns(row, showReady, buffCount)
         x = x + COL_ICON_WIDTH + COLUMN_PADDING
     end
 
-    while #row.buffIcons < buffCount do
+    while #row.buffIcons < #columns do
         local icon = row:CreateTexture(nil, "ARTWORK")
         icon:SetSize(COL_ICON_WIDTH - 4, COL_ICON_WIDTH - 4)
+        icon:SetTexCoord(0.1, 0.9, 0.1, 0.9)
         table.insert(row.buffIcons, icon)
+
+        local textValue = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        textValue:SetJustifyH("CENTER")
+        table.insert(row.buffTexts, textValue)
     end
 
-    for i = 1, buffCount do
+    for i, col in ipairs(columns) do
+        local width = ColumnWidth(col)
         row.buffIcons[i]:ClearAllPoints()
-        row.buffIcons[i]:SetPoint("LEFT", row, "LEFT", x + 2, 0)
-        x = x + COL_ICON_WIDTH + COLUMN_PADDING
+        row.buffIcons[i]:SetPoint("CENTER", row, "LEFT", x + width / 2, 0)
+        row.buffTexts[i]:ClearAllPoints()
+        row.buffTexts[i]:SetPoint("LEFT", row, "LEFT", x, 0)
+        row.buffTexts[i]:SetWidth(width)
+        x = x + width + COLUMN_PADDING
     end
 end
 
@@ -242,16 +271,18 @@ local function LayoutHeaderColumns(row, showReady, columns)
     while #row.buffHeaders < #columns do
         local icon = row:CreateTexture(nil, "ARTWORK")
         icon:SetSize(COL_ICON_WIDTH - 4, COL_ICON_WIDTH - 4)
+        icon:SetTexCoord(0.1, 0.9, 0.1, 0.9)
         table.insert(row.buffHeaders, icon)
     end
 
     for i, col in ipairs(columns) do
         local icon = row.buffHeaders[i]
+        local width = ColumnWidth(col)
         icon:ClearAllPoints()
-        icon:SetPoint("LEFT", row, "LEFT", x + 2, 0)
-        icon:SetTexture(SpellTexture(col.spellId) or FALLBACK_ICON)
+        icon:SetPoint("CENTER", row, "LEFT", x + width / 2, 0)
+        icon:SetTexture(ColumnTexture(col))
         icon:Show()
-        x = x + COL_ICON_WIDTH + COLUMN_PADDING
+        x = x + width + COLUMN_PADDING
     end
 
     for i = #columns + 1, #row.buffHeaders do
@@ -396,23 +427,66 @@ local function SetRowReady(row, entry, responses, isOffline, isDead)
 end
 
 local function SetRowBuffs(row, entry, isOffline)
+    local canReadAuras = entry.unit and not isOffline and UnitIsVisible(entry.unit)
+    local personalStatuses
+
     for j, col in ipairs(buffColumns) do
         local buffIcon = row.buffIcons[j]
+        local buffText = row.buffTexts[j]
         local hasBuff = false
-        if entry.unit and not isOffline and UnitIsVisible(entry.unit) then
+        local texture
+
+        if col.display == "percent" then
+            local percent = PRT.ReadyScreen:GetDurability(entry.guid)
+            buffIcon:Hide()
+            if type(percent) == "number" then
+                local rounded = math.floor(percent + 0.5)
+                buffText:SetFormattedText("%d%%", rounded)
+                if rounded <= 20 then
+                    buffText:SetTextColor(1, 0, 0)
+                elseif rounded <= 50 then
+                    buffText:SetTextColor(1, 1, 0)
+                else
+                    buffText:SetTextColor(1, 1, 1)
+                end
+                buffText:Show()
+            else
+                buffText:SetText("\226\128\148")
+                buffText:SetTextColor(0.5, 0.5, 0.5)
+                buffText:Show()
+            end
+        elseif col.kind == "personal" and col.key == "weaponEnhancement" then
+            hasBuff = PRT.ReadyScreen:GetWeaponStatus(entry.guid) == true
+        elseif col.kind == "personal" then
+            if personalStatuses == nil then
+                personalStatuses = {}
+                if canReadAuras then
+                    local succeeded, statuses = pcall(PRT.ReadyScreen.GetPersonalBuffStatuses, entry.unit)
+                    if succeeded then
+                        personalStatuses = statuses
+                    end
+                end
+            end
+            texture = personalStatuses[col.key]
+            hasBuff = texture ~= nil
+        elseif canReadAuras then
             hasBuff = C_UnitAuras.GetAuraDataBySpellName(entry.unit, col.name, "HELPFUL") ~= nil
         end
 
-        if hasBuff then
-            buffIcon:SetTexture(SpellTexture(col.spellId) or FALLBACK_ICON)
-            buffIcon:Show()
-        else
-            buffIcon:Hide()
+        if col.display ~= "percent" then
+            buffText:Hide()
+            if hasBuff then
+                buffIcon:SetTexture(type(texture) == "number" and texture or ColumnTexture(col))
+                buffIcon:Show()
+            else
+                buffIcon:Hide()
+            end
         end
     end
 
     for j = #buffColumns + 1, #row.buffIcons do
         row.buffIcons[j]:Hide()
+        row.buffTexts[j]:Hide()
     end
 end
 
@@ -557,7 +631,11 @@ function ReadyScreenFrame:Refresh()
 
     local roster = BuildRoster()
 
-    local frameWidth = BACKDROP_PADDING * 2 + GetFixedColumnsWidth(showReady) + #buffColumns * (COL_ICON_WIDTH + COLUMN_PADDING)
+    local buffColumnsWidth = 0
+    for _, col in ipairs(buffColumns) do
+        buffColumnsWidth = buffColumnsWidth + ColumnWidth(col) + COLUMN_PADDING
+    end
+    local frameWidth = BACKDROP_PADDING * 2 + GetFixedColumnsWidth(showReady) + buffColumnsWidth
     frame:SetWidth(frameWidth)
 
     while #rows < #roster do
@@ -568,7 +646,7 @@ function ReadyScreenFrame:Refresh()
 
     for i, entry in ipairs(roster) do
         local row = rows[i]
-        LayoutRowColumns(row, showReady, #buffColumns)
+        LayoutRowColumns(row, showReady, buffColumns)
 
         row:ClearAllPoints()
         row:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -(BACKDROP_PADDING + HEADER_HEIGHT + 4 + HEADER_HEIGHT + (i - 1) * ROW_HEIGHT))

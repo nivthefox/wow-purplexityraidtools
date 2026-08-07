@@ -9,12 +9,301 @@ PRT.defaults.readyScreen = {
     position = nil,
 }
 
+local PERSONAL_BUFFS = {
+    { key = "wellFed", name = "Well Fed", texture = 136000 },
+    { key = "weaponEnhancement", name = "Weapon Enhancement", texture = 463543 },
+    { key = "flask", name = "Flask", texture = 967549 },
+    { key = "augmentRune", name = "Augment Rune", texture = 840006 },
+    { key = "vantusRune", name = "Vantus Rune", texture = 1058937 },
+    { key = "durability", name = "Durability", texture = 132281, display = "percent", width = 36 },
+}
+
+local FLASK_SPELL_IDS = {
+    [307166] = true,
+    [307185] = true,
+    [307187] = true,
+    [370652] = true,
+    [370662] = true,
+    [371172] = true,
+    [371186] = true,
+    [371204] = true,
+    [371339] = true,
+    [371354] = true,
+    [371386] = true,
+    [373257] = true,
+    [374000] = true,
+    [431971] = true,
+    [431972] = true,
+    [431973] = true,
+    [431974] = true,
+    [432021] = true,
+    [432473] = true,
+    [1235057] = true,
+    [1235108] = true,
+    [1235110] = true,
+    [1235111] = true,
+    [1236763] = true,
+    [1236767] = true,
+    [1239355] = true,
+    [1239755] = true,
+}
+
+local AUGMENT_RUNE_SPELL_IDS = {
+    [224001] = true,
+    [270058] = true,
+    [317065] = true,
+    [347901] = true,
+    [367405] = true,
+    [393438] = true,
+    [453250] = true,
+    [1234969] = true,
+    [1242347] = true,
+    [1264426] = true,
+}
+
+local VANTUS_REFERENCE_SPELL_ID = 237825
+local STATUS_QUERY_MSG_TYPE = "readyStatusQuery"
+local STATUS_RESPONSE_MSG_TYPE = "readyStatusResponse"
+local DURABILITY_SLOTS = { 1, 2, 3, 15, 5, 9, 10, 6, 7, 8, 11, 12, 13, 14, 16, 17 }
+local reportedStatuses = {}
+local statusSubscribers = {}
+local vantusPrefix
+
 local mode = "hidden"
 local responses = {}
 local autoDismissTimer = nil
 local readyCheckActive = false
 local auraRefreshPending = false
 local readyCheckTicker = nil
+
+function ReadyScreen.GetPersonalBuffColumns()
+    return PERSONAL_BUFFS
+end
+
+function ReadyScreen.GetPersonalBuffKey(auraData, localizedVantusPrefix)
+    if type(auraData) ~= "table" then
+        return nil
+    end
+    if canaccessvalue and not canaccessvalue(auraData.spellId) then
+        return nil
+    end
+    if auraData.icon == 136000 then
+        return "wellFed"
+    end
+    if FLASK_SPELL_IDS[auraData.spellId] then
+        return "flask"
+    end
+    if AUGMENT_RUNE_SPELL_IDS[auraData.spellId] then
+        return "augmentRune"
+    end
+    if type(auraData.name) ~= "string" or type(localizedVantusPrefix) ~= "string" then
+        return nil
+    end
+    if auraData.name:sub(1, #localizedVantusPrefix) == localizedVantusPrefix then
+        return "vantusRune"
+    end
+    return nil
+end
+
+function ReadyScreen.BuildPersonalBuffStatuses(auras, localizedVantusPrefix)
+    local statuses = {}
+    for _, auraData in ipairs(auras or {}) do
+        local key = ReadyScreen.GetPersonalBuffKey(auraData, localizedVantusPrefix)
+        if key then
+            statuses[key] = auraData.icon or true
+        end
+    end
+    return statuses
+end
+
+function ReadyScreen.AnyWeaponEnhanced(hasMainHandEnchant, hasOffHandEnchant)
+    return hasMainHandEnchant == true or hasOffHandEnchant == true
+end
+
+function ReadyScreen.CalculateDurability(items)
+    local totalCurrent = 0
+    local totalMaximum = 0
+    for _, item in ipairs(items or {}) do
+        if item.current and item.maximum then
+            totalCurrent = totalCurrent + item.current
+            totalMaximum = totalMaximum + item.maximum
+        end
+    end
+    if totalMaximum == 0 then
+        return 100
+    end
+    return totalCurrent / totalMaximum * 100
+end
+
+local function GetSpellName(spellId)
+    if C_Spell and C_Spell.GetSpellName then
+        return C_Spell.GetSpellName(spellId)
+    end
+    if GetSpellInfo then
+        return GetSpellInfo(spellId)
+    end
+    return nil
+end
+
+local function GetVantusPrefix()
+    if vantusPrefix then
+        return vantusPrefix
+    end
+
+    local referenceName = GetSpellName(VANTUS_REFERENCE_SPELL_ID)
+    if not referenceName then
+        return "Vantus Rune"
+    end
+
+    vantusPrefix = referenceName:match("^(.-)[:%-：]") or referenceName
+    return vantusPrefix
+end
+
+function ReadyScreen.GetPersonalBuffStatuses(unit)
+    local statuses = {}
+    if C_Secrets and C_Secrets.ShouldAurasBeSecret and C_Secrets.ShouldAurasBeSecret() then
+        return statuses
+    end
+    if not C_UnitAuras or not C_UnitAuras.GetAuraDataByIndex then
+        return statuses
+    end
+
+    local localizedVantusPrefix = GetVantusPrefix()
+    for index = 1, 60 do
+        local auraData = C_UnitAuras.GetAuraDataByIndex(unit, index, "HELPFUL")
+        if not auraData then
+            break
+        end
+        if not issecretvalue or not issecretvalue(auraData.spellId) then
+            local key = ReadyScreen.GetPersonalBuffKey(auraData, localizedVantusPrefix)
+            if key then
+                statuses[key] = auraData.icon or true
+            end
+        end
+    end
+    return statuses
+end
+
+local function ReadLocalDurability()
+    if not GetInventoryItemDurability then
+        return nil
+    end
+
+    local items = {}
+    for _, slotId in ipairs(DURABILITY_SLOTS) do
+        local current, maximum = GetInventoryItemDurability(slotId)
+        table.insert(items, { current = current, maximum = maximum })
+    end
+    return ReadyScreen.CalculateDurability(items)
+end
+
+local function ReadLocalStatus()
+    local weaponEnhanced
+    if GetWeaponEnchantInfo then
+        local hasMainHandEnchant, _, _, _, hasOffHandEnchant = GetWeaponEnchantInfo()
+        weaponEnhanced = ReadyScreen.AnyWeaponEnhanced(hasMainHandEnchant, hasOffHandEnchant)
+    end
+    return {
+        weaponEnhanced = weaponEnhanced,
+        durability = ReadLocalDurability(),
+    }
+end
+
+local function SendStatus(target)
+    if not PRT.Comms then
+        return
+    end
+    PRT.Comms:Send(STATUS_RESPONSE_MSG_TYPE, ReadLocalStatus(), "WHISPER", target)
+end
+
+local function IsCurrentGroupMember(sender)
+    local guid = UnitGUID(sender)
+    return guid and PRT.GroupInspect and PRT.GroupInspect.members[guid] ~= nil
+end
+
+local function OnStatusQuery(_, sender)
+    if not IsCurrentGroupMember(sender) then
+        return
+    end
+    statusSubscribers[sender] = GetTime() + 60
+    SendStatus(sender)
+end
+
+local function OnStatusResponse(data, sender)
+    if type(data) ~= "table" or type(data.weaponEnhanced) ~= "boolean"
+        or type(data.durability) ~= "number" or data.durability ~= data.durability
+        or data.durability < 0 or data.durability > 100 then
+        return
+    end
+
+    local guid = UnitGUID(sender)
+    if not guid or not PRT.GroupInspect.members[guid] then
+        return
+    end
+
+    reportedStatuses[guid] = {
+        weaponEnhanced = data.weaponEnhanced,
+        durability = data.durability,
+    }
+    if PRT.ReadyScreenFrame and PRT.ReadyScreenFrame:IsShown() then
+        PRT.ReadyScreenFrame:Refresh()
+    end
+end
+
+local function RequestStatus(unit)
+    local guid = UnitGUID(unit)
+    if not guid then
+        return
+    end
+    if UnitIsUnit(unit, "player") then
+        reportedStatuses[guid] = ReadLocalStatus()
+        return
+    end
+
+    local target = GetUnitName(unit, true)
+    if target then
+        PRT.Comms:Send(STATUS_QUERY_MSG_TYPE, {}, "WHISPER", target)
+    end
+end
+
+function ReadyScreen:RequestStatuses()
+    reportedStatuses = {}
+    for unit in PRT:IterateGroup() do
+        RequestStatus(unit)
+    end
+end
+
+function ReadyScreen:GetWeaponStatus(guid)
+    local status = reportedStatuses[guid]
+    return status and status.weaponEnhanced
+end
+
+function ReadyScreen:GetDurability(guid)
+    local status = reportedStatuses[guid]
+    return status and status.durability
+end
+
+local function PublishStatusChanges()
+    local now = GetTime()
+    for target, expiresAt in pairs(statusSubscribers) do
+        if expiresAt < now or not IsCurrentGroupMember(target) then
+            statusSubscribers[target] = nil
+        else
+            SendStatus(target)
+        end
+    end
+end
+
+local function RefreshLocalStatus()
+    local guid = UnitGUID("player")
+    if guid then
+        reportedStatuses[guid] = ReadLocalStatus()
+    end
+    PublishStatusChanges()
+    if mode ~= "hidden" and PRT.ReadyScreenFrame and PRT.ReadyScreenFrame:IsShown() then
+        PRT.ReadyScreenFrame:Refresh()
+    end
+end
 
 local function IsGroupUnit(unit)
     return unit:match("^raid") or unit:match("^party") or unit == "player"
@@ -84,6 +373,7 @@ function ReadyScreen:ShowAudit()
     end
 
     mode = "audit"
+    ReadyScreen:RequestStatuses()
     if PRT.ReadyScreenFrame then
         PRT.ReadyScreenFrame:Show("audit")
     end
@@ -113,6 +403,7 @@ function ReadyScreen:ShowReadyCheck(initiator)
 
     mode = "readycheck"
     readyCheckActive = true
+    ReadyScreen:RequestStatuses()
 
     if PRT.ReadyScreenFrame then
         PRT.ReadyScreenFrame:Show("readycheck")
@@ -157,6 +448,7 @@ function ReadyScreen:OnReadyCheckConfirm(unit, isReady)
     end
 
     responses[guid] = isReady and "ready" or "notready"
+    RequestStatus(unit)
 
     if PRT.ReadyScreenFrame and PRT.ReadyScreenFrame:IsShown() then
         PRT.ReadyScreenFrame:Refresh()
@@ -199,6 +491,8 @@ function ReadyScreen:IsActivatable()
 end
 
 function ReadyScreen:Initialize()
+    PRT.Comms:RegisterHandler(STATUS_QUERY_MSG_TYPE, OnStatusQuery)
+    PRT.Comms:RegisterHandler(STATUS_RESPONSE_MSG_TYPE, OnStatusResponse)
     PRT.GroupInspect:Listen(function()
         if mode ~= "hidden" and PRT.ReadyScreenFrame then
             PRT.ReadyScreenFrame:Refresh()
@@ -213,6 +507,8 @@ function ReadyScreen:OnEnable()
     self.eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
     self.eventFrame:RegisterEvent("UNIT_AURA")
     self.eventFrame:RegisterEvent("UNIT_FLAGS")
+    self.eventFrame:RegisterEvent("UNIT_INVENTORY_CHANGED")
+    self.eventFrame:RegisterEvent("UPDATE_INVENTORY_DURABILITY")
     self.eventFrame:SetScript("OnEvent", function(_, event, ...)
         if event == "READY_CHECK" then
             local initiator = ...
@@ -239,6 +535,13 @@ function ReadyScreen:OnEnable()
                     end
                 end)
             end
+        elseif event == "UNIT_INVENTORY_CHANGED" then
+            local unit = ...
+            if unit == "player" then
+                RefreshLocalStatus()
+            end
+        elseif event == "UPDATE_INVENTORY_DURABILITY" then
+            RefreshLocalStatus()
         elseif event == "PLAYER_REGEN_DISABLED" then
             if mode ~= "hidden" then
                 ReadyScreen:Close()

@@ -89,4 +89,169 @@ tests["ClassifyVersion: nil RL version means nobody is outdated"] = function()
         "nil member with nil RL is still missing, not outdated")
 end
 
+tests["GetPersonalBuffKey: recognizes food from the standard Well Fed icon"] = function()
+    assertEquals(ReadyScreen.GetPersonalBuffKey({ spellId = 999999, icon = 136000 }), "wellFed")
+end
+
+tests["GetPersonalBuffKey: recognizes current and previous expansion flasks"] = function()
+    assertEquals(ReadyScreen.GetPersonalBuffKey({ spellId = 1236763, icon = 1 }), "flask")
+    assertEquals(ReadyScreen.GetPersonalBuffKey({ spellId = 431971, icon = 1 }), "flask")
+end
+
+tests["GetPersonalBuffKey: recognizes augment runes"] = function()
+    assertEquals(ReadyScreen.GetPersonalBuffKey({ spellId = 1234969, icon = 1 }), "augmentRune")
+    assertEquals(ReadyScreen.GetPersonalBuffKey({ spellId = 1242347, icon = 1 }), "augmentRune")
+    assertEquals(ReadyScreen.GetPersonalBuffKey({ spellId = 1264426, icon = 1 }), "augmentRune")
+end
+
+tests["GetPersonalBuffKey: recognizes localized Vantus prefixes"] = function()
+    assertEquals(ReadyScreen.GetPersonalBuffKey({
+        spellId = 999999,
+        name = "Vantus Rune: Radiant",
+        icon = 1,
+    }, "Vantus Rune"), "vantusRune")
+    assertEquals(ReadyScreen.GetPersonalBuffKey({
+        spellId = 999999,
+        name = "Rune de Vantus : Radieuse",
+        icon = 1,
+    }, "Rune de Vantus"), "vantusRune")
+end
+
+tests["GetPersonalBuffKey: ignores unrelated helpful auras"] = function()
+    assertNil(ReadyScreen.GetPersonalBuffKey({
+        spellId = 1459,
+        name = "Arcane Intellect",
+        icon = 135932,
+    }, "Vantus Rune"))
+end
+
+tests["GetPersonalBuffKey: ignores inaccessible aura data"] = function()
+    local originalCanAccessValue = canaccessvalue
+    canaccessvalue = function()
+        return false
+    end
+
+    local key = ReadyScreen.GetPersonalBuffKey({
+        spellId = 1236763,
+        name = "Flask",
+        icon = 967549,
+    }, "Vantus Rune")
+
+    canaccessvalue = originalCanAccessValue
+    assertNil(key)
+end
+
+tests["GetPersonalBuffColumns: uses MRT icons and a wide durability column"] = function()
+    local columns = ReadyScreen.GetPersonalBuffColumns()
+    local expected = {
+        wellFed = 136000,
+        weaponEnhancement = 463543,
+        flask = 967549,
+        augmentRune = 840006,
+        vantusRune = 1058937,
+        durability = 132281,
+    }
+
+    for _, column in ipairs(columns) do
+        assertEquals(column.texture, expected[column.key])
+    end
+    assertTrue(columns[#columns].width > 24)
+    assertEquals(columns[#columns].key, "durability")
+end
+
+tests["BuildPersonalBuffStatuses: records the matched aura icon by category"] = function()
+    local statuses = ReadyScreen.BuildPersonalBuffStatuses({
+        { spellId = 1459, name = "Arcane Intellect", icon = 135932 },
+        { spellId = 431971, name = "Flask of Tempered Aggression", icon = 1234 },
+        { spellId = 1234969, name = "Soulgorged Augment Rune", icon = 5678 },
+    }, "Vantus Rune")
+
+    assertEquals(statuses.flask, 1234)
+    assertEquals(statuses.augmentRune, 5678)
+    assertNil(statuses.wellFed)
+    assertNil(statuses.vantusRune)
+end
+
+tests["AnyWeaponEnhanced: either weapon enchant satisfies the combined status"] = function()
+    assertTrue(ReadyScreen.AnyWeaponEnhanced(true, false))
+    assertTrue(ReadyScreen.AnyWeaponEnhanced(false, true))
+    assertFalse(ReadyScreen.AnyWeaponEnhanced(false, false))
+end
+
+tests["CalculateDurability: weights equipped items by their maximum durability"] = function()
+    local percent = ReadyScreen.CalculateDurability({
+        { current = 20, maximum = 100 },
+        { current = 50, maximum = 50 },
+    })
+    assertNear(percent, 70 / 150 * 100, 0.001)
+end
+
+tests["CalculateDurability: ignores slots without durability"] = function()
+    local percent = ReadyScreen.CalculateDurability({
+        { current = nil, maximum = nil },
+        { current = 75, maximum = 100 },
+    })
+    assertEquals(percent, 75)
+end
+
+tests["CalculateDurability: an indestructible equipment set reports one hundred"] = function()
+    assertEquals(ReadyScreen.CalculateDurability({}), 100)
+end
+
+tests["Initialize: status reports carry weapon enhancement and durability"] = function()
+    local originalComms = PurplexityRaidTools.Comms
+    local originalGroupInspect = PurplexityRaidTools.GroupInspect
+    local originalUnitGUID = UnitGUID
+    local originalWeaponEnchantInfo = GetWeaponEnchantInfo
+    local originalInventoryDurability = GetInventoryItemDurability
+
+    local handlers = {}
+    local sent
+    PurplexityRaidTools.Comms = {
+        RegisterHandler = function(_, messageType, handler)
+            handlers[messageType] = handler
+        end,
+        Send = function(_, messageType, data, channel, target)
+            sent = { messageType = messageType, data = data, channel = channel, target = target }
+        end,
+    }
+    PurplexityRaidTools.GroupInspect = {
+        members = { ["GUID-NIV"] = {}, ["GUID-BOB"] = {} },
+        Listen = function() end,
+    }
+    UnitGUID = function(unit)
+        if unit == "Niv" then return "GUID-NIV" end
+        if unit == "Bob" then return "GUID-BOB" end
+        return nil
+    end
+    GetWeaponEnchantInfo = function()
+        return true, 0, 0, 1, false, 0, 0, 0
+    end
+    GetInventoryItemDurability = function(slotId)
+        if slotId == 1 then
+            return 50, 100
+        end
+        return nil, nil
+    end
+
+    ReadyScreen:Initialize()
+    handlers.readyStatusQuery({}, "Niv")
+
+    assertEquals(sent.messageType, "readyStatusResponse")
+    assertEquals(sent.channel, "WHISPER")
+    assertEquals(sent.target, "Niv")
+    assertTrue(sent.data.weaponEnhanced)
+    assertEquals(sent.data.durability, 50)
+
+    handlers.readyStatusResponse({ weaponEnhanced = false, durability = 42 }, "Bob")
+    assertFalse(ReadyScreen:GetWeaponStatus("GUID-BOB"))
+    assertEquals(ReadyScreen:GetDurability("GUID-BOB"), 42)
+
+    PurplexityRaidTools.Comms = originalComms
+    PurplexityRaidTools.GroupInspect = originalGroupInspect
+    UnitGUID = originalUnitGUID
+    GetWeaponEnchantInfo = originalWeaponEnchantInfo
+    GetInventoryItemDurability = originalInventoryDurability
+end
+
 return tests

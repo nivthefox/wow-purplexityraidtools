@@ -114,12 +114,20 @@ local DEAD_MESSAGES = {
     "The graveyard misses you, but the raid needs you more. Get up already.",
 }
 local DEAD_POLITE_MESSAGE = "Please accept your resurrection before we pull."
+local MISSING_ADDON_MESSAGE = "Your raid leader is using PurplexityRaidTools for coordination. Please make sure you have it installed."
+local VERSION_WHISPER_OPTIONS = {
+    { name = "Off", value = "off" },
+    { name = "Guild Only", value = "guild" },
+    { name = "On", value = "on" },
+}
 
 PRT.defaults.readyCheck = {
     enabled = true,
     snarkyMessages = false,
     checkSoulstones = true,
     checkDead = true,
+    whisperMissingAddon = "guild",
+    whisperOutdatedAddon = "guild",
     arcaneIntellect = true,
     battleShout = true,
     blessingOfTheBronze = true,
@@ -222,6 +230,94 @@ local function SendWhisper(playerName, message)
     return success
 end
 
+function ReadyCheck.DecodeVersion(encodedVersion)
+    local major = math.floor(encodedVersion / 1000000)
+    local minor = math.floor(encodedVersion % 1000000 / 1000)
+    local patch = encodedVersion % 1000
+    return string.format("%d.%d.%d", major, minor, patch)
+end
+
+local function QualifyName(name)
+    if not name or name == "" then
+        return nil
+    end
+    if name:find("-", 1, true) then
+        return name
+    end
+
+    local realm = GetNormalizedRealmName()
+    if not realm or realm == "" then
+        return nil
+    end
+    return name .. "-" .. realm
+end
+
+local function BuildGuildMemberSet()
+    local guildMembers = {}
+    if not IsInGuild() then
+        return guildMembers
+    end
+
+    for index = 1, GetNumGuildMembers() do
+        local name = GetGuildRosterInfo(index)
+        local qualifiedName = QualifyName(name)
+        if qualifiedName then
+            guildMembers[qualifiedName] = true
+        end
+    end
+    return guildMembers
+end
+
+local function PreferenceAllowsWhisper(preference, memberName, guildMembers)
+    if preference == "on" then
+        return true
+    end
+    if preference ~= "guild" then
+        return false
+    end
+
+    local qualifiedName = QualifyName(memberName)
+    return qualifiedName and guildMembers[qualifiedName] or false
+end
+
+local function CheckAddonVersions(settings)
+    local missingPreference = settings.whisperMissingAddon
+    local outdatedPreference = settings.whisperOutdatedAddon
+    if missingPreference == "off" and outdatedPreference == "off" then
+        return
+    end
+
+    local guildMembers = {}
+    if missingPreference == "guild" or outdatedPreference == "guild" then
+        guildMembers = BuildGuildMemberSet()
+    end
+
+    local playerGUID = UnitGUID("player")
+    local player = playerGUID and PRT.GroupInspect.members[playerGUID]
+    local raidLeaderVersion = player and player.addonVersion
+
+    for guid, member in pairs(PRT.GroupInspect.members) do
+        if guid ~= playerGUID and member.specId ~= nil then
+            local memberVersion = member.addonVersion
+            if memberVersion == nil then
+                if PreferenceAllowsWhisper(missingPreference, member.name, guildMembers) then
+                    SendWhisper(member.name, MISSING_ADDON_MESSAGE)
+                end
+            elseif type(memberVersion) == "number" and type(raidLeaderVersion) == "number"
+                and memberVersion < raidLeaderVersion then
+                if PreferenceAllowsWhisper(outdatedPreference, member.name, guildMembers) then
+                    local message = string.format(
+                        "Your version of PurplexityRaidTools (%s) is out of date. Please update to %s.",
+                        ReadyCheck.DecodeVersion(memberVersion),
+                        ReadyCheck.DecodeVersion(raidLeaderVersion)
+                    )
+                    SendWhisper(member.name, message)
+                end
+            end
+        end
+    end
+end
+
 local function NotifyPlayers(players, messages)
     for _, name in ipairs(players) do
         SendWhisper(name, GetRandomMessage(messages))
@@ -300,25 +396,24 @@ function ReadyCheck:OnReadyCheck()
     end
 
     local allMembers, skippedMembers = GetAllRaidMembers()
-    if #allMembers == 0 then
-        return
-    end
+    if #allMembers > 0 then
+        local aurasAreSecret = C_Secrets and C_Secrets.ShouldAurasBeSecret
+            and C_Secrets.ShouldAurasBeSecret()
+        if not aurasAreSecret then
+            local totalRaid = #allMembers + #skippedMembers
+            for _, buff in ipairs(RAID_BUFFS) do
+                if settings[buff.key] then
+                    CheckRaidBuff(buff, allMembers, skippedMembers, totalRaid, snarky)
+                end
+            end
 
-    -- If auras are hidden (e.g. Plunderstorm), skip buff checks entirely to avoid false positives.
-    if C_Secrets and C_Secrets.ShouldAurasBeSecret and C_Secrets.ShouldAurasBeSecret() then
-        return
-    end
-
-    local totalRaid = #allMembers + #skippedMembers
-    for _, buff in ipairs(RAID_BUFFS) do
-        if settings[buff.key] then
-            CheckRaidBuff(buff, allMembers, skippedMembers, totalRaid, snarky)
+            if settings.checkSoulstones then
+                CheckSoulstones(snarky)
+            end
         end
     end
 
-    if settings.checkSoulstones then
-        CheckSoulstones(snarky)
-    end
+    CheckAddonVersions(settings)
 end
 
 PRT:RegisterTab("Ready Check", function(parent)
@@ -379,6 +474,26 @@ PRT:RegisterTab("Ready Check", function(parent)
                 deadCheckbox:SetValue(GetSettings().checkDead)
                 yOffset = yOffset - ROW_HEIGHT
 
+                local missingAddonDropdown = PRT.Components.GetBasicDropdown(
+                    panel,
+                    "Missing Addon",
+                    function() return VERSION_WHISPER_OPTIONS end,
+                    function(value) return GetSettings().whisperMissingAddon == value end,
+                    function(value) GetSettings().whisperMissingAddon = value end
+                )
+                missingAddonDropdown:SetPoint("TOPLEFT", 0, yOffset)
+                yOffset = yOffset - ROW_HEIGHT
+
+                local outdatedAddonDropdown = PRT.Components.GetBasicDropdown(
+                    panel,
+                    "Outdated Addon",
+                    function() return VERSION_WHISPER_OPTIONS end,
+                    function(value) return GetSettings().whisperOutdatedAddon == value end,
+                    function(value) GetSettings().whisperOutdatedAddon = value end
+                )
+                outdatedAddonDropdown:SetPoint("TOPLEFT", 0, yOffset)
+                yOffset = yOffset - ROW_HEIGHT
+
                 panel:SetScript("OnShow", function()
                     local settings = GetSettings()
                     enabledCheckbox:SetValue(settings.enabled)
@@ -388,6 +503,8 @@ PRT:RegisterTab("Ready Check", function(parent)
                     end
                     soulstoneCheckbox:SetValue(settings.checkSoulstones)
                     deadCheckbox:SetValue(settings.checkDead)
+                    missingAddonDropdown:SetValue()
+                    outdatedAddonDropdown:SetValue()
                 end)
             end,
         },

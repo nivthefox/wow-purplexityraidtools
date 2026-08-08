@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Ready Check can now whisper guild members or the full raid when PurplexityRaidTools is missing or outdated.
+
 ## [1.1.1] - 2026-08-07
 
 ### Added

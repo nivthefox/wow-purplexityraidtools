@@ -1,6 +1,6 @@
--- AttendanceUI: the Attendance sidebar tab. Owns the two top tabs (Grid and
--- Records), the audit grid itself, and the per-character status modal a cell
--- click opens. The Records tab's content belongs to RecordsUI.
+-- AttendanceUI: the Attendance sidebar tab. Owns the Grid, Records, and Settings
+-- tabs, the audit grid itself, and the per-character status modal a cell click
+-- opens. The Records tab's content belongs to RecordsUI.
 --
 -- The grid is rebuilt only on a data change -- the panel being shown, an edit,
 -- or an accepted sync. AttendanceReport:Build walks the un-rostered characters
@@ -61,10 +61,44 @@ local HIGH_PERCENTAGE, MID_PERCENTAGE = 90, 75
 
 local ISO_DAY_PATTERN = "^(%d%d%d%d)%-(%d%d)%-(%d%d)$"
 
+local CONTENT_CHECKBOXES = {
+    { label = "Open World",        path = { "contentTypes", "openWorld" } },
+    { label = "Dungeon (Normal)",  path = { "contentTypes", "dungeon", "normal" } },
+    { label = "Dungeon (Heroic)",  path = { "contentTypes", "dungeon", "heroic" } },
+    { label = "Dungeon (Mythic)",  path = { "contentTypes", "dungeon", "mythic" } },
+    { label = "Dungeon (Mythic+)", path = { "contentTypes", "dungeon", "mythicPlus" } },
+    { label = "Raid (LFR)",        path = { "contentTypes", "raid", "lfr" } },
+    { label = "Raid (Normal)",     path = { "contentTypes", "raid", "normal" } },
+    { label = "Raid (Heroic)",     path = { "contentTypes", "raid", "heroic" } },
+    { label = "Raid (Mythic)",     path = { "contentTypes", "raid", "mythic" } },
+    { label = "Scenario (Normal)", path = { "contentTypes", "scenario", "normal" } },
+    { label = "Scenario (Heroic)", path = { "contentTypes", "scenario", "heroic" } },
+}
+
 local RefreshGrid
 local gridPanel
 local editModal
 local editState
+
+local function AttendanceSettings()
+    return PRT:GetSetting("attendance")
+end
+
+local function ReadSettingPath(settings, path)
+    local value = settings
+    for _, key in ipairs(path) do
+        value = value[key]
+    end
+    return value
+end
+
+local function WriteSettingPath(settings, path, value)
+    local node = settings
+    for index = 1, #path - 1 do
+        node = node[path[index]]
+    end
+    node[path[#path]] = value
+end
 
 local function Colored(color, text)
     return "|c" .. color .. text .. "|r"
@@ -446,9 +480,33 @@ PRT:RegisterTab("Attendance", function(parent)
         PRT.RecordsUI:Build(panel)
     end
 
+    local function SetupSettings(panel)
+        local contentHeader = PRT.Components.GetHeader(panel, "Take Attendance In")
+        contentHeader:SetPoint("TOPLEFT", 0, -10)
+
+        local checkboxes = {}
+        local yOffset = -38
+        for index, info in ipairs(CONTENT_CHECKBOXES) do
+            local checkbox = PRT.Components.GetCheckbox(panel, info.label, function(value)
+                WriteSettingPath(AttendanceSettings(), info.path, value)
+            end)
+            checkbox:SetPoint("TOPLEFT", 0, yOffset)
+            checkboxes[index] = checkbox
+            yOffset = yOffset - 32
+        end
+
+        panel:SetScript("OnShow", function()
+            local settings = AttendanceSettings()
+            for index, info in ipairs(CONTENT_CHECKBOXES) do
+                checkboxes[index]:SetValue(ReadSettingPath(settings, info.path))
+            end
+        end)
+    end
+
     return PRT.Components.GetSubTabGroup(parent, {
         { name = "Grid", setup = SetupGrid },
         { name = "Records", setup = SetupRecords },
+        { name = "Settings", setup = SetupSettings },
     })
 end)
 

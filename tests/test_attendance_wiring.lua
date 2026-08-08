@@ -151,6 +151,12 @@ local function settingsWith(overrides)
         expiryDays = 90,
         autoSyncFromLeader = false,
         confirmBeforeSyncing = true,
+        contentTypes = {
+            openWorld = false,
+            dungeon = { normal = false, heroic = false, mythic = false, mythicPlus = false },
+            raid = { lfr = true, normal = true, heroic = true, mythic = true },
+            scenario = { normal = false, heroic = false },
+        },
     }
     for key, value in pairs(overrides or {}) do
         settings[key] = value
@@ -196,10 +202,11 @@ end
 
 --- Counts settings reads as well as answering them. wow_stubs' GetSetting reads
 --- PRT.defaults, so the table under test goes in there and comes back out.
-local function withSettings(settings, body)
+local function withSettings(settings, body, contentEnabled)
     local savedDefaults = PRT.defaults.attendance
     local savedReader = PRT.GetSetting
-    local reads = { count = 0, keys = {} }
+    local savedContentChecker = PRT.IsContentTypeEnabled
+    local reads = { count = 0, keys = {}, contentTypes = {} }
 
     PRT.defaults.attendance = settings
     PRT.GetSetting = function(self, key)
@@ -207,11 +214,16 @@ local function withSettings(settings, body)
         reads.keys[#reads.keys + 1] = key
         return savedReader(self, key)
     end
+    PRT.IsContentTypeEnabled = function(contentTypes)
+        reads.contentTypes[#reads.contentTypes + 1] = contentTypes
+        return contentEnabled ~= false
+    end
 
     local ok, err = pcall(body, reads)
 
     PRT.defaults.attendance = savedDefaults
     PRT.GetSetting = savedReader
+    PRT.IsContentTypeEnabled = savedContentChecker
 
     if not ok then
         error(err, 0)
@@ -610,10 +622,11 @@ end
 
 tests["a countdown start reads the attendance settings exactly once"] = function()
     local groupInspect = groupInspectFake(groupData({ { name = NIV, class = "MAGE" } }))
+    local settings = settingsWith()
     local reads
 
     withPRT({ AttendanceStore = storeSpy(), Roster = rosterSpy(), GroupInspect = groupInspect }, function()
-        reads = withSettings(settingsWith(), function()
+        reads = withSettings(settings, function()
             AttendanceWiring:OnCountdownStart()
         end)
     end)
@@ -621,6 +634,27 @@ tests["a countdown start reads the attendance settings exactly once"] = function
     assertEquals(reads.count, 1)
     assertEquals(reads.keys[1], "attendance",
         "the wiring reads its own settings table and nobody else's")
+    assertEquals(#reads.contentTypes, 1)
+    assertEquals(reads.contentTypes[1], settings.contentTypes,
+        "the shared content-type gate receives the attendance content settings")
+end
+
+tests["a countdown start outside an enabled content type records nothing"] = function()
+    local store = storeSpy()
+    local groupInspect = groupInspectFake(groupData({ { name = NIV, class = "MAGE" } }))
+    local settings = settingsWith()
+    local reads
+
+    withPRT({ AttendanceStore = store, Roster = rosterSpy(), GroupInspect = groupInspect }, function()
+        reads = withSettings(settings, function()
+            AttendanceWiring:OnCountdownStart()
+        end, false)
+    end)
+
+    assertEquals(#store.starts, 0, "a Mythic+ pull must not create raid attendance")
+    assertEquals(reads.count, 1)
+    assertEquals(#reads.contentTypes, 1)
+    assertEquals(reads.contentTypes[1], settings.contentTypes)
 end
 
 tests["a countdown start keeps placeholder-named members out of what the store records"] = function()
@@ -878,6 +912,12 @@ tests["the shipped attendance defaults match the spec"] = function()
     assertEquals(defaults.expiryDays, 90)
     assertEquals(defaults.autoSyncFromLeader, false, "Automatically Sync From Leader is opt-in")
     assertEquals(defaults.confirmBeforeSyncing, true, "Confirm Before Syncing is on by default")
+    assertTableEquals(defaults.contentTypes, {
+        openWorld = false,
+        dungeon = { normal = false, heroic = false, mythic = false, mythicPlus = false },
+        raid = { lfr = true, normal = true, heroic = true, mythic = true },
+        scenario = { normal = false, heroic = false },
+    }, "attendance defaults to raid instances only")
 end
 
 tests["applying settings injects Confirm Before Syncing into the sync module"] = function()

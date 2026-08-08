@@ -9,6 +9,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 
 - Ready Check can now whisper guild members or the full raid when PurplexityRaidTools is missing or outdated.
+- Attendance settings now let officers choose which content types create attendance records, defaulting to raid instances only.
+
+### Fixed
+
+- Pull countdowns in Mythic+ dungeons no longer create attendance records by default.
 
 ## [1.1.1] - 2026-08-07
 

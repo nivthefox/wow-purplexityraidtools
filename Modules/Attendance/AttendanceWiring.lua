@@ -26,6 +26,12 @@ PRT.defaults.attendance = {
     expiryDays = 90,
     autoSyncFromLeader = false,
     confirmBeforeSyncing = true,
+    contentTypes = {
+        openWorld = false,
+        dungeon = { normal = false, heroic = false, mythic = false, mythicPlus = false },
+        raid = { lfr = true, normal = true, heroic = true, mythic = true },
+        scenario = { normal = false, heroic = false },
+    },
 }
 
 local guildClassCache
@@ -90,12 +96,16 @@ end
 --- it would write a day of Missing-fills and spend the first-pull semantics, so
 --- the next real pull would record everybody Late.
 function AttendanceWiring:OnCountdownStart()
+    local settings = AttendanceSettings()
+    if not PRT.IsContentTypeEnabled(settings.contentTypes) then
+        return
+    end
+
     local group = self:BuildSnapshot(PRT.GroupInspect.members)
     if #group == 0 then
         return
     end
 
-    local settings = AttendanceSettings()
     PRT.AttendanceStore:OnCountdownStart(group, PRT.Roster:GetEntries(), settings.rolloverHour)
 end
 

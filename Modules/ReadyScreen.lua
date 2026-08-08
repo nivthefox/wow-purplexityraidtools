@@ -216,17 +216,43 @@ local function SendStatus(target)
     PRT.Comms:Send(STATUS_RESPONSE_MSG_TYPE, ReadLocalStatus(), "WHISPER", target)
 end
 
-local function IsCurrentGroupMember(sender)
-    local guid = UnitGUID(sender)
-    return guid and PRT.GroupInspect and PRT.GroupInspect.members[guid] ~= nil
+local function ResolveGroupMember(sender)
+    if type(sender) ~= "string" or sender == "" then
+        return nil, nil
+    end
+
+    local senderShortName = Ambiguate(sender, "short")
+    local matchingGUID
+    local matchingName
+    local shortNameIsAmbiguous = false
+    for unit in PRT:IterateGroup() do
+        local guid = UnitGUID(unit)
+        local name = GetUnitName(unit, true)
+        if guid and name == sender then
+            return guid, name
+        end
+        if guid and name and Ambiguate(name, "short") == senderShortName then
+            if matchingGUID and matchingGUID ~= guid then
+                shortNameIsAmbiguous = true
+            else
+                matchingGUID = guid
+                matchingName = name
+            end
+        end
+    end
+    if shortNameIsAmbiguous then
+        return nil, nil
+    end
+    return matchingGUID, matchingName
 end
 
 local function OnStatusQuery(_, sender)
-    if not IsCurrentGroupMember(sender) then
+    local _, target = ResolveGroupMember(sender)
+    if not target then
         return
     end
-    statusSubscribers[sender] = GetTime() + 60
-    SendStatus(sender)
+    statusSubscribers[target] = GetTime() + 60
+    SendStatus(target)
 end
 
 local function OnStatusResponse(data, sender)
@@ -236,8 +262,8 @@ local function OnStatusResponse(data, sender)
         return
     end
 
-    local guid = UnitGUID(sender)
-    if not guid or not PRT.GroupInspect.members[guid] then
+    local guid = ResolveGroupMember(sender)
+    if not guid then
         return
     end
 
@@ -286,7 +312,8 @@ end
 local function PublishStatusChanges()
     local now = GetTime()
     for target, expiresAt in pairs(statusSubscribers) do
-        if expiresAt < now or not IsCurrentGroupMember(target) then
+        local guid = ResolveGroupMember(target)
+        if expiresAt < now or not guid then
             statusSubscribers[target] = nil
         else
             SendStatus(target)

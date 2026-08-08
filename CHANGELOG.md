@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.1.2] - 2026-08-08
+
 ### Added
 
 - Ready Check can now whisper guild members or the full raid when PurplexityRaidTools is missing or outdated.
@@ -14,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 
 - Pull countdowns in Mythic+ dungeons no longer create attendance records by default.
+- Ready Screen now receives weapon enhancement and durability reports when opened by a non-leader.
 
 ## [1.1.1] - 2026-08-07
 
@@ -166,7 +169,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Initial alpha release with Don't Release and Ready Check modules.
 
-[Unreleased]: https://github.com/nivthefox/wow-purplexityraidtools/compare/v1.1.1...HEAD
+[Unreleased]: https://github.com/nivthefox/wow-purplexityraidtools/compare/v1.1.2...HEAD
+[1.1.2]: https://github.com/nivthefox/wow-purplexityraidtools/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/nivthefox/wow-purplexityraidtools/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/nivthefox/wow-purplexityraidtools/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/nivthefox/wow-purplexityraidtools/compare/v1.0.0...v1.0.1

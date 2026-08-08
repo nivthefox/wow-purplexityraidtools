@@ -198,10 +198,12 @@ tests["CalculateDurability: an indestructible equipment set reports one hundred"
     assertEquals(ReadyScreen.CalculateDurability({}), 100)
 end
 
-tests["Initialize: status reports carry weapon enhancement and durability"] = function()
+tests["Initialize: status reports from non-leaders resolve through group unit tokens"] = function()
     local originalComms = PurplexityRaidTools.Comms
     local originalGroupInspect = PurplexityRaidTools.GroupInspect
+    local originalIterateGroup = PurplexityRaidTools.IterateGroup
     local originalUnitGUID = UnitGUID
+    local originalGetUnitName = GetUnitName
     local originalWeaponEnchantInfo = GetWeaponEnchantInfo
     local originalInventoryDurability = GetInventoryItemDurability
 
@@ -216,12 +218,27 @@ tests["Initialize: status reports carry weapon enhancement and durability"] = fu
         end,
     }
     PurplexityRaidTools.GroupInspect = {
-        members = { ["GUID-NIV"] = {}, ["GUID-BOB"] = {} },
+        members = { ["GUID-ALICE"] = {}, ["GUID-NIV"] = {}, ["GUID-BOB"] = {} },
         Listen = function() end,
     }
+    PurplexityRaidTools.IterateGroup = function()
+        local units = { "party1", "party2", "player" }
+        local index = 0
+        return function()
+            index = index + 1
+            return units[index]
+        end
+    end
     UnitGUID = function(unit)
-        if unit == "Niv" then return "GUID-NIV" end
-        if unit == "Bob" then return "GUID-BOB" end
+        if unit == "party1" then return "GUID-NIV" end
+        if unit == "party2" then return "GUID-BOB" end
+        if unit == "player" then return "GUID-ALICE" end
+        return nil
+    end
+    GetUnitName = function(unit)
+        if unit == "party1" then return "Niv" end
+        if unit == "party2" then return "Bob" end
+        if unit == "player" then return "Alice" end
         return nil
     end
     GetWeaponEnchantInfo = function()
@@ -235,6 +252,7 @@ tests["Initialize: status reports carry weapon enhancement and durability"] = fu
     end
 
     ReadyScreen:Initialize()
+    assertNil(UnitGUID("Niv"), "the fixture must require roster-token resolution")
     handlers.readyStatusQuery({}, "Niv")
 
     assertEquals(sent.messageType, "readyStatusResponse")
@@ -249,7 +267,9 @@ tests["Initialize: status reports carry weapon enhancement and durability"] = fu
 
     PurplexityRaidTools.Comms = originalComms
     PurplexityRaidTools.GroupInspect = originalGroupInspect
+    PurplexityRaidTools.IterateGroup = originalIterateGroup
     UnitGUID = originalUnitGUID
+    GetUnitName = originalGetUnitName
     GetWeaponEnchantInfo = originalWeaponEnchantInfo
     GetInventoryItemDurability = originalInventoryDurability
 end

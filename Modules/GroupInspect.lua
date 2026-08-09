@@ -323,7 +323,7 @@ local function ProcessNextInspect()
         local guid = table.remove(priorityQueue, 1)
         local unit = UnitForGUID(guid)
         local member = GroupInspect.members[guid]
-        if unit and member and not member.specId then
+        if unit and member and not member.specId and CanInspect(unit, false) then
             BeginInspect(unit)
             return
         end
@@ -332,7 +332,7 @@ local function ProcessNextInspect()
     while #sweepQueue > 0 do
         local guid = table.remove(sweepQueue, 1)
         local unit = UnitForGUID(guid)
-        if unit and UnitExists(unit) then
+        if unit and UnitExists(unit) and CanInspect(unit, false) then
             BeginInspect(unit)
             return
         end

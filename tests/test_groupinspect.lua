@@ -71,6 +71,8 @@ local function newSim()
         localRealm = LOCAL_REALM,
         scheduledCallbacks = {},
         inspectedUnits = {},
+        inspectChecks = {},
+        uninspectableUnits = {},
         sentMessages = {},
     }
 end
@@ -184,6 +186,12 @@ local function makeStubs()
                 end
             end
             return false
+        end,
+        CanInspect = function(unitToken, showError)
+            table.insert(sim.inspectChecks, { unit = unitToken, showError = showError })
+            local unit = UNITS[unitToken]
+            return unit ~= nil and not unit.offline
+                and not sim.uninspectableUnits[unitToken]
         end,
         UnitAffectingCombat = function() return false end,
         IsInGroup = function() return #sim.units > 0 end,
@@ -593,6 +601,25 @@ tests["a priority-queue inspect sends a version query to the new player"] = func
     end)
 end
 
+tests["an offline priority target is skipped before the next available member"] = function()
+    runSim(function()
+        sim.units = { "raid1", "raid4", "raid3" }
+        GroupInspect:ScanRoster()
+        driveInspectTick()
+
+        assertEquals(#sim.inspectedUnits, 1,
+            "an offline member must not consume the inspect attempt")
+        assertEquals(sim.inspectedUnits[1], "raid3",
+            "the same tick must continue to the next available member")
+        assertEquals(#sim.inspectChecks, 2,
+            "both priority targets must be checked before inspection")
+        assertEquals(sim.inspectChecks[1].unit, "raid4")
+        assertFalse(sim.inspectChecks[1].showError,
+            "background availability checks must not show Blizzard errors")
+        assertEquals(sim.inspectChecks[2].unit, "raid3")
+    end)
+end
+
 tests["a sweep inspect sends a version query to an already-inspected player"] = function()
     runSim(function()
         sim.units = { "raid1", "raid2" }
@@ -612,6 +639,32 @@ tests["a sweep inspect sends a version query to an already-inspected player"] = 
         assertEquals(#queries, 1, "the sweep inspect must send a version query")
         assertEquals(queries[1].channel, "WHISPER")
         assertEquals(queries[1].target, "Bob")
+    end)
+end
+
+tests["the sweep skips a member Blizzard reports cannot be inspected"] = function()
+    runSim(function()
+        sim.units = { "raid1", "raid2" }
+        sim.uninspectableUnits["raid2"] = true
+        GroupInspect:ScanRoster()
+
+        driveInspectTick()
+        assertEquals(#sim.inspectedUnits, 0,
+            "the priority drain must skip the unavailable member")
+
+        sim.inspectChecks = {}
+        driveSweepTick()
+        driveInspectTick()
+
+        assertEquals(#sim.inspectedUnits, 0,
+            "the sweep must not call NotifyInspect for an unavailable member")
+        assertEquals(#sentOfType("versionQuery"), 0,
+            "an unavailable member must not receive an inspect-coupled version query")
+        assertEquals(#sim.inspectChecks, 1,
+            "the sweep target must be checked exactly once")
+        assertEquals(sim.inspectChecks[1].unit, "raid2")
+        assertFalse(sim.inspectChecks[1].showError,
+            "background availability checks must not show Blizzard errors")
     end)
 end
 

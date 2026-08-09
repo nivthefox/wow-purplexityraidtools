@@ -156,6 +156,66 @@ local function accept(name)
     AutoInvite:OnGroupRosterUpdate()
 end
 
+tests["ordinary character and Battle.net keyword whispers still invite"] = function()
+    local invitedGameAccountID
+    local stubs = makeStubs({})
+    stubs.BNGetNumFriends = function()
+        return 1, 1
+    end
+    stubs.C_BattleNet = {
+        GetFriendAccountInfo = function()
+            return { bnetAccountID = 42 }
+        end,
+        GetFriendNumGameAccounts = function()
+            return 1
+        end,
+        GetFriendGameAccountInfo = function()
+            return {
+                clientProgram = "WoW",
+                isOnline = true,
+                isInCurrentRegion = true,
+                wowProjectID = WOW_PROJECT_MAINLINE,
+                gameAccountID = 99,
+                characterName = "BattleNetSender",
+            }
+        end,
+    }
+    stubs.BNInviteFriend = function(gameAccountID)
+        invitedGameAccountID = gameAccountID
+    end
+
+    withGlobals(stubs, function()
+        sim = newSim()
+        resetModuleState()
+
+        AutoInvite:OnWhisper(" INV ", "CharacterSender")
+        AutoInvite:OnBNetWhisper("123", "BattleTag", 42)
+
+        assertTrue(sim.invited.CharacterSender)
+        assertEquals(invitedGameAccountID, 99)
+    end)
+end
+
+tests["secret whisper payloads are ignored before string or identity operations"] = function()
+    local secret = {}
+    local stubs = makeStubs({})
+    stubs.issecretvalue = function(value)
+        return value == secret
+    end
+
+    withGlobals(stubs, function()
+        sim = newSim()
+        resetModuleState()
+
+        AutoInvite:OnWhisper(secret, "Sender")
+        AutoInvite:OnWhisper("inv", secret)
+        AutoInvite:OnBNetWhisper(secret, "Sender", 1)
+        AutoInvite:OnBNetWhisper("inv", "Sender", secret)
+
+        assertEquals(#sim.inviteOrder, 0)
+    end)
+end
+
 -- The headline case: solo leader mass-invites more people than a party holds.
 -- The party must fill, convert to a raid, and then invite everyone else.
 tests["mass invite of 8 from solo fills party, converts, invites the rest"] = function()

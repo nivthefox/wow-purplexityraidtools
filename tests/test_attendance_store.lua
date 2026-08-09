@@ -7,10 +7,8 @@ local tests = {}
 --------------------------------------------------------------------------------
 -- Prerequisite globals
 --
--- WoW's Lua environment has no os library, so the implementation must call the
--- global date(). Day keys are derived in the server frame through date()'s "!"
--- forms: the spec requires every client to agree on which day a pull belongs to,
--- and a local-timezone decomposition splits one raid across two keys.
+-- The spec requires every client to agree on which day a pull belongs to, so the
+-- store reads the realm CalendarTime rather than the client's local clock.
 --------------------------------------------------------------------------------
 
 if date == nil then
@@ -32,13 +30,31 @@ local EXPIRY_BEFORE_ROLLOVER = AUGUST_5_2026 + 3 * HOUR
 local EXACTLY_90_DAYS_OLD = "2026-05-07"
 local NINETY_ONE_DAYS_OLD = "2026-05-06"
 
+local function calendarTimeAt(timestamp)
+    local value = os.date("!*t", timestamp)
+    return {
+        year = value.year,
+        month = value.month,
+        monthDay = value.day,
+        weekday = value.wday,
+        hour = value.hour,
+        minute = value.min,
+    }
+end
+
 if C_DateAndTime == nil then
     C_DateAndTime = {}
 end
 
-if C_DateAndTime.GetServerTimeLocal == nil then
-    C_DateAndTime.GetServerTimeLocal = function()
-        return PULL_TIME
+if C_DateAndTime.GetCurrentCalendarTime == nil then
+    C_DateAndTime.GetCurrentCalendarTime = function()
+        return calendarTimeAt(PULL_TIME)
+    end
+end
+
+if C_DateAndTime.AdjustTimeByDays == nil then
+    C_DateAndTime.AdjustTimeByDays = function(_, days)
+        return calendarTimeAt(PULL_TIME + days * DAY)
     end
 end
 
@@ -67,12 +83,17 @@ local function withGlobals(overrides, body)
 end
 
 local function atServerTime(timestamp, body)
-    local saved = C_DateAndTime.GetServerTimeLocal
-    C_DateAndTime.GetServerTimeLocal = function()
-        return timestamp
+    local savedCurrent = C_DateAndTime.GetCurrentCalendarTime
+    local savedAdjust = C_DateAndTime.AdjustTimeByDays
+    C_DateAndTime.GetCurrentCalendarTime = function()
+        return calendarTimeAt(timestamp)
+    end
+    C_DateAndTime.AdjustTimeByDays = function(_, days)
+        return calendarTimeAt(timestamp + days * DAY)
     end
     local ok, err = pcall(body)
-    C_DateAndTime.GetServerTimeLocal = saved
+    C_DateAndTime.GetCurrentCalendarTime = savedCurrent
+    C_DateAndTime.AdjustTimeByDays = savedAdjust
     if not ok then
         error(err, 0)
     end
@@ -139,7 +160,7 @@ tests["no store operation reads the client-frame GetServerTime"] = function()
     local ok, err = pcall(function()
         withGlobals({
             GetServerTime = function()
-                error("the store must read C_DateAndTime.GetServerTimeLocal(), not GetServerTime()", 0)
+                error("the store must read realm CalendarTime, not GetServerTime()", 0)
             end,
         }, function()
             Store:GetRaidDay(6)
@@ -162,28 +183,50 @@ tests["the raid day key is derived in the server frame, not the client's timezon
     end)
 end
 
-tests["day keys are derived through date()'s server-frame forms"] = function()
+tests["day keys do not depend on the global date formatter"] = function()
     local db = resetDB()
     db[PULL_DAY] = { ["Elsie-Proudmoore"] = 3 }
 
-    local formats = {}
-    local realDate = date
-
     withGlobals({
-        date = function(format, timestamp)
-            formats[#formats + 1] = tostring(format)
-            return realDate(format, timestamp)
+        date = function()
+            error("attendance day keys must not call date()", 0)
         end,
     }, function()
         Store:GetRaidDay(6)
         Store:ExpireOldDays(90, 6)
     end)
+end
 
-    assertTrue(#formats > 0, "day-key derivation must go through date()")
-    for _, format in ipairs(formats) do
-        assertEquals(format:sub(1, 1), "!",
-            "the server frame is only reachable through date()'s \"!\" form, got: " .. format)
-    end
+tests["day calculation and expiry do not depend on date returning a string"] = function()
+    local db = resetDB()
+    db[NINETY_ONE_DAYS_OLD] = { ["Elsie-Proudmoore"] = 3 }
+    db[EXACTLY_90_DAYS_OLD] = { ["Grimgrace-Proudmoore"] = 3 }
+
+    withGlobals({
+        date = function()
+            return nil
+        end,
+        C_DateAndTime = {
+            GetCurrentCalendarTime = function()
+                return { year = 2026, month = 8, monthDay = 5, hour = 12, minute = 0 }
+            end,
+            AdjustTimeByDays = function(_, days)
+                if days == 0 then
+                    return { year = 2026, month = 8, monthDay = 5, hour = 12, minute = 0 }
+                end
+                if days == -90 then
+                    return { year = 2026, month = 5, monthDay = 7, hour = 12, minute = 0 }
+                end
+                error("unexpected day adjustment: " .. tostring(days), 0)
+            end,
+        },
+    }, function()
+        Store:ExpireOldDays(90, 6)
+        assertEquals(Store:GetRaidDay(6), PULL_DAY)
+    end)
+
+    assertNil(db[NINETY_ONE_DAYS_OLD])
+    assertNotNil(db[EXACTLY_90_DAYS_OLD])
 end
 
 tests["a server time before the rollover hour resolves to the previous calendar date"] = function()

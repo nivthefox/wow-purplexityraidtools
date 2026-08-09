@@ -113,15 +113,28 @@ end
 --- the duration of body and then put back: this file loads before the store's
 --- own suite, whose guarded fixtures would otherwise never be installed.
 local function withAttendanceStore(timestamp, body)
-    local savedDate = rawget(_G, "date")
     local savedDateAndTime = rawget(_G, "C_DateAndTime")
     local savedAttendance = rawget(_G, "PurplexityRaidToolsAttendanceDB")
     local savedRoster = rawget(_G, "PurplexityRaidToolsRosterDB")
 
-    _G.date = os.date
+    local function calendarTimeAt(value)
+        local result = os.date("!*t", value)
+        return {
+            year = result.year,
+            month = result.month,
+            monthDay = result.day,
+            weekday = result.wday,
+            hour = result.hour,
+            minute = result.min,
+        }
+    end
+
     _G.C_DateAndTime = {
-        GetServerTimeLocal = function()
-            return timestamp
+        GetCurrentCalendarTime = function()
+            return calendarTimeAt(timestamp)
+        end,
+        AdjustTimeByDays = function(_, days)
+            return calendarTimeAt(timestamp + days * 86400)
         end,
     }
     _G.PurplexityRaidToolsAttendanceDB = {}
@@ -129,7 +142,6 @@ local function withAttendanceStore(timestamp, body)
 
     local ok, err = pcall(body)
 
-    _G.date = savedDate
     _G.C_DateAndTime = savedDateAndTime
     _G.PurplexityRaidToolsAttendanceDB = savedAttendance
     _G.PurplexityRaidToolsRosterDB = savedRoster

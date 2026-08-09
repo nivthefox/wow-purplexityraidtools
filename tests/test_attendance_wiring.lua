@@ -248,23 +248,34 @@ local function withDatabases(attendance, roster, body)
     end
 end
 
---- The store reads its clock through C_DateAndTime.GetServerTimeLocal and
---- decomposes it with date(); neither is installed at file scope here, so the
---- suites that load after this one keep their own guarded fixtures.
+--- The store reads its clock through realm CalendarTime APIs. They are installed
+--- only here so suites loaded afterward retain their own guarded fixtures.
 local function atServerTime(timestamp, body)
-    local savedDate = rawget(_G, "date")
     local savedDateAndTime = rawget(_G, "C_DateAndTime")
 
-    _G.date = os.date
+    local function calendarTimeAt(value)
+        local result = os.date("!*t", value)
+        return {
+            year = result.year,
+            month = result.month,
+            monthDay = result.day,
+            weekday = result.wday,
+            hour = result.hour,
+            minute = result.min,
+        }
+    end
+
     _G.C_DateAndTime = {
-        GetServerTimeLocal = function()
-            return timestamp
+        GetCurrentCalendarTime = function()
+            return calendarTimeAt(timestamp)
+        end,
+        AdjustTimeByDays = function(_, days)
+            return calendarTimeAt(timestamp + days * 86400)
         end,
     }
 
     local ok, err = pcall(body)
 
-    _G.date = savedDate
     _G.C_DateAndTime = savedDateAndTime
 
     if not ok then

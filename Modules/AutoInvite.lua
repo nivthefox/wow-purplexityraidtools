@@ -21,6 +21,10 @@ local massInviteRanks = {}
 -- queued invites are held until it clears (i.e. until IsInRaid() is true).
 local convertPending = false
 
+local function IsSecret(value)
+    return issecretvalue ~= nil and issecretvalue(value)
+end
+
 local function Trim(str)
     return string.match(str, "^%s*(.-)%s*$")
 end
@@ -136,6 +140,10 @@ local function FindBNetGameAccount(bnSenderID)
 end
 
 function AutoInvite:OnWhisper(message, senderName)
+    if IsSecret(message) or IsSecret(senderName) then
+        return
+    end
+
     local settings = PRT:GetSetting("autoInvite")
     if not settings or not settings.whisperInviteEnabled then
         return
@@ -169,6 +177,10 @@ function AutoInvite:OnWhisper(message, senderName)
 end
 
 function AutoInvite:OnBNetWhisper(message, senderName, bnSenderID)
+    if IsSecret(message) or IsSecret(senderName) or IsSecret(bnSenderID) then
+        return
+    end
+
     local settings = PRT:GetSetting("autoInvite")
     if not settings or not settings.whisperInviteEnabled then
         return
@@ -185,6 +197,9 @@ function AutoInvite:OnBNetWhisper(message, senderName, bnSenderID)
     end
 
     local gameAccountID, characterName = FindBNetGameAccount(bnSenderID)
+    if IsSecret(gameAccountID) or IsSecret(characterName) then
+        return
+    end
     if not gameAccountID or not characterName then
         return
     end

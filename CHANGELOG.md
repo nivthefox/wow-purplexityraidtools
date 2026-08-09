@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.1.4] - 2026-08-09
+
+### Fixed
+
+- Attendance expiration checks no longer cause an error when the addon loads.
+- Auto-Invite now safely ignores whispers that WoW marks as restricted.
+
 ## [1.1.3] - 2026-08-08
 
 ### Fixed
@@ -175,7 +182,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Initial alpha release with Don't Release and Ready Check modules.
 
-[Unreleased]: https://github.com/nivthefox/wow-purplexityraidtools/compare/v1.1.3...HEAD
+[Unreleased]: https://github.com/nivthefox/wow-purplexityraidtools/compare/v1.1.4...HEAD
+[1.1.4]: https://github.com/nivthefox/wow-purplexityraidtools/compare/v1.1.3...v1.1.4
 [1.1.3]: https://github.com/nivthefox/wow-purplexityraidtools/compare/v1.1.2...v1.1.3
 [1.1.2]: https://github.com/nivthefox/wow-purplexityraidtools/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/nivthefox/wow-purplexityraidtools/compare/v1.1.0...v1.1.1

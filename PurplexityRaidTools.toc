@@ -2,7 +2,7 @@
 ## Title: PurplexityRaidTools
 ## Notes: Raid tools for Purplexity
 ## Author: Niv
-## Version: 1.1.3
+## Version: 1.1.4
 ## SavedVariables: PurplexityRaidToolsDB, PurplexityRaidToolsAttendanceDB, PurplexityRaidToolsRosterDB
 
 Libs/LibStub/LibStub.lua

@@ -47,6 +47,7 @@ local UNITS = {
     raid3 = { guid = "GUID-ZED", name = "Zed", realm = "Area52" },
     raid4 = { guid = "GUID-MAE", name = "Mae", offline = true },
     raid5 = { guid = "GUID-TEK", name = "Tek", realm = "" },
+    raid6 = { guid = "CREATURE-FOLLOWER", name = "Follower", isNPC = true },
 }
 
 local function unitNameWithServer(unit)
@@ -178,6 +179,10 @@ local function makeStubs()
                 return false
             end
             return not unit.offline
+        end,
+        UnitIsPlayer = function(unitToken)
+            local unit = UNITS[unitToken]
+            return unit ~= nil and not unit.isNPC
         end,
         UnitExists = function(unitToken)
             for i = 1, #sim.units do
@@ -598,6 +603,33 @@ tests["a priority-queue inspect sends a version query to the new player"] = func
         assertEquals(queries[1].channel, "WHISPER")
         assertEquals(queries[1].target, "Zed-Area52",
             "the whisper target must be the fully qualified cross-realm name")
+    end)
+end
+
+tests["follower NPCs are excluded from player inspection data and queues"] = function()
+    runSim(function()
+        sim.units = { "raid1", "raid2", "raid6" }
+        GroupInspect:ScanRoster()
+
+        assertEquals(countMembers(), 2, "only player characters belong in GroupInspect")
+        assertNil(GroupInspect.members["CREATURE-FOLLOWER"],
+            "an NPC party member must not receive a player record")
+
+        driveInspectTick()
+        flushTimers()
+        driveSweepTick()
+        driveInspectTick()
+
+        assertEquals(#sim.inspectedUnits, 2,
+            "the real player must remain inspectable through priority and sweep queues")
+        assertEquals(sim.inspectedUnits[1], "raid2")
+        assertEquals(sim.inspectedUnits[2], "raid2")
+        assertEquals(#sim.inspectChecks, 2,
+            "the NPC must never reach Blizzard's inspectability predicate")
+        assertEquals(sim.inspectChecks[1].unit, "raid2")
+        assertEquals(sim.inspectChecks[2].unit, "raid2")
+        assertEquals(#sentOfType("versionQuery"), 2,
+            "only the real player may receive inspect-coupled version queries")
     end)
 end
 

@@ -283,7 +283,7 @@ local function RefillSweepQueue()
         return
     end
     for unit in PRT:IterateGroup() do
-        if not UnitIsUnit(unit, "player") then
+        if UnitIsPlayer(unit) and not UnitIsUnit(unit, "player") then
             local guid = UnitGUID(unit)
             if guid then
                 table.insert(sweepQueue, guid)
@@ -451,7 +451,7 @@ function GroupInspect:ScanRoster()
     local changed = false
 
     for unit in PRT:IterateGroup() do
-        local guid = UnitGUID(unit)
+        local guid = UnitIsPlayer(unit) and UnitGUID(unit)
         if guid then
             activeGUIDs[guid] = true
             local member = self.members[guid]

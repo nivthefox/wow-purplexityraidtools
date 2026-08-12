@@ -1,5 +1,5 @@
 -- SpellData.lua (auto-generated, do not edit)
--- Source: SimulationCraft dbc_extract3 (build 12.0.7.68887)
+-- Source: SimulationCraft dbc_extract3 (build 12.1.0.69214)
 
 local PRT = PurplexityRaidTools
 
@@ -299,7 +299,7 @@ PRT.SpellData = {
                 spellId = 1241462,
                 name = "Arcane Pulse",
                 duration = 0,
-                cooldown = 0,
+                cooldown = 15,
                 charges = 1,
                 talents = {
                     [451035] = { duration_pct = 0.2 },
@@ -1042,7 +1042,7 @@ PRT.SpellData = {
                 charges = 1,
                 talents = {
                     [114154] = { cooldown_pct = -0.3 },
-                    [414720] = { cooldown_pct = -0.3 },
+                    [414720] = { cooldown_pct = -0.4 },
                 },
             },
             [642] = {
@@ -1072,7 +1072,7 @@ PRT.SpellData = {
                 duration = 10,
                 cooldown = 300,
                 charges = 1,
-                flags = { "BIG_DEFENSIVE", "EXTERNAL_DEFENSIVE" },
+                flags = { "BIG_DEFENSIVE", "EXTERNAL_DEFENSIVE", "IMPORTANT" },
             },
             [1044] = {
                 spellId = 1044,
@@ -1411,7 +1411,7 @@ PRT.SpellData = {
                 duration = 10,
                 cooldown = 300,
                 charges = 1,
-                flags = { "BIG_DEFENSIVE", "EXTERNAL_DEFENSIVE" },
+                flags = { "BIG_DEFENSIVE", "EXTERNAL_DEFENSIVE", "IMPORTANT" },
             },
             [1044] = {
                 spellId = 1044,
@@ -1447,7 +1447,7 @@ PRT.SpellData = {
                 charges = 1,
                 talents = {
                     [31884] = { charges_pct = 0.2, duration_pct = 0.2 },
-                    [389539] = { charges_pct = 0.2, duration_pct = 0.2 },
+                    [389539] = { charges_pct = 0.1, duration_pct = 0.1 },
                 },
             },
             [20271] = {
@@ -1458,7 +1458,7 @@ PRT.SpellData = {
                 charges = 1,
                 talents = {
                     [31884] = { charges_pct = 0.2, duration_pct = 0.2 },
-                    [389539] = { charges_pct = 0.2, duration_pct = 0.2 },
+                    [389539] = { charges_pct = 0.1, duration_pct = 0.1 },
                 },
             },
             [26573] = {
@@ -1501,7 +1501,7 @@ PRT.SpellData = {
                 charges = 1,
                 talents = {
                     [31884] = { charges_pct = 0.2, duration_pct = 0.2 },
-                    [389539] = { charges_pct = 0.2, duration_pct = 0.2 },
+                    [389539] = { charges_pct = 0.1, duration_pct = 0.1 },
                 },
             },
             [35395] = {
@@ -1512,8 +1512,7 @@ PRT.SpellData = {
                 charges = 2,
                 talents = {
                     [31884] = { charges_pct = 0.2, duration_pct = 0.2 },
-                    [377053] = { duration_pct = 0.2 },
-                    [389539] = { charges_pct = 0.2, duration_pct = 0.2 },
+                    [389539] = { charges_pct = 0.1, duration_pct = 0.1 },
                 },
             },
             [53595] = {
@@ -1524,8 +1523,7 @@ PRT.SpellData = {
                 charges = 2,
                 talents = {
                     [31884] = { charges_pct = 0.2, duration_pct = 0.2 },
-                    [377053] = { duration_pct = 0.2 },
-                    [389539] = { charges_pct = 0.2, duration_pct = 0.2 },
+                    [389539] = { charges_pct = 0.1, duration_pct = 0.1 },
                 },
             },
             [53600] = {
@@ -1536,7 +1534,7 @@ PRT.SpellData = {
                 charges = 1,
                 talents = {
                     [31884] = { charges_pct = 0.2, duration_pct = 0.2 },
-                    [389539] = { charges_pct = 0.2, duration_pct = 0.2 },
+                    [389539] = { charges_pct = 0.1, duration_pct = 0.1 },
                     [469337] = { duration_pct = 0.02 },
                 },
             },
@@ -1555,7 +1553,7 @@ PRT.SpellData = {
                 charges = 1,
                 talents = {
                     [31884] = { charges_pct = 0.2, duration_pct = 0.2 },
-                    [389539] = { charges_pct = 0.2, duration_pct = 0.2 },
+                    [389539] = { charges_pct = 0.1, duration_pct = 0.1 },
                     [469337] = { duration_pct = 0.02 },
                 },
             },
@@ -1605,9 +1603,6 @@ PRT.SpellData = {
                 duration = 5,
                 cooldown = 5,
                 charges = 3,
-                talents = {
-                    [377053] = { duration_pct = 0.2 },
-                },
             },
             [213644] = {
                 spellId = 213644,
@@ -1625,7 +1620,7 @@ PRT.SpellData = {
                 talents = {
                     [31884] = { charges_pct = 0.2, duration_pct = 0.2 },
                     [379391] = { cooldown = -15 },
-                    [389539] = { charges_pct = 0.2, duration_pct = 0.2 },
+                    [389539] = { charges_pct = 0.1, duration_pct = 0.1 },
                 },
             },
             [389539] = {
@@ -1720,7 +1715,7 @@ PRT.SpellData = {
                 duration = 10,
                 cooldown = 300,
                 charges = 1,
-                flags = { "BIG_DEFENSIVE", "EXTERNAL_DEFENSIVE" },
+                flags = { "BIG_DEFENSIVE", "EXTERNAL_DEFENSIVE", "IMPORTANT" },
             },
             [1044] = {
                 spellId = 1044,
@@ -2004,12 +1999,11 @@ PRT.SpellData = {
                 spellId = 772,
                 name = "Rend",
                 duration = 0,
-                cooldown = 6,
+                cooldown = 0,
                 charges = 1,
                 talents = {
                     [107574] = { charges_pct = 0.2, duration_pct = 0.2 },
                     [382896] = { charges_pct = 0.03, duration_pct = 0.03 },
-                    [383287] = { charges_pct = 0.05 },
                     [429642] = { charges_pct = 0.05, duration_pct = 0.05 },
                 },
             },
@@ -2021,7 +2015,6 @@ PRT.SpellData = {
                 charges = 1,
                 talents = {
                     [107574] = { charges_pct = 0.2, duration_pct = 0.2 },
-                    [228920] = { duration_pct = 0.5 },
                     [382896] = { charges_pct = 0.03, duration_pct = 0.03 },
                     [383082] = { duration_pct = 0.1 },
                     [383341] = { duration_pct = 0.05 },
@@ -2051,7 +2044,6 @@ PRT.SpellData = {
                 cooldown = 0,
                 charges = 1,
                 talents = {
-                    [228920] = { duration_pct = 0.5 },
                     [383082] = { duration_pct = 0.1 },
                     [429647] = { duration_pct = 0.15 },
                 },
@@ -2103,7 +2095,6 @@ PRT.SpellData = {
                 charges = 1,
                 talents = {
                     [107574] = { charges_pct = 0.2, cooldown_pct = -0.5, duration_pct = 0.5 },
-                    [228920] = { duration_pct = 0.5 },
                     [382896] = { charges_pct = 0.03, duration_pct = 0.03 },
                     [429642] = { charges_pct = 0.05, duration_pct = 0.05 },
                     [429647] = { duration_pct = 0.15 },
@@ -2413,7 +2404,7 @@ PRT.SpellData = {
                 spellId = 436358,
                 name = "Demolish",
                 duration = 2,
-                cooldown = 45,
+                cooldown = 30,
                 charges = 1,
                 channeled = true,
             },
@@ -2460,17 +2451,6 @@ PRT.SpellData = {
                 duration = 6,
                 cooldown = 8,
                 charges = 1,
-            },
-            [772] = {
-                spellId = 772,
-                name = "Rend",
-                duration = 0,
-                cooldown = 6,
-                charges = 1,
-                talents = {
-                    [107574] = { charges_pct = 0.2, duration_pct = 0.2 },
-                    [382900] = { charges_pct = 0.03, duration_pct = 0.03 },
-                },
             },
             [1464] = {
                 spellId = 1464,
@@ -2548,7 +2528,7 @@ PRT.SpellData = {
                 talents = {
                     [107574] = { charges_pct = 0.2, cooldown_pct = -0.5, duration_pct = 0.5 },
                     [382900] = { charges_pct = 0.03, duration_pct = 0.03 },
-                    [436707] = { duration_pct = 0.3 },
+                    [436707] = { duration_pct = 0.1 },
                 },
             },
             [6544] = {
@@ -2866,19 +2846,6 @@ PRT.SpellData = {
                 cooldown = 8,
                 charges = 1,
             },
-            [772] = {
-                spellId = 772,
-                name = "Rend",
-                duration = 0,
-                cooldown = 6,
-                charges = 1,
-                talents = {
-                    [107574] = { charges_pct = 0.2, duration_pct = 0.2 },
-                    [382895] = { charges_pct = 0.03, duration_pct = 0.03 },
-                    [385704] = { charges_pct = 0.25 },
-                    [429642] = { charges_pct = 0.05, duration_pct = 0.05 },
-                },
-            },
             [871] = {
                 spellId = 871,
                 name = "Shield Wall",
@@ -2925,7 +2892,6 @@ PRT.SpellData = {
                 cooldown = 0,
                 charges = 1,
                 talents = {
-                    [228920] = { duration_pct = 0.5 },
                     [383082] = { duration_pct = 0.1 },
                     [429647] = { duration_pct = 0.15 },
                 },
@@ -2977,11 +2943,10 @@ PRT.SpellData = {
                 charges = 1,
                 talents = {
                     [107574] = { charges_pct = 0.2, cooldown_pct = -0.5, duration_pct = 0.5 },
-                    [228920] = { duration_pct = 0.5 },
                     [382895] = { charges_pct = 0.03, duration_pct = 0.03 },
                     [429642] = { charges_pct = 0.05, duration_pct = 0.05 },
                     [429647] = { duration_pct = 0.15 },
-                    [436707] = { duration_pct = 0.3 },
+                    [436707] = { duration_pct = 0.1 },
                     [1269312] = { duration_pct = 0.1 },
                 },
             },
@@ -3013,7 +2978,6 @@ PRT.SpellData = {
                 charges = 1,
                 talents = {
                     [107574] = { charges_pct = 0.2, duration_pct = 0.2 },
-                    [228920] = { duration_pct = 0.5 },
                     [382895] = { charges_pct = 0.03, duration_pct = 0.03 },
                     [383082] = { duration_pct = 0.1 },
                     [429642] = { charges_pct = 0.05, duration_pct = 0.05 },
@@ -3267,7 +3231,7 @@ PRT.SpellData = {
                 spellId = 436358,
                 name = "Demolish",
                 duration = 2,
-                cooldown = 45,
+                cooldown = 30,
                 charges = 1,
                 channeled = true,
             },
@@ -3390,6 +3354,7 @@ PRT.SpellData = {
                 talents = {
                     [24858] = { charges_pct = 0.1, duration_pct = 0.1 },
                     [33873] = { charges_pct = 0.06, duration_pct = 0.06 },
+                    [383195] = { duration_pct = 0.12 },
                     [429402] = { duration_pct = 0.1 },
                     [429540] = { charges_pct = 0.03, duration_pct = 0.03 },
                     [451211] = { duration_pct = 0.05 },
@@ -3570,7 +3535,7 @@ PRT.SpellData = {
                     [451211] = { cooldown = -4, duration_pct = 0.05 },
                     [474541] = { charges_pct = 0.25, duration_pct = 0.25 },
                     [1264899] = { duration_pct = 0.08 },
-                    [1271305] = { duration_pct = 0.1 },
+                    [1271305] = { duration_pct = 0.05 },
                 },
             },
             [78675] = {
@@ -3653,7 +3618,7 @@ PRT.SpellData = {
                 talents = {
                     [393954] = { duration_pct = 0.08 },
                     [429540] = { charges_pct = 0.03, duration_pct = 0.03 },
-                    [1264899] = { duration_pct = 0.12 },
+                    [1264899] = { duration_pct = 0.18 },
                     [1271305] = { duration_pct = 0.1 },
                 },
             },
@@ -3673,6 +3638,7 @@ PRT.SpellData = {
                 talents = {
                     [24858] = { charges_pct = 0.1, duration_pct = 0.1 },
                     [33873] = { charges_pct = 0.06, duration_pct = 0.06 },
+                    [383195] = { duration_pct = 0.12 },
                     [429402] = { duration_pct = 0.1 },
                     [429523] = { duration_pct = 1.2 },
                     [429540] = { charges_pct = 0.03, duration_pct = 0.03 },
@@ -3997,7 +3963,7 @@ PRT.SpellData = {
                     [108299] = { charges_pct = 0.06, duration_pct = 0.06 },
                     [158476] = { duration_pct = 0.05 },
                     [202031] = { duration_pct = 0.15 },
-                    [384665] = { duration_pct = 0.12 },
+                    [384665] = { duration_pct = 0.16 },
                     [439926] = { duration_pct = 0.05 },
                     [441841] = { duration_pct = 0.1 },
                     [449184] = { duration_pct = 0.08 },
@@ -4087,6 +4053,7 @@ PRT.SpellData = {
                 duration = 6,
                 cooldown = 180,
                 charges = 1,
+                flags = { "BIG_DEFENSIVE" },
             },
             [77758] = {
                 spellId = 77758,
@@ -4252,7 +4219,7 @@ PRT.SpellData = {
                 charges = 1,
                 talents = {
                     [441846] = { charges_pct = 0.25, duration_pct = 0.25 },
-                    [1244544] = { charges_pct = 0.2, cooldown = -15, duration_pct = 0.2 },
+                    [1244544] = { charges_pct = 0.15, cooldown = -15, duration_pct = 0.15 },
                     [1244632] = { charges_pct = 0.1, duration_pct = 0.1 },
                     [1270592] = { charges_pct = 0.08 },
                 },
@@ -4302,7 +4269,7 @@ PRT.SpellData = {
                 charges = 1,
                 talents = {
                     [441846] = { charges_pct = 0.25, duration_pct = 0.25 },
-                    [1244544] = { charges_pct = 0.2, cooldown = -15, duration_pct = 0.2 },
+                    [1244544] = { charges_pct = 0.15, cooldown = -15, duration_pct = 0.15 },
                     [1244632] = { charges_pct = 0.1, duration_pct = 0.1 },
                     [1270592] = { charges_pct = 0.08 },
                 },
@@ -4652,6 +4619,7 @@ PRT.SpellData = {
                 duration = 6,
                 cooldown = 180,
                 charges = 1,
+                flags = { "BIG_DEFENSIVE" },
             },
             [77758] = {
                 spellId = 77758,
@@ -4772,7 +4740,7 @@ PRT.SpellData = {
                     [429540] = { charges_pct = 0.03, duration_pct = 0.03 },
                     [451211] = { cooldown = -4, duration_pct = 0.05 },
                     [474541] = { charges_pct = 0.25, duration_pct = 0.25 },
-                    [1271305] = { duration_pct = 0.1 },
+                    [1271305] = { duration_pct = 0.05 },
                 },
             },
             [197628] = {
@@ -4800,6 +4768,9 @@ PRT.SpellData = {
                 duration = 8.5,
                 cooldown = 60,
                 charges = 1,
+                talents = {
+                    [429539] = { cooldown = -20 },
+                },
             },
             [213764] = {
                 spellId = 213764,
@@ -4928,9 +4899,6 @@ PRT.SpellData = {
                 charges = 1,
                 channeled = true,
                 flags = { "RAID_COOLDOWN" },
-                talents = {
-                    [197073] = { cooldown = -30 },
-                },
             },
             [768] = {
                 spellId = 768,
@@ -5288,7 +5256,7 @@ PRT.SpellData = {
                 cooldown = 60,
                 charges = 1,
                 talents = {
-                    [382550] = { cooldown = -12 },
+                    [382550] = { cooldown = -15 },
                 },
             },
             [132469] = {
@@ -5808,7 +5776,7 @@ PRT.SpellData = {
                 talents = {
                     [316803] = { duration_pct = 0.1 },
                     [444037] = { charges_pct = 0.05, duration_pct = 0.05 },
-                    [1265932] = { duration_pct = 0.15 },
+                    [1265932] = { duration_pct = 0.35 },
                 },
             },
             [49184] = {
@@ -5987,7 +5955,7 @@ PRT.SpellData = {
             [42650] = {
                 spellId = 42650,
                 name = "Army of the Dead",
-                duration = 4,
+                duration = 30,
                 cooldown = 90,
                 charges = 1,
             },
@@ -6468,7 +6436,7 @@ PRT.SpellData = {
                 charges = 1,
                 talents = {
                     [19574] = { charges_pct = 0.2, duration_pct = 0.2 },
-                    [378244] = { duration_pct = 0.35 },
+                    [378244] = { duration_pct = 0.1 },
                     [1273126] = { charges_pct = 0.15, duration_pct = 0.15 },
                 },
             },
@@ -6539,6 +6507,7 @@ PRT.SpellData = {
                 charges = 1,
                 talents = {
                     [19574] = { charges_pct = 0.2, duration_pct = 0.2 },
+                    [1277565] = { charges_pct = 0.1, duration_pct = 0.1 },
                 },
             },
             [1229376] = {
@@ -6694,6 +6663,7 @@ PRT.SpellData = {
                 charges = 1,
                 talents = {
                     [1273129] = { charges_pct = 0.03, duration_pct = 0.03 },
+                    [1277565] = { duration_pct = 0.1 },
                 },
             },
             [53480] = {
@@ -6821,6 +6791,10 @@ PRT.SpellData = {
                 duration = 3,
                 cooldown = 30,
                 charges = 1,
+                talents = {
+                    [459802] = { charges_pct = 0.08 },
+                    [1273129] = { charges_pct = 0.03 },
+                },
             },
             [257044] = {
                 spellId = 257044,
@@ -6854,7 +6828,7 @@ PRT.SpellData = {
                 cooldown = 45,
                 charges = 1,
                 talents = {
-                    [459802] = { duration_pct = 0.25 },
+                    [459802] = { duration_pct = 0.12 },
                     [1253807] = { duration_pct = 0.25 },
                     [1273129] = { charges_pct = 0.03, duration_pct = 0.03 },
                 },
@@ -7246,13 +7220,6 @@ PRT.SpellData = {
                     [1256938] = { duration_pct = 0.5 },
                 },
             },
-            [1251592] = {
-                spellId = 1251592,
-                name = "Flamefang Pitch",
-                duration = 0,
-                cooldown = 60,
-                charges = 1,
-            },
             [1261193] = {
                 spellId = 1261193,
                 name = "Boomstick",
@@ -7362,6 +7329,7 @@ PRT.SpellData = {
                     [415416] = { charges_pct = 0.03, duration_pct = 0.03 },
                     [1251077] = { charges_pct = 0.02, duration_pct = 0.02 },
                     [1272352] = { duration_pct = 0.15 },
+                    [1298779] = { duration_pct = 0.4 },
                 },
             },
             [2096] = {
@@ -8235,7 +8203,7 @@ PRT.SpellData = {
                 charges = 1,
                 talents = {
                     [381626] = { charges_pct = 0.15 },
-                    [385478] = { charges_pct = 0.2 },
+                    [385478] = { charges_pct = 0.3 },
                     [423136] = { charges_pct = 0.1 },
                     [1265386] = { charges_pct = 0.1 },
                 },
@@ -8308,7 +8276,7 @@ PRT.SpellData = {
                     [423136] = { charges_pct = 0.1 },
                     [457512] = { charges_pct = 0.05 },
                     [1248785] = { charges_pct = 0.2 },
-                    [1250358] = { charges_pct = 0.2 },
+                    [1250358] = { charges_pct = 0.25 },
                     [1265386] = { charges_pct = 0.1 },
                     [1267216] = { charges_pct = 0.06, duration_pct = 0.06 },
                 },
@@ -8559,6 +8527,13 @@ PRT.SpellData = {
                     [1265386] = { charges_pct = 0.1 },
                 },
             },
+            [1298826] = {
+                spellId = 1298826,
+                name = "Thistle Tea",
+                duration = 0,
+                cooldown = 60,
+                charges = 3,
+            },
         },
     },
     [260] = {
@@ -8604,7 +8579,7 @@ PRT.SpellData = {
                 cooldown = 25,
                 charges = 1,
                 talents = {
-                    [381885] = { charges_pct = 0.1, duration_pct = 0.1 },
+                    [381885] = { charges_pct = 0.15, duration_pct = 0.15 },
                 },
             },
             [1784] = {
@@ -8628,7 +8603,7 @@ PRT.SpellData = {
                 cooldown = 12,
                 charges = 1,
                 talents = {
-                    [381885] = { charges_pct = 0.1, duration_pct = 0.1 },
+                    [381885] = { charges_pct = 0.15, duration_pct = 0.15 },
                 },
             },
             [1856] = {
@@ -8699,7 +8674,7 @@ PRT.SpellData = {
                 cooldown = 30,
                 charges = 1,
                 talents = {
-                    [381885] = { charges_pct = 0.1, duration_pct = 0.1 },
+                    [381885] = { charges_pct = 0.15, duration_pct = 0.15 },
                 },
             },
             [6770] = {
@@ -8716,7 +8691,8 @@ PRT.SpellData = {
                 cooldown = 0,
                 charges = 1,
                 talents = {
-                    [381885] = { charges_pct = 0.1, duration_pct = 0.1 },
+                    [381845] = { duration_pct = 0.8 },
+                    [381885] = { charges_pct = 0.15, duration_pct = 0.15 },
                     [1259492] = { duration_pct = 0.2 },
                 },
             },
@@ -8800,7 +8776,7 @@ PRT.SpellData = {
                 cooldown = 0,
                 charges = 1,
                 talents = {
-                    [381885] = { charges_pct = 0.1, duration_pct = 0.1 },
+                    [381885] = { charges_pct = 0.15, duration_pct = 0.15 },
                     [428377] = { duration_pct = 0.2 },
                 },
             },
@@ -8848,7 +8824,7 @@ PRT.SpellData = {
                     [193531] = { duration_pct = 0.05 },
                     [394321] = { duration_pct = 0.05 },
                     [428377] = { duration_pct = 0.2 },
-                    [1259480] = { cooldown = -5 },
+                    [1259480] = { cooldown = -8 },
                     [1259499] = { charges_pct = 0.1, duration_pct = 0.1 },
                     [1267216] = { charges_pct = 0.06, duration_pct = 0.06 },
                 },
@@ -8911,6 +8887,13 @@ PRT.SpellData = {
                 duration = 0,
                 cooldown = 240,
                 charges = 1,
+            },
+            [1298826] = {
+                spellId = 1298826,
+                name = "Thistle Tea",
+                duration = 0,
+                cooldown = 60,
+                charges = 3,
             },
         },
     },
@@ -9110,8 +9093,6 @@ PRT.SpellData = {
                 charges = 1,
                 flags = { "IMPORTANT" },
                 talents = {
-                    [382017] = { charges_pct = 0.05, duration_pct = 0.05 },
-                    [382504] = { charges_pct = 0.1, duration_pct = 0.1 },
                     [382517] = { charges_pct = 0.08, duration_pct = 0.08 },
                 },
             },
@@ -9228,8 +9209,6 @@ PRT.SpellData = {
                 cooldown = 45,
                 charges = 1,
                 talents = {
-                    [382017] = { duration_pct = 0.05 },
-                    [382504] = { duration_pct = 0.1 },
                     [382517] = { duration_pct = 0.08 },
                 },
             },
@@ -9239,6 +9218,13 @@ PRT.SpellData = {
                 duration = 0,
                 cooldown = 0,
                 charges = 1,
+            },
+            [1298826] = {
+                spellId = 1298826,
+                name = "Thistle Tea",
+                duration = 0,
+                cooldown = 60,
+                charges = 3,
             },
         },
     },
@@ -9326,9 +9312,10 @@ PRT.SpellData = {
                     [381707] = { duration_pct = 0.05 },
                     [443447] = { duration_pct = 0.25 },
                     [468626] = { duration_pct = 0.08 },
-                    [1258895] = { duration_pct = 0.03 },
+                    [1258895] = { charges_pct = 0.03, duration_pct = 0.03 },
                     [1258899] = { duration_pct = 0.2 },
                     [1264691] = { charges_pct = 0.02, duration_pct = 0.02 },
+                    [1270061] = { charges_pct = 0.1, duration_pct = 0.1 },
                 },
             },
             [8143] = {
@@ -9365,8 +9352,9 @@ PRT.SpellData = {
                 cooldown = 30,
                 charges = 1,
                 talents = {
-                    [1258895] = { duration_pct = 0.03 },
+                    [1258895] = { charges_pct = 0.03, duration_pct = 0.03 },
                     [1264691] = { charges_pct = 0.02, duration_pct = 0.02 },
+                    [1270061] = { charges_pct = 0.1, duration_pct = 0.1 },
                 },
             },
             [51505] = {
@@ -9378,9 +9366,10 @@ PRT.SpellData = {
                 talents = {
                     [382886] = { duration_pct = 0.03 },
                     [443418] = { duration_pct = 0.1 },
-                    [1258843] = { duration_pct = 0.15 },
-                    [1258895] = { duration_pct = 0.03 },
+                    [1258843] = { duration_pct = 0.1 },
+                    [1258895] = { charges_pct = 0.03, duration_pct = 0.03 },
                     [1259471] = { duration_pct = 0.1 },
+                    [1270061] = { charges_pct = 0.1, duration_pct = 0.1 },
                     [1273485] = { duration_pct = 0.05 },
                 },
             },
@@ -9484,9 +9473,10 @@ PRT.SpellData = {
                     [381707] = { duration_pct = 0.05 },
                     [382886] = { duration_pct = 0.03 },
                     [443447] = { duration_pct = 0.25 },
-                    [1258895] = { duration_pct = 0.03 },
+                    [1258895] = { charges_pct = 0.03, duration_pct = 0.03 },
                     [1258899] = { duration_pct = 0.2 },
                     [1264691] = { charges_pct = 0.02, duration_pct = 0.02 },
+                    [1270061] = { charges_pct = 0.1, duration_pct = 0.1 },
                 },
             },
             [188196] = {
@@ -9497,8 +9487,9 @@ PRT.SpellData = {
                 charges = 1,
                 talents = {
                     [191634] = { duration_pct = 1.5 },
-                    [1258895] = { duration_pct = 0.03 },
+                    [1258895] = { charges_pct = 0.03, duration_pct = 0.03 },
                     [1264691] = { charges_pct = 0.02, duration_pct = 0.02 },
+                    [1270061] = { charges_pct = 0.1, duration_pct = 0.1 },
                 },
             },
             [188443] = {
@@ -9509,8 +9500,9 @@ PRT.SpellData = {
                 charges = 1,
                 talents = {
                     [454919] = { duration_pct = 0.15 },
-                    [1258895] = { duration_pct = 0.03 },
+                    [1258895] = { charges_pct = 0.03, duration_pct = 0.03 },
                     [1264691] = { charges_pct = 0.02, duration_pct = 0.02 },
+                    [1270061] = { charges_pct = 0.1, duration_pct = 0.1 },
                 },
             },
             [191634] = {
@@ -9569,13 +9561,14 @@ PRT.SpellData = {
                 talents = {
                     [382886] = { duration_pct = 0.03 },
                     [462762] = { cooldown = 15 },
-                    [1258895] = { duration_pct = 0.03 },
+                    [1258895] = { charges_pct = 0.03, duration_pct = 0.03 },
+                    [1270061] = { charges_pct = 0.1, duration_pct = 0.1 },
                 },
             },
             [198103] = {
                 spellId = 198103,
                 name = "Earth Elemental",
-                duration = 0,
+                duration = 30,
                 cooldown = 180,
                 charges = 1,
             },
@@ -9657,9 +9650,10 @@ PRT.SpellData = {
                 charges = 1,
                 talents = {
                     [378266] = { cooldown = -1.5 },
-                    [1258895] = { duration_pct = 0.03 },
+                    [1258895] = { charges_pct = 0.03, duration_pct = 0.03 },
                     [1264691] = { charges_pct = 0.02, duration_pct = 0.02 },
                     [1269215] = { cooldown = -3, duration_pct = 0.5 },
+                    [1270061] = { charges_pct = 0.1, duration_pct = 0.1 },
                 },
             },
             [470411] = {
@@ -9672,8 +9666,9 @@ PRT.SpellData = {
                     [378266] = { cooldown = -1.5 },
                     [381784] = { charges_pct = 1, duration_pct = 1 },
                     [382886] = { charges_pct = 0.03, duration_pct = 0.03 },
-                    [1258895] = { duration_pct = 0.03 },
+                    [1258895] = { charges_pct = 0.03, duration_pct = 0.03 },
                     [1264691] = { charges_pct = 0.02, duration_pct = 0.02 },
+                    [1270061] = { charges_pct = 0.1, duration_pct = 0.1 },
                 },
             },
             [1229376] = {
@@ -9989,7 +9984,7 @@ PRT.SpellData = {
             [198103] = {
                 spellId = 198103,
                 name = "Earth Elemental",
-                duration = 0,
+                duration = 30,
                 cooldown = 180,
                 charges = 1,
             },
@@ -10263,7 +10258,7 @@ PRT.SpellData = {
                 spellId = 73920,
                 name = "Healing Rain",
                 duration = 18,
-                cooldown = 18,
+                cooldown = 12,
                 charges = 1,
             },
             [79206] = {
@@ -10388,7 +10383,7 @@ PRT.SpellData = {
             [198103] = {
                 spellId = 198103,
                 name = "Earth Elemental",
-                duration = 0,
+                duration = 30,
                 cooldown = 180,
                 charges = 1,
             },
@@ -10500,7 +10495,6 @@ PRT.SpellData = {
                     [386986] = { charges_pct = 0.15, duration_pct = 0.15 },
                     [440040] = { charges_pct = 0.06, duration_pct = 0.06 },
                     [452999] = { charges_pct = 0.3, duration_pct = 0.3 },
-                    [1260271] = { charges_pct = 0.1, duration_pct = 0.1 },
                     [1279510] = { charges_pct = 0.1, duration_pct = 0.1 },
                 },
             },
@@ -10731,6 +10725,7 @@ PRT.SpellData = {
                 talents = {
                     [440040] = { charges_pct = 0.06, duration_pct = 0.06 },
                     [453105] = { charges_pct = 0.03, duration_pct = 0.03 },
+                    [1311969] = { charges_pct = 0.1 },
                 },
             },
             [333889] = {
@@ -10795,7 +10790,6 @@ PRT.SpellData = {
                     [440051] = { duration_pct = 0.2 },
                     [452999] = { charges_pct = 0.3, duration_pct = 0.3 },
                     [453105] = { charges_pct = 0.03, duration_pct = 0.03 },
-                    [1260271] = { charges_pct = 0.1, duration_pct = 0.1 },
                     [1279510] = { charges_pct = 0.1, duration_pct = 0.1 },
                 },
             },
@@ -11319,7 +11313,7 @@ PRT.SpellData = {
             [17877] = {
                 spellId = 17877,
                 name = "Shadowburn",
-                duration = 5,
+                duration = 0,
                 cooldown = 0,
                 charges = 1,
                 talents = {
@@ -11823,7 +11817,7 @@ PRT.SpellData = {
                 cooldown = 15,
                 charges = 1,
                 talents = {
-                    [392900] = { duration_pct = 0.05 },
+                    [392900] = { duration_pct = 0.06 },
                     [450426] = { charges_pct = 0.05, duration_pct = 0.05 },
                 },
             },
@@ -11841,7 +11835,7 @@ PRT.SpellData = {
                 spellId = 322507,
                 name = "Celestial Brew",
                 duration = 8,
-                cooldown = 45,
+                cooldown = 90,
                 charges = 1,
             },
             [325153] = {
@@ -11862,7 +11856,7 @@ PRT.SpellData = {
                 spellId = 1241059,
                 name = "Celestial Infusion",
                 duration = 16,
-                cooldown = 45,
+                cooldown = 90,
                 charges = 1,
             },
         },
@@ -11932,7 +11926,6 @@ PRT.SpellData = {
                 talents = {
                     [388809] = { duration_pct = 0.7 },
                     [388849] = { duration_pct = 0.15 },
-                    [451485] = { cooldown = -1 },
                 },
             },
             [109132] = {
@@ -12120,7 +12113,7 @@ PRT.SpellData = {
                 cooldown = 15,
                 charges = 1,
                 talents = {
-                    [392900] = { duration_pct = 0.05 },
+                    [392900] = { duration_pct = 0.06 },
                     [450426] = { charges_pct = 0.05, duration_pct = 0.05 },
                 },
             },
@@ -12215,7 +12208,6 @@ PRT.SpellData = {
                 cooldown = 10,
                 charges = 1,
                 talents = {
-                    [116680] = { cooldown = -9 },
                     [388809] = { duration_pct = 0.7 },
                     [443625] = { duration_pct = 0.15 },
                     [1260677] = { duration_pct = 0.1 },
@@ -12266,6 +12258,7 @@ PRT.SpellData = {
                     [322118] = { charges_pct = 0.05, duration_pct = 0.05 },
                     [325197] = { charges_pct = 0.05, duration_pct = 0.05 },
                     [450426] = { charges_pct = 0.05, duration_pct = 0.05 },
+                    [1299572] = { charges_pct = 3 },
                 },
             },
             [115203] = {
@@ -12509,7 +12502,6 @@ PRT.SpellData = {
                 cooldown = 10,
                 charges = 1,
                 talents = {
-                    [116680] = { cooldown = -9 },
                     [388809] = { duration_pct = 0.7 },
                     [443625] = { duration_pct = 0.15 },
                     [1260677] = { duration_pct = 0.1 },
@@ -12609,7 +12601,7 @@ PRT.SpellData = {
                 duration = 8,
                 cooldown = 300,
                 charges = 1,
-                flags = { "RAID_COOLDOWN" },
+                flags = { "IMPORTANT", "RAID_COOLDOWN" },
                 talents = {
                     [389783] = { cooldown = -120 },
                 },
@@ -12634,11 +12626,8 @@ PRT.SpellData = {
                 spellId = 198793,
                 name = "Vengeful Retreat",
                 duration = 1,
-                cooldown = 0.5,
+                cooldown = 25,
                 charges = 1,
-                talents = {
-                    [389688] = { cooldown = -5 },
-                },
             },
             [207684] = {
                 spellId = 207684,
@@ -12799,7 +12788,7 @@ PRT.SpellData = {
                 duration = 8,
                 cooldown = 300,
                 charges = 1,
-                flags = { "RAID_COOLDOWN" },
+                flags = { "IMPORTANT", "RAID_COOLDOWN" },
                 talents = {
                     [389783] = { cooldown = -120 },
                 },
@@ -12808,7 +12797,7 @@ PRT.SpellData = {
                 spellId = 198793,
                 name = "Vengeful Retreat",
                 duration = 1,
-                cooldown = 0.5,
+                cooldown = 25,
                 charges = 1,
             },
             [202137] = {
@@ -12822,7 +12811,7 @@ PRT.SpellData = {
                 spellId = 202138,
                 name = "Sigil of Chains",
                 duration = 2,
-                cooldown = 90,
+                cooldown = 60,
                 charges = 1,
             },
             [203720] = {
@@ -13950,7 +13939,7 @@ PRT.SpellData = {
                 duration = 8,
                 cooldown = 300,
                 charges = 1,
-                flags = { "RAID_COOLDOWN" },
+                flags = { "IMPORTANT", "RAID_COOLDOWN" },
                 talents = {
                     [389783] = { cooldown = -120 },
                 },
@@ -13967,7 +13956,7 @@ PRT.SpellData = {
                 spellId = 198793,
                 name = "Vengeful Retreat",
                 duration = 1,
-                cooldown = 0.5,
+                cooldown = 25,
                 charges = 1,
             },
             [207684] = {

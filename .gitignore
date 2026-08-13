@@ -5,6 +5,10 @@
 *.swo
 *~
 
+# Local agent configuration
+.agents/
+.claude/settings.local.json
+
 # OS
 .DS_Store
 Thumbs.db

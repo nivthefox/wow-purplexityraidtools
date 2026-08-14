@@ -31,8 +31,14 @@ local ROSTER_REQUEST = "attRosterRequest"
 
 local ISO_DAY_PATTERN = "^%d%d%d%d%-%d%d%-%d%d$"
 
-local MISSING, ABSENT, LATE, PRESENT = 0, 1, 2, 3
-local VALID_STATUSES = { [MISSING] = true, [ABSENT] = true, [LATE] = true, [PRESENT] = true }
+local MISSING, ABSENT, LATE, PRESENT, STANDBY = 0, 1, 2, 3, 4
+local VALID_STATUSES = {
+    [MISSING] = true,
+    [ABSENT] = true,
+    [LATE] = true,
+    [PRESENT] = true,
+    [STANDBY] = true,
+}
 
 AttendanceSync.inventory = {}
 

@@ -125,6 +125,7 @@ tests["the status enum exposes the spec's integer values"] = function()
     assertEquals(Store.STATUS.ABSENT, 1)
     assertEquals(Store.STATUS.LATE, 2)
     assertEquals(Store.STATUS.PRESENT, 3)
+    assertEquals(Store.STATUS.STANDBY, 4)
 end
 
 tests["the fixture epochs are the UTC instants they are named for"] = function()
@@ -338,6 +339,35 @@ tests["a later pull leaves existing non-Missing statuses unchanged"] = function(
     })
 end
 
+tests["a later pull leaves a manually assigned Standby status unchanged"] = function()
+    local db = resetDB()
+    db[PULL_DAY] = {
+        ["Elsie-Proudmoore"] = 3,
+        ["Benchwarmer-Proudmoore"] = 4,
+    }
+
+    Store:OnCountdownStart({ "Elsie-Proudmoore", "Benchwarmer-Proudmoore" }, {}, 6)
+
+    assertEquals(db[PULL_DAY]["Benchwarmer-Proudmoore"], 4)
+end
+
+tests["automated pull recording never assigns Standby"] = function()
+    local db = resetDB()
+
+    Store:OnCountdownStart({ "Elsie-Proudmoore" }, {
+        rosterEntry("Niv", "Elsie-Proudmoore"),
+        rosterEntry("Benchwarmer", "Benchwarmer-Proudmoore"),
+    }, 6)
+    Store:OnCountdownStart({ "Elsie-Proudmoore", "Latecomer-Proudmoore" }, {}, 6)
+
+    assertEquals(db[PULL_DAY]["Elsie-Proudmoore"], 3)
+    assertEquals(db[PULL_DAY]["Benchwarmer-Proudmoore"], 0)
+    assertEquals(db[PULL_DAY]["Latecomer-Proudmoore"], 2)
+    for _, status in pairs(db[PULL_DAY]) do
+        assertFalse(status == 4, "pull recording must not create Standby")
+    end
+end
+
 tests["a later pull upgrades a group character's Missing record to Late"] = function()
     local db = resetDB()
     db[PULL_DAY] = { ["Elsie-Proudmoore"] = 3, ["Grimgrace-Proudmoore"] = 0 }
@@ -535,7 +565,7 @@ tests["every status in the enum is accepted by a manual write"] = function()
     local db = resetDB()
     db[PULL_DAY] = {}
 
-    for _, status in ipairs({ 0, 1, 2, 3 }) do
+    for _, status in ipairs({ 0, 1, 2, 3, 4 }) do
         local ok, err = Store:SetStatus(PULL_DAY, "Elsie-Proudmoore", status)
         assertTrue(ok, "status " .. status .. " is a valid write")
         assertNil(err)
@@ -547,7 +577,7 @@ tests["a manual status write outside the status enum is rejected and changes not
     local db = resetDB()
     db[PULL_DAY] = { ["Elsie-Proudmoore"] = 3 }
 
-    for _, status in ipairs({ 4, -1, 7, 1.5, "3", true }) do
+    for _, status in ipairs({ 5, -1, 7, 1.5, "3", true }) do
         local ok, err = Store:SetStatus(PULL_DAY, "Elsie-Proudmoore", status)
         assertFalse(ok, "a status outside the enum must be rejected: " .. tostring(status))
         assertEquals(type(err), "string", "a rejected write must explain itself")

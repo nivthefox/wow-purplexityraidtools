@@ -29,7 +29,7 @@ local Store = PRT.AttendanceStore
 -- Fixtures
 --------------------------------------------------------------------------------
 
-local MISSING, ABSENT, LATE, PRESENT = 0, 1, 2, 3
+local MISSING, ABSENT, LATE, PRESENT, STANDBY = 0, 1, 2, 3, 4
 
 local AUG_05 = "2026-08-05"
 local AUG_03 = "2026-08-03"
@@ -242,7 +242,7 @@ tests["the report reads the arguments it is handed, never the saved variables"] 
 end
 
 --------------------------------------------------------------------------------
--- Resolution: a player's status for a day is the maximum across their characters
+-- Resolution: a player's status for a day is the best across their characters
 --------------------------------------------------------------------------------
 
 tests["two characters recorded 0 and 2 on one day resolve to 2"] = function()
@@ -265,6 +265,19 @@ tests["an Absent record resolves against a Present one on another character"] = 
 
     assertEquals(Report:ResolveStatus(db, AUG_05, { OMNIVICENT, NIVEN }), PRESENT,
         "an excused player who raided anyway counts as having raided")
+end
+
+tests["Present resolves ahead of Standby regardless of character order"] = function()
+    local db = { [AUG_05] = { [OMNIVICENT] = STANDBY, [NIVEN] = PRESENT } }
+
+    assertEquals(Report:ResolveStatus(db, AUG_05, { OMNIVICENT, NIVEN }), PRESENT)
+    assertEquals(Report:ResolveStatus(db, AUG_05, { NIVEN, OMNIVICENT }), PRESENT)
+end
+
+tests["Standby resolves ahead of Late"] = function()
+    local db = { [AUG_05] = { [OMNIVICENT] = STANDBY, [NIVEN] = LATE } }
+
+    assertEquals(Report:ResolveStatus(db, AUG_05, { OMNIVICENT, NIVEN }), STANDBY)
 end
 
 tests["a day no character has a record for resolves to nil rather than Missing"] = function()
@@ -311,6 +324,16 @@ tests["a player Present or Late on 6 of 8 recorded days scores 75"] = function()
     })
 
     assertEquals(Report:GetPercentage(db, EIGHT_DAYS, { ELSIE }), 75)
+end
+
+tests["Standby provides the same attendance credit as Present"] = function()
+    local db = dayRecords(ELSIE, {
+        [AUG_05] = STANDBY,
+        [AUG_03] = PRESENT,
+        [JUL_31] = MISSING,
+    })
+
+    assertEquals(Report:GetPercentage(db, { AUG_05, AUG_03, JUL_31 }, { ELSIE }), 67)
 end
 
 tests["the percentage is a whole number rounded half up"] = function()

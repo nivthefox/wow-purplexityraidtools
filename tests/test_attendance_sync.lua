@@ -120,7 +120,7 @@ end
 -- Fixtures
 --------------------------------------------------------------------------------
 
-local MISSING, ABSENT, LATE, PRESENT = 0, 1, 2, 3
+local MISSING, ABSENT, LATE, PRESENT, STANDBY = 0, 1, 2, 3, 4
 
 local AUG_05 = "2026-08-05"
 local AUG_03 = "2026-08-03"
@@ -588,6 +588,20 @@ tests["accepting a pending replacement swaps the day wholesale rather than mergi
             [RANDOPUG] = LATE,
         }, "the incoming record replaces the local one entirely: Elsie is gone and Niven drops to Missing")
         assertNil(Sync:GetPendingDay(), "an accepted replacement is no longer pending")
+    end)
+end
+
+tests["accepting a pending replacement preserves Standby"] = function()
+    local db = localDatabase()
+
+    withDatabases(db, {}, function()
+        freshSync()
+        withGlobals(LEADER_GLOBALS, function()
+            dispatch(DAY_PUSH, { day = AUG_05, records = { [ELSIE] = STANDBY } }, LEADER)
+        end)
+
+        assertTrue(Sync:AcceptPendingDay())
+        assertEquals(db[AUG_05][ELSIE], STANDBY)
     end)
 end
 
@@ -1363,7 +1377,7 @@ end
 --
 -- Phase 1's store treats a day KEY's presence as the first-pull signal and
 -- compares day keys as strings during expiry, and the report resolves statuses by
--- numeric comparison. Nothing downstream re-checks any of that, so a record that
+-- fixed priority. Nothing downstream re-checks any of that, so a record that
 -- crosses the wire is checked here or never.
 --------------------------------------------------------------------------------
 
@@ -1380,7 +1394,7 @@ local MALFORMED_DAY_PAYLOADS = {
     { name = "a day key carrying a time", payload = { day = "2026-08-05T20:00", records = VALID_RECORDS } },
     { name = "a numeric character key", payload = { day = AUG_05, records = { [1] = PRESENT } } },
     { name = "an empty character key", payload = { day = AUG_05, records = { [""] = PRESENT } } },
-    { name = "a status above the enum", payload = { day = AUG_05, records = { [ELSIE] = 4 } } },
+    { name = "a status above the enum", payload = { day = AUG_05, records = { [ELSIE] = 5 } } },
     { name = "a negative status", payload = { day = AUG_05, records = { [ELSIE] = -1 } } },
     { name = "a fractional status", payload = { day = AUG_05, records = { [ELSIE] = 1.5 } } },
     { name = "a status written as a string", payload = { day = AUG_05, records = { [ELSIE] = "3" } } },

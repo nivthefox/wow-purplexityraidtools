@@ -12,13 +12,22 @@ local PRT = PurplexityRaidTools
 local AttendanceReport = {}
 PRT.AttendanceReport = AttendanceReport
 
-local LOWEST_ATTENDED_STATUS = 2
+local MISSING, ABSENT, LATE, PRESENT, STANDBY = 0, 1, 2, 3, 4
+local LOWEST_ATTENDED_STATUS = LATE
+local STATUS_PRIORITY = {
+    [MISSING] = 0,
+    [ABSENT] = 1,
+    [LATE] = 2,
+    [STANDBY] = 3,
+    [PRESENT] = 4,
+}
 
-local function MaxRecordedStatus(dayRecord, characters)
+local function BestRecordedStatus(dayRecord, characters)
     local resolved
     for i = 1, #characters do
         local status = dayRecord[characters[i]]
-        if status ~= nil and (resolved == nil or status > resolved) then
+        if status ~= nil and (resolved == nil
+                or STATUS_PRIORITY[status] > STATUS_PRIORITY[resolved]) then
             resolved = status
         end
     end
@@ -30,7 +39,7 @@ local function ResolvedStatuses(db, days, characters)
     for i = 1, #days do
         local dayRecord = db[days[i]]
         if dayRecord then
-            statuses[days[i]] = MaxRecordedStatus(dayRecord, characters)
+            statuses[days[i]] = BestRecordedStatus(dayRecord, characters)
         end
     end
     return statuses
@@ -98,7 +107,7 @@ function AttendanceReport:ResolveStatus(db, day, characters)
     if not dayRecord then
         return nil
     end
-    return MaxRecordedStatus(dayRecord, characters)
+    return BestRecordedStatus(dayRecord, characters)
 end
 
 function AttendanceReport:GetPercentage(db, days, characters)

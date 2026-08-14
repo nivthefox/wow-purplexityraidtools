@@ -18,6 +18,7 @@ local STATUS = {
     ABSENT = 1,
     LATE = 2,
     PRESENT = 3,
+    STANDBY = 4,
 }
 AttendanceStore.STATUS = STATUS
 
@@ -109,7 +110,7 @@ end
 function AttendanceStore:SetStatus(day, character, status)
     if not VALID_STATUSES[status] then
         return false,
-            "Attendance status must be 0, 1, 2, or 3; got " .. tostring(status) .. "."
+            "Attendance status must be 0, 1, 2, 3, or 4; got " .. tostring(status) .. "."
     end
 
     local db = PurplexityRaidToolsAttendanceDB

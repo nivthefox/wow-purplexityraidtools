@@ -7,7 +7,7 @@
 -- once per day, so rebuilding it per frame or per keystroke would be felt.
 --
 -- Statuses are edited per character rather than per player: a displayed status
--- is the maximum across a player's characters, so a player-level edit could not
+-- is resolved across a player's characters, so a player-level edit could not
 -- lower one without silently choosing which record underneath to rewrite.
 
 local PRT = PurplexityRaidTools
@@ -22,34 +22,32 @@ local NAME_WIDTH = 116
 local PCT_WIDTH = 46
 local CELL_WIDTH = 42
 
-local MODAL_WIDTH = 340
+local MODAL_WIDTH = 416
 local MODAL_CHARACTER_HEIGHT = 52
 local MODAL_HEADER_HEIGHT = 66
 local MODAL_FOOTER_HEIGHT = 40
 local STATUS_BUTTON_WIDTH = 72
 
-local MISSING, ABSENT, LATE, PRESENT = 0, 1, 2, 3
-local STATUS_ORDER = { PRESENT, LATE, ABSENT, MISSING }
-
-local STATUS_NAMES = {
-    [MISSING] = "Missing",
-    [ABSENT] = "Absent",
-    [LATE] = "Late",
-    [PRESENT] = "Present",
+local MISSING, ABSENT, LATE, PRESENT, STANDBY = 0, 1, 2, 3, 4
+local STATUS_OPTIONS = {
+    { status = PRESENT, name = "Present", letter = "P" },
+    { status = STANDBY, name = "Standby", letter = "S" },
+    { status = LATE, name = "Late", letter = "L" },
+    { status = ABSENT, name = "Absent", letter = "A" },
+    { status = MISSING, name = "Missing", letter = "M" },
 }
 
-local STATUS_LETTERS = {
-    [MISSING] = "M",
-    [ABSENT] = "A",
-    [LATE] = "L",
-    [PRESENT] = "P",
-}
+local STATUS_OPTIONS_BY_VALUE = {}
+for _, option in ipairs(STATUS_OPTIONS) do
+    STATUS_OPTIONS_BY_VALUE[option.status] = option
+end
 
 local STATUS_COLORS = {
     [MISSING] = "FFF44336",
     [ABSENT] = "FF9E9E9E",
     [LATE] = "FFFF9800",
     [PRESENT] = "FF4CAF50",
+    [STANDBY] = "FF2196F3",
 }
 
 local MUTED_COLOR = "FF808080"
@@ -79,6 +77,18 @@ local RefreshGrid
 local gridPanel
 local editModal
 local editState
+
+function AttendanceUI:GetStatusOptions()
+    local options = {}
+    for index, option in ipairs(STATUS_OPTIONS) do
+        options[index] = {
+            status = option.status,
+            name = option.name,
+            letter = option.letter,
+        }
+    end
+    return options
+end
 
 local function AttendanceSettings()
     return PRT:GetSetting("attendance")
@@ -130,7 +140,7 @@ local function StatusText(status)
     if status == nil then
         return Colored(MUTED_COLOR, "-")
     end
-    return Colored(STATUS_COLORS[status], STATUS_LETTERS[status])
+    return Colored(STATUS_COLORS[status], STATUS_OPTIONS_BY_VALUE[status].letter)
 end
 
 local function ClassColoredName(character)
@@ -177,13 +187,15 @@ local function RenderEditModal()
             row.name:SetJustifyH("LEFT")
 
             row.buttons = {}
-            for order, status in ipairs(STATUS_ORDER) do
+            for order, option in ipairs(STATUS_OPTIONS) do
+                local status = option.status
                 local button = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
                 button:SetSize(STATUS_BUTTON_WIDTH, 22)
                 button:SetPoint("TOPLEFT", (order - 1) * (STATUS_BUTTON_WIDTH + 4), -18)
-                button:SetText(STATUS_NAMES[status])
+                button:SetText(option.name)
                 button:SetScript("OnClick", function()
-                    local ok, err = PRT.AttendanceStore:SetStatus(editState.day, row.character, status)
+                    local ok, err = PRT.AttendanceStore:SetStatus(
+                        editState.day, row.character, status)
                     if not ok then
                         print("|cFFFF0000PurplexityRaidTools:|r " .. tostring(err))
                         return
@@ -212,7 +224,7 @@ local function RenderEditModal()
         row.name:SetText(label)
 
         for order, button in ipairs(row.buttons) do
-            button:SetEnabled(STATUS_ORDER[order] ~= status)
+            button:SetEnabled(STATUS_OPTIONS[order].status ~= status)
         end
 
         row:Show()

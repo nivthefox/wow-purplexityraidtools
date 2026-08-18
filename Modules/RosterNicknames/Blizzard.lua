@@ -1,6 +1,32 @@
 local PRT = PurplexityRaidTools
 local Adapter = {}
 
+local function GetPartyMemberFramePool()
+    local pool = PartyFrame and PartyFrame.PartyMemberFramePool
+    if not pool or type(pool.EnumerateActive) ~= "function" then
+        return nil
+    end
+    return pool
+end
+
+local function UnitForPartyMemberFrame(frame)
+    local pool = GetPartyMemberFramePool()
+    if not pool then
+        return nil
+    end
+
+    for memberFrame in pool:EnumerateActive() do
+        if memberFrame == frame then
+            local unit = type(frame.GetUnit) == "function" and frame:GetUnit() or frame.unit
+            if type(unit) == "string" and string.match(unit, "^party%d+$") then
+                return unit
+            end
+            return nil
+        end
+    end
+    return nil
+end
+
 local function UnitForFrame(frame)
     if not frame then
         return nil
@@ -16,6 +42,10 @@ local function UnitForFrame(frame)
     end
     if frame == FocusFrame then
         return "focus"
+    end
+    local partyUnit = UnitForPartyMemberFrame(frame)
+    if partyUnit then
+        return partyUnit, true
     end
     return nil
 end
@@ -56,13 +86,13 @@ function Adapter:ApplyCompactFrame(frame)
 end
 
 local function RefreshUnitFrame(frame)
-    local unit = UnitForFrame(frame)
+    local unit, isParty = UnitForFrame(frame)
     if not unit or not frame.name or type(frame.name.SetText) ~= "function"
         or type(GetUnitName) ~= "function" then
         return
     end
 
-    local name = GetUnitName(unit, false)
+    local name = GetUnitName(unit, isParty == true)
     if not name then
         return
     end
@@ -104,6 +134,13 @@ function Adapter:Refresh()
     RefreshUnitFrame(TargetFrame)
     RefreshUnitFrame(TargetFrameToT)
     RefreshUnitFrame(FocusFrame)
+
+    local partyMemberFramePool = GetPartyMemberFramePool()
+    if partyMemberFramePool then
+        for frame in partyMemberFramePool:EnumerateActive() do
+            RefreshUnitFrame(frame)
+        end
+    end
 
     if type(CompactUnitFrame_UpdateName) ~= "function" then
         return

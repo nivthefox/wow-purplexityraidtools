@@ -262,6 +262,47 @@ tests["Blizzard adapter leaves unsupported compact frames unchanged"] = function
     assertEquals(nameText.value, "Boss")
 end
 
+tests["Blizzard adapter renames pooled standard party frames"] = function()
+    requireFeature()
+    local nameText = {
+        value = "Aster",
+        SetText = function(self, value) self.value = value end,
+    }
+    local frame = {
+        unit = "party1",
+        name = nameText,
+        GetUnit = function(self) return self.unit end,
+    }
+    local pool = {
+        EnumerateActive = function()
+            local pending = frame
+            return function()
+                local active = pending
+                pending = nil
+                return active
+            end
+        end,
+    }
+
+    withGlobals({
+        PlayerFrame = {},
+        TargetFrame = {},
+        TargetFrameToT = {},
+        FocusFrame = {},
+        PartyFrame = { PartyMemberFramePool = pool },
+        UnitIsPlayer = function() return true end,
+        UnitFullName = function() return "Aster", "MoonGuard" end,
+        issecretvalue = function() return false end,
+    }, function()
+        PurplexityRaidToolsRosterDB = { rosterEntry("Starcaller", "Aster-MoonGuard") }
+        withEnabledFeature(function()
+            PRT.RosterNicknameAdapters.Blizzard:ApplyUnitFrame(frame)
+        end)
+    end)
+
+    assertEquals(nameText.value, "Starcaller")
+end
+
 tests["Blizzard adapter preserves the normal name while disabled or unmatched"] = function()
     requireFeature()
     local nameText = {
@@ -294,6 +335,7 @@ end
 tests["Blizzard refresh never runs a full unit-frame update"] = function()
     requireFeature()
     local names = {}
+    local partyFlags = {}
     local function frame(unit)
         return {
             unit = unit,
@@ -308,16 +350,30 @@ tests["Blizzard refresh never runs a full unit-frame update"] = function()
     local target = frame("target")
     local targetTarget = frame("targettarget")
     local focus = frame("focus")
+    local party = frame("party1")
+    party.GetUnit = function(self) return self.unit end
+    local partyPool = {
+        EnumerateActive = function()
+            local pending = party
+            return function()
+                local active = pending
+                pending = nil
+                return active
+            end
+        end,
+    }
 
     withGlobals({
         PlayerFrame = player,
         TargetFrame = target,
         TargetFrameToT = targetTarget,
         FocusFrame = focus,
+        PartyFrame = { PartyMemberFramePool = partyPool },
         UnitFrame_Update = function()
             error("a name refresh must not update health and power")
         end,
-        GetUnitName = function(unit)
+        GetUnitName = function(unit, isParty)
+            partyFlags[unit] = isParty
             return "Normal-" .. unit
         end,
     }, function()
@@ -328,6 +384,9 @@ tests["Blizzard refresh never runs a full unit-frame update"] = function()
     assertEquals(names.target, "Normal-target")
     assertEquals(names.targettarget, "Normal-targettarget")
     assertEquals(names.focus, "Normal-focus")
+    assertEquals(names.party1, "Normal-party1")
+    assertFalse(partyFlags.player)
+    assertTrue(partyFlags.party1)
 end
 
 tests["NivUI adapter registers one live resolver and preserves fallback"] = function()

@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Roster Nicknames now replace names on Blizzard's standard party frames.
+
 ## [1.2.0] - 2026-08-18
 
 ### Added

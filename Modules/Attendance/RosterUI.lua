@@ -61,6 +61,10 @@ local function PrintError(message)
     print("|cFFFF0000PurplexityRaidTools:|r " .. message)
 end
 
+local function InCombat()
+    return type(InCombatLockdown) == "function" and InCombatLockdown()
+end
+
 local function LongDate(day)
     local year, month, dayOfMonth = tostring(day):match(ISO_DAY_PATTERN)
     if not year or not MONTH_NAMES[tonumber(month)] then
@@ -243,6 +247,11 @@ end
 --------------------------------------------------------------------------------
 
 local function SubmitEntryModal()
+    if InCombat() then
+        entryModal.errorText:SetText("The roster cannot be changed during combat.")
+        return
+    end
+
     local nickname = strtrim(entryModal.nickname:GetText())
     local characters = ParseCharacterLines(entryModal.characters:GetText())
 
@@ -351,6 +360,11 @@ local function EnsureEntryModal()
 end
 
 local function OpenEntryModal(nickname, characters)
+    if InCombat() then
+        PrintError("The roster cannot be changed during combat.")
+        return
+    end
+
     EnsureEntryModal()
 
     entryModalTarget = nickname
@@ -370,7 +384,10 @@ StaticPopupDialogs["PRT_ROSTER_REMOVE_ENTRY"] = {
     hideOnEscape = true,
     showAlert = true,
     OnAccept = function(_, nickname)
-        PRT.Roster:RemoveEntry(nickname)
+        local ok, err = PRT.Roster:RemoveEntry(nickname)
+        if not ok and err then
+            PrintError(err)
+        end
         RefreshDependentViews()
     end,
 }
@@ -380,12 +397,21 @@ StaticPopupDialogs["PRT_ROSTER_REMOVE_ENTRY"] = {
 --------------------------------------------------------------------------------
 
 local function ImportFromDay(day)
+    if InCombat() then
+        PrintError("The roster cannot be changed during combat.")
+        return
+    end
+
     local dayRecord = (PurplexityRaidToolsAttendanceDB or {})[day]
     if not dayRecord then
         return
     end
 
-    local result = PRT.Roster:ImportFromRecord(dayRecord)
+    local result, err = PRT.Roster:ImportFromRecord(dayRecord)
+    if not result then
+        PrintError(err or "The roster rejected that import.")
+        return
+    end
     importModal:Hide()
     RefreshDependentViews()
 
@@ -534,6 +560,11 @@ local function EnsureOffSpecModal()
 end
 
 local function OpenOffSpecModal(character, specs, mainSpecID, offSpecs)
+    if InCombat() then
+        PrintError("The roster cannot be changed during combat.")
+        return
+    end
+
     EnsureOffSpecModal()
 
     local placed = 0
@@ -625,6 +656,10 @@ local function FillHeaderRow(header, entry)
         StaticPopup_Show("PRT_ROSTER_REMOVE_ENTRY", nickname, nil, nickname)
     end)
 
+    local enabled = not InCombat()
+    header.edit:SetEnabled(enabled)
+    header.remove:SetEnabled(enabled)
+
     header:Show()
 end
 
@@ -635,7 +670,7 @@ local function CreateCharacterRow(parent)
     row:RegisterForDrag("LeftButton")
 
     row:SetScript("OnDragStart", function(self)
-        if not self.character or not self.ownerNickname then
+        if InCombat() or not self.character or not self.ownerNickname then
             return
         end
         dragState = {
@@ -760,6 +795,7 @@ local function FillTags(row, specsByID)
             PRT.Roster:RemoveOffSpec(row.character, specID)
             RosterUI:Refresh()
         end)
+        tag:SetEnabled(not InCombat())
         tag:Show()
 
         offset = offset + tag:GetWidth() + 3
@@ -798,7 +834,7 @@ local function FillCharacterRow(row, character, record, nickname)
     local specsByID = SpecsByID(row.specs)
     local mainSpec = specsByID[record.mainSpec]
     row.unknownClass:Hide()
-    row.mainSpec:SetEnabled(true)
+    row.mainSpec:SetEnabled(not InCombat())
 
     local mainSpecLabel = "|cFF808080No main spec|r"
     if mainSpec then
@@ -816,7 +852,7 @@ local function FillCharacterRow(row, character, record, nickname)
             remaining = remaining + 1
         end
     end
-    row.addOffSpec:SetEnabled(true)
+    row.addOffSpec:SetEnabled(not InCombat())
     row.addOffSpec:SetShown(remaining > 0)
 
     FillTags(row, specsByID)
@@ -882,7 +918,7 @@ PRT:RegisterTab("Roster", function(parent)
 
     local scrollFrame = CreateFrame("ScrollFrame", nil, container, "UIPanelScrollFrameTemplate")
     scrollFrame:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -4)
-    scrollFrame:SetPoint("BOTTOMRIGHT", container, "BOTTOMRIGHT", -26, 76)
+    scrollFrame:SetPoint("BOTTOMRIGHT", container, "BOTTOMRIGHT", -26, 106)
 
     local scrollChild = CreateFrame("Frame", nil, scrollFrame)
     scrollChild:SetSize(container:GetWidth() - 60, LIST_HEIGHT)
@@ -909,6 +945,19 @@ PRT:RegisterTab("Roster", function(parent)
         end
     )
     confirmCheckbox:SetPoint("BOTTOMLEFT", 0, 8)
+
+    local nicknameCheckbox
+    nicknameCheckbox = PRT.Components.GetCheckbox(
+        container, "Roster Nicknames",
+        function(checked)
+            local ok, err = PRT.RosterNicknames:SetEnabled(checked)
+            if not ok then
+                PrintError(err)
+                nicknameCheckbox:SetValue(PRT.RosterNicknames:IsEnabled())
+            end
+        end
+    )
+    nicknameCheckbox:SetPoint("BOTTOMLEFT", 0, 68)
 
     local headerRows, characterRows, stripes = {}, {}, {}
 
@@ -991,6 +1040,12 @@ PRT:RegisterTab("Roster", function(parent)
 
         syncButton:SetEnabled(PRT.AttendanceWiring:CanPushToRaid())
 
+        local editable = not InCombat()
+        addButton:SetEnabled(editable)
+        importButton:SetEnabled(editable)
+        nicknameCheckbox:SetEnabled(editable)
+        nicknameCheckbox:SetValue(PRT.RosterNicknames:IsEnabled())
+
         local settings = AttendanceSettings()
         autoSyncCheckbox:SetValue(settings.autoSyncFromLeader)
         confirmCheckbox:SetValue(settings.confirmBeforeSyncing)
@@ -998,6 +1053,19 @@ PRT:RegisterTab("Roster", function(parent)
 
     container:SetScript("OnShow", function()
         RefreshList()
+    end)
+
+    local combatFrame = CreateFrame("Frame", nil, container)
+    combatFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
+    combatFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
+    combatFrame:SetScript("OnEvent", function(_, event)
+        if event == "PLAYER_REGEN_DISABLED" then
+            CancelDrag()
+            if entryModal then entryModal:Hide() end
+            if importModal then importModal:Hide() end
+            if offSpecModal then offSpecModal:Hide() end
+        end
+        RosterUI:Refresh()
     end)
 
     return container

@@ -17,17 +17,26 @@ local Roster = {}
 PRT.Roster = Roster
 
 local classIDsByToken
-
-local function Trim(str)
-    if type(str) ~= "string" then
-        return ""
-    end
-    return string.match(str, "^%s*(.-)%s*$")
-end
+local listeners = {}
+local Validation = PRT.RosterValidation
 
 local function EnsureDB()
     PurplexityRaidToolsRosterDB = PurplexityRaidToolsRosterDB or {}
     return PurplexityRaidToolsRosterDB
+end
+
+local function InCombat()
+    return type(InCombatLockdown) == "function" and InCombatLockdown()
+end
+
+local function RejectCombat()
+    return false, "The roster cannot be changed during combat."
+end
+
+local function NotifyListeners()
+    for index = 1, #listeners do
+        listeners[index]()
+    end
 end
 
 local function ClassIDForToken(classToken)
@@ -113,9 +122,13 @@ local function FindEntryByNickname(db, nickname)
 end
 
 local function FindEntryOwningCharacter(db, character)
+    local normalizedCharacter = Validation:NormalizeIdentity(character)
     for _, entry in ipairs(db) do
         for _, owned in ipairs(entry.characters) do
-            if owned == character then
+            if normalizedCharacter and Validation:IdentitiesEqual(owned, normalizedCharacter) then
+                return entry
+            end
+            if not normalizedCharacter and owned == character then
                 return entry
             end
         end
@@ -124,24 +137,34 @@ local function FindEntryOwningCharacter(db, character)
 end
 
 local function ValidateSubmission(db, nickname, characters, ownEntry)
-    if nickname == "" then
-        return false, "A roster entry needs a nickname."
+    local normalizedNickname, nicknameError = Validation:ValidateNickname(nickname, false)
+    if not normalizedNickname then
+        return false, nicknameError
     end
     if not characters or #characters == 0 then
         return false, "A roster entry needs at least one character."
     end
 
-    local named = FindEntryByNickname(db, nickname)
+    local named = FindEntryByNickname(db, normalizedNickname)
     if named and named ~= ownEntry then
-        return false, "A roster entry named " .. nickname .. " already exists."
+        return false, "A roster entry named " .. normalizedNickname .. " already exists."
     end
 
     local seen = {}
     for _, character in ipairs(characters) do
-        if seen[character] then
-            return false, character .. " is listed twice on the same entry."
+        if type(character) ~= "string" or character == "" then
+            return false, "A roster character needs a name."
         end
-        seen[character] = true
+        local normalizedCharacter = Validation:NormalizeIdentity(character)
+        for _, seenCharacter in ipairs(seen) do
+            local duplicate = normalizedCharacter
+                and Validation:IdentitiesEqual(normalizedCharacter, seenCharacter)
+                or not normalizedCharacter and character == seenCharacter
+            if duplicate then
+                return false, character .. " is listed twice on the same entry."
+            end
+        end
+        seen[#seen + 1] = normalizedCharacter or character
 
         local owner = FindEntryOwningCharacter(db, character)
         if owner and owner ~= ownEntry then
@@ -149,7 +172,7 @@ local function ValidateSubmission(db, nickname, characters, ownEntry)
         end
     end
 
-    return true
+    return true, nil, normalizedNickname
 end
 
 local function AssignableRecord(db, character)
@@ -189,6 +212,63 @@ function Roster:GetEntries()
     return EnsureDB()
 end
 
+function Roster:Listen(callback)
+    listeners[#listeners + 1] = callback
+end
+
+function Roster:ResolveNickname(identity)
+    local normalized = Validation:NormalizeIdentity(identity)
+    if not normalized then
+        return nil
+    end
+
+    for _, entry in ipairs(EnsureDB()) do
+        for _, character in ipairs(entry.characters) do
+            if Validation:IdentitiesEqual(character, normalized) then
+                return entry.nickname
+            end
+        end
+    end
+    return nil
+end
+
+function Roster:PrepareReplacement(entries)
+    return Validation:PrepareEntries(entries)
+end
+
+function Roster:ReplaceEntries(entries)
+    if InCombat() then
+        return RejectCombat()
+    end
+
+    local prepared, err = self:PrepareReplacement(entries)
+    if not prepared then
+        return false, err
+    end
+
+    local db = EnsureDB()
+    wipe(db)
+    for index, entry in ipairs(prepared) do
+        db[index] = entry
+    end
+    NotifyListeners()
+    return true
+end
+
+function Roster:NormalizeStoredEntries()
+    local prepared, err = self:PrepareReplacement(EnsureDB())
+    if not prepared then
+        return false, err
+    end
+
+    local db = EnsureDB()
+    wipe(db)
+    for index, entry in ipairs(prepared) do
+        db[index] = entry
+    end
+    return true
+end
+
 function Roster:ResolveClass(character)
     local fromGroup = ClassFromSource(self.groupSource, character)
     if fromGroup then
@@ -198,33 +278,40 @@ function Roster:ResolveClass(character)
 end
 
 function Roster:AddEntry(nickname, characters)
-    local db = EnsureDB()
-    local trimmedNickname = Trim(nickname)
+    if InCombat() then
+        return RejectCombat()
+    end
 
-    local valid, err = ValidateSubmission(db, trimmedNickname, characters, nil)
+    local db = EnsureDB()
+
+    local valid, err, normalizedNickname = ValidateSubmission(db, nickname, characters, nil)
     if not valid then
         return false, err
     end
 
-    local entry = { nickname = trimmedNickname, characters = {}, characterData = {} }
+    local entry = { nickname = normalizedNickname, characters = {}, characterData = {} }
     for index, character in ipairs(characters) do
         entry.characters[index] = character
         entry.characterData[character] = { class = self:ResolveClass(character) }
     end
 
     db[#db + 1] = entry
+    NotifyListeners()
     return true
 end
 
 function Roster:UpdateEntry(target, nickname, characters)
+    if InCombat() then
+        return RejectCombat()
+    end
+
     local db = EnsureDB()
     local entry = FindEntryByNickname(db, target)
     if not entry then
         return false, "No roster entry named " .. tostring(target) .. "."
     end
 
-    local trimmedNickname = Trim(nickname)
-    local valid, err = ValidateSubmission(db, trimmedNickname, characters, entry)
+    local valid, err, normalizedNickname = ValidateSubmission(db, nickname, characters, entry)
     if not valid then
         return false, err
     end
@@ -237,17 +324,23 @@ function Roster:UpdateEntry(target, nickname, characters)
             or { class = self:ResolveClass(character) }
     end
 
-    entry.nickname = trimmedNickname
+    entry.nickname = normalizedNickname
     entry.characters = updatedCharacters
     entry.characterData = updatedData
+    NotifyListeners()
     return true
 end
 
 function Roster:RemoveEntry(nickname)
+    if InCombat() then
+        return RejectCombat()
+    end
+
     local db = EnsureDB()
     for index, entry in ipairs(db) do
         if entry.nickname == nickname then
             table.remove(db, index)
+            NotifyListeners()
             return true
         end
     end
@@ -255,12 +348,24 @@ function Roster:RemoveEntry(nickname)
 end
 
 function Roster:ImportFromRecord(dayRecord)
+    if InCombat() then
+        return RejectCombat()
+    end
+
     local db = EnsureDB()
     local added, skipped = {}, {}
 
     for character in pairs(dayRecord) do
         if not FindEntryOwningCharacter(db, character) then
-            if self:AddEntry(character, { character }) then
+            local nickname = Validation:ValidateNickname(character, true)
+            local valid = nickname and ValidateSubmission(db, nickname, { character }, nil)
+            if valid then
+                local entry = {
+                    nickname = nickname,
+                    characters = { character },
+                    characterData = { [character] = { class = self:ResolveClass(character) } },
+                }
+                db[#db + 1] = entry
                 added[#added + 1] = character
             else
                 skipped[#skipped + 1] = character
@@ -268,18 +373,31 @@ function Roster:ImportFromRecord(dayRecord)
         end
     end
 
+    if #added > 0 then
+        NotifyListeners()
+    end
     return { added = added, skipped = skipped }
 end
 
 function Roster:RefreshClasses()
+    if InCombat() then
+        return RejectCombat()
+    end
+
+    local changed = false
     for _, entry in ipairs(EnsureDB()) do
         for _, character in ipairs(entry.characters) do
             local record = entry.characterData[character]
             if not record.class then
                 record.class = self:ResolveClass(character)
+                changed = changed or record.class ~= nil
             end
         end
     end
+    if changed then
+        NotifyListeners()
+    end
+    return true
 end
 
 function Roster:GetCharacterClass(character)
@@ -299,13 +417,21 @@ function Roster:GetSpecsForCharacter(character)
 end
 
 function Roster:SetMainSpec(character, specID)
+    if InCombat() then
+        return RejectCombat()
+    end
+
     local record, err = AssignableRecord(EnsureDB(), character)
     if not record then
         return false, err
     end
 
     if specID == nil then
+        local changed = record.mainSpec ~= nil
         record.mainSpec = nil
+        if changed then
+            NotifyListeners()
+        end
         return true
     end
 
@@ -316,10 +442,15 @@ function Roster:SetMainSpec(character, specID)
 
     record.mainSpec = specID
     RemoveSpec(record.offSpecs, specID)
+    NotifyListeners()
     return true
 end
 
 function Roster:AddOffSpec(character, specID)
+    if InCombat() then
+        return RejectCombat()
+    end
+
     local record, err = AssignableRecord(EnsureDB(), character)
     if not record then
         return false, err
@@ -341,20 +472,33 @@ function Roster:AddOffSpec(character, specID)
 
     offSpecs[#offSpecs + 1] = specID
     record.offSpecs = offSpecs
+    NotifyListeners()
     return true
 end
 
 function Roster:RemoveOffSpec(character, specID)
+    if InCombat() then
+        return RejectCombat()
+    end
+
     local record, err = AssignableRecord(EnsureDB(), character)
     if not record then
         return false, err
     end
 
+    local hadSpec = HasSpec(record.offSpecs, specID)
     RemoveSpec(record.offSpecs, specID)
+    if hadSpec then
+        NotifyListeners()
+    end
     return true
 end
 
 function Roster:MoveCharacter(character, sourceNickname, destNickname)
+    if InCombat() then
+        return RejectCombat()
+    end
+
     if sourceNickname == destNickname then
         return true
     end
@@ -405,5 +549,6 @@ function Roster:MoveCharacter(character, sourceNickname, destNickname)
         end
     end
 
+    NotifyListeners()
     return true
 end

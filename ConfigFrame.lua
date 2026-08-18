@@ -32,6 +32,11 @@ function Components.GetCheckbox(parent, label, callback)
         return checkBox:GetChecked()
     end
 
+    function holder:SetEnabled(enabled)
+        checkBox:SetEnabled(enabled)
+        holder:EnableMouse(enabled)
+    end
+
     holder:SetScript("OnEnter", function()
         if checkBox.OnEnter then checkBox:OnEnter() end
     end)
@@ -47,6 +52,8 @@ function Components.GetCheckbox(parent, label, callback)
     checkBox:SetScript("OnClick", function()
         if callback then callback(checkBox:GetChecked()) end
     end)
+
+    holder.CheckBox = checkBox
 
     return holder
 end

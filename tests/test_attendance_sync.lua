@@ -52,6 +52,7 @@ if not PurplexityRaidTools.AttendanceStore then
 end
 
 if not PurplexityRaidTools.Roster then
+    pcall(dofile, "Modules/Attendance/RosterValidation.lua")
     dofile("Modules/Attendance/Roster.lua")
 end
 
@@ -2354,6 +2355,85 @@ tests["a rejected roster notifies nobody"] = function()
 
             assertEquals(fired, 0)
         end)
+    end)
+end
+
+tests["a roster received during combat is discarded without pending state or notification"] = function()
+    withDatabases({}, localRoster(), function()
+        freshSync()
+        Sync.confirmBeforeSyncing = true
+        local before = CopyTable(PurplexityRaidToolsRosterDB)
+
+        local fired = notificationsDuring(function()
+            withGlobals(LEADER_GLOBALS, function()
+                withGlobals({ InCombatLockdown = function() return true end }, function()
+                    dispatch(ROSTER_PUSH, { entries = incomingRoster() }, LEADER)
+                end)
+            end)
+        end)
+
+        assertNil(Sync:GetPendingRoster())
+        assertEquals(fired, 0)
+        assertTableEquals(PurplexityRaidToolsRosterDB, before)
+    end)
+end
+
+tests["a roster received during combat leaves an older pending offer unchanged"] = function()
+    withDatabases({}, localRoster(), function()
+        freshSync()
+        Sync.confirmBeforeSyncing = true
+        withGlobals(LEADER_GLOBALS, function()
+            dispatch(ROSTER_PUSH, { entries = incomingRoster() }, LEADER)
+        end)
+        local pending = Sync:GetPendingRoster()
+
+        withGlobals(LEADER_GLOBALS, function()
+            withGlobals({ InCombatLockdown = function() return true end }, function()
+                dispatch(ROSTER_PUSH, { entries = { rosterEntry("Other", NIVEN) } }, LEADER)
+            end)
+        end)
+
+        assertTrue(Sync:GetPendingRoster() == pending)
+    end)
+end
+
+tests["accepting a pending roster during combat preserves both roster and offer"] = function()
+    withDatabases({}, localRoster(), function()
+        freshSync()
+        Sync.confirmBeforeSyncing = true
+        withGlobals(LEADER_GLOBALS, function()
+            dispatch(ROSTER_PUSH, { entries = incomingRoster() }, LEADER)
+        end)
+        local pending = Sync:GetPendingRoster()
+        local before = CopyTable(PurplexityRaidToolsRosterDB)
+
+        withGlobals({ InCombatLockdown = function() return true end }, function()
+            assertFalse(Sync:AcceptPendingRoster())
+        end)
+
+        assertTrue(Sync:GetPendingRoster() == pending)
+        assertTableEquals(PurplexityRaidToolsRosterDB, before)
+    end)
+end
+
+tests["combat ending does not apply a discarded roster or notify a deferred refresh"] = function()
+    withDatabases({}, localRoster(), function()
+        freshSync()
+        Sync.confirmBeforeSyncing = false
+        local before = CopyTable(PurplexityRaidToolsRosterDB)
+
+        local fired = notificationsDuring(function()
+            withGlobals(LEADER_GLOBALS, function()
+                withGlobals({ InCombatLockdown = function() return true end }, function()
+                    dispatch(ROSTER_PUSH, { entries = incomingRoster() }, LEADER)
+                end)
+                withGlobals({ InCombatLockdown = function() return false end }, function() end)
+            end)
+        end)
+
+        assertNil(Sync:GetPendingRoster())
+        assertEquals(fired, 0)
+        assertTableEquals(PurplexityRaidToolsRosterDB, before)
     end)
 end
 

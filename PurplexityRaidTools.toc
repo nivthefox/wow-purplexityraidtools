@@ -38,10 +38,15 @@ Modules/Notes/NotesEditor.lua
 Modules/Notes/Notes.lua
 Modules/Notes/NotesConfig.lua
 Modules/Attendance/AttendanceStore.lua
+Modules/Attendance/RosterValidation.lua
 Modules/Attendance/Roster.lua
 Modules/Attendance/AttendanceReport.lua
 Modules/Attendance/AttendanceSync.lua
 Modules/Attendance/AttendanceWiring.lua
+Modules/RosterNicknames/RosterNicknames.lua
+Modules/RosterNicknames/Blizzard.lua
+Modules/RosterNicknames/NivUI.lua
+Modules/RosterNicknames/ElvUI.lua
 Modules/Attendance/RecordsUI.lua
 Modules/Attendance/AttendanceUI.lua
 Modules/Attendance/RosterUI.lua

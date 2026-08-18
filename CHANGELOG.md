@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Roster Nicknames can replace character names on supported Blizzard frames and through NivUI. ElvUI roster-nickname tags are available for custom unit-frame text.
+
+### Changed
+
+- Roster nicknames are limited to 12 characters, and roster changes or profile switches are blocked during combat.
+
 ## [1.1.4] - 2026-08-09
 
 ### Fixed

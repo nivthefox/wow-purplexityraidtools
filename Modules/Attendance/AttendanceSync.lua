@@ -5,11 +5,9 @@
 -- status can never lower a value, which makes corrections impossible to
 -- propagate, so the spec rules it out.
 --
--- This module is the validation seam. AttendanceStore keys the first-pull
--- decision on a day KEY's presence and compares day keys as strings during
--- expiry; Roster scans every entry's characters on every save and reads
--- characterData for each listed name. Neither defends those invariants, so an
--- incoming record or roster is checked here, all-or-nothing, or never.
+-- This module validates incoming attendance days itself. Incoming rosters pass
+-- through the roster's shared validation and replacement boundary, so local
+-- edits, imports, and synchronization enforce the same invariants.
 --
 -- Headless-load safety: no frame, timer or event API is touched at load, and
 -- registration is an explicit RegisterHandlers call rather than a load side
@@ -19,6 +17,7 @@
 local PRT = PurplexityRaidTools
 local AttendanceSync = {}
 PRT.AttendanceSync = AttendanceSync
+local RosterValidation = PRT.RosterValidation
 
 local INVENTORY_REQUEST = "attInventoryRequest"
 local INVENTORY_RESPONSE = "attInventoryResponse"
@@ -152,85 +151,6 @@ local function IsSoundDayRecord(data)
     return recorded > 0
 end
 
-local function IsSoundCharacterRecord(record)
-    if type(record) ~= "table" then
-        return false
-    end
-    if record.class ~= nil and type(record.class) ~= "string" then
-        return false
-    end
-    if record.mainSpec ~= nil and type(record.mainSpec) ~= "number" then
-        return false
-    end
-    if record.offSpecs ~= nil and type(record.offSpecs) ~= "table" then
-        return false
-    end
-    return true
-end
-
-local function IsSoundRosterEntry(entry)
-    if type(entry) ~= "table" then
-        return false
-    end
-    if type(entry.nickname) ~= "string" or entry.nickname == "" then
-        return false
-    end
-    if type(entry.characters) ~= "table" or #entry.characters == 0 then
-        return false
-    end
-    if type(entry.characterData) ~= "table" then
-        return false
-    end
-
-    for _, character in ipairs(entry.characters) do
-        if type(character) ~= "string" or character == "" then
-            return false
-        end
-        if not IsSoundCharacterRecord(entry.characterData[character]) then
-            return false
-        end
-    end
-
-    return true
-end
-
---- Officers arrange the roster by hand and the grid presents that arrangement,
---- so the entry list is an ordered array; a nickname-keyed table would survive
---- an ipairs scan by looking empty.
-local function IsSoundRoster(entries)
-    if type(entries) ~= "table" then
-        return false
-    end
-
-    local keys = 0
-    for _ in pairs(entries) do
-        keys = keys + 1
-    end
-    if keys ~= #entries then
-        return false
-    end
-
-    local claimedNicknames, claimedCharacters = {}, {}
-    for _, entry in ipairs(entries) do
-        if not IsSoundRosterEntry(entry) then
-            return false
-        end
-        if claimedNicknames[entry.nickname] then
-            return false
-        end
-        claimedNicknames[entry.nickname] = true
-
-        for _, character in ipairs(entry.characters) do
-            if claimedCharacters[character] then
-                return false
-            end
-            claimedCharacters[character] = true
-        end
-    end
-
-    return true
-end
-
 --- Refilled in place rather than reassigned: Roster:GetEntries hands out the
 --- live table, so swapping it strands every reference already taken.
 local function ReplaceRoster(entries)
@@ -239,6 +159,28 @@ local function ReplaceRoster(entries)
     for index, entry in ipairs(entries) do
         db[index] = entry
     end
+end
+
+local function InCombat()
+    return type(InCombatLockdown) == "function" and InCombatLockdown()
+end
+
+local function PrepareRoster(entries)
+    if PRT.Roster then
+        return PRT.Roster:PrepareReplacement(entries)
+    end
+    return RosterValidation:PrepareEntries(entries)
+end
+
+local function ApplyRoster(entries)
+    if PRT.Roster then
+        return PRT.Roster:ReplaceEntries(entries)
+    end
+    if InCombat() then
+        return false
+    end
+    ReplaceRoster(entries)
+    return true
 end
 
 local function OnInventoryRequest(_, sender)
@@ -320,21 +262,27 @@ local function OnRosterPush(data, sender)
     if not PRT.Comms:IsSenderPrivileged(sender) then
         return
     end
-    if type(data) ~= "table" or not IsSoundRoster(data.entries) then
+    if InCombat() or type(data) ~= "table" then
+        return
+    end
+
+    local prepared = PrepareRoster(data.entries)
+    if not prepared then
         return
     end
 
     if AttendanceSync.confirmBeforeSyncing == false then
-        ReplaceRoster(data.entries)
-        NotifyListeners()
+        if ApplyRoster(prepared) then
+            NotifyListeners()
+        end
         return
     end
 
     AttendanceSync.pendingRoster = {
         sender = sender,
         localCount = #LocalRosterEntries(),
-        incomingCount = #data.entries,
-        entries = data.entries,
+        incomingCount = #prepared,
+        entries = prepared,
     }
     NotifyListeners()
 end
@@ -424,7 +372,9 @@ function AttendanceSync:AcceptPendingRoster()
         return false
     end
 
-    ReplaceRoster(pending.entries)
+    if not ApplyRoster(pending.entries) then
+        return false
+    end
     self.pendingRoster = nil
     NotifyListeners()
     return true

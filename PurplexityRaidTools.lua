@@ -119,6 +119,9 @@ function PRT.Profiles:GetCurrentName()
 end
 
 function PRT.Profiles:Switch(name)
+    if type(InCombatLockdown) == "function" and InCombatLockdown() then
+        return false, "Profiles cannot be changed during combat."
+    end
     local db = PurplexityRaidToolsDB
     if not db.profiles or not db.profiles[name] then return false end
     db.currentProfile = name

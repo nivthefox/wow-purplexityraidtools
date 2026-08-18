@@ -133,6 +133,7 @@ if GetSpecializationInfoForClassID == nil then
     end
 end
 
+pcall(dofile, "Modules/Attendance/RosterValidation.lua")
 dofile("Modules/Attendance/Roster.lua")
 
 local PRT = PurplexityRaidTools
@@ -658,8 +659,9 @@ tests["an import creates one entry per un-rostered character nicknamed by its na
     }, "every character in the record is imported regardless of its status")
     assertEquals(#Roster:GetEntries(), 3)
     for _, character in ipairs({ OMNIVICENT, ELSIE, RANDOPUG }) do
-        local entry = entryNamed(character)
-        assertNotNil(entry, "the default nickname is the character's full name-realm")
+        local nickname = PRT.RosterValidation:TruncateUTF8(character, 12)
+        local entry = entryNamed(nickname)
+        assertNotNil(entry, "the default nickname is shortened to the roster nickname limit")
         assertTableEquals(entry.characters, { character })
     end
 end
@@ -670,7 +672,8 @@ tests["an imported entry carries no spec assignments"] = function()
 
         Roster:ImportFromRecord({ [OMNIVICENT] = 3 })
 
-        local data = dataFor(OMNIVICENT, OMNIVICENT)
+        local nickname = PRT.RosterValidation:TruncateUTF8(OMNIVICENT, 12)
+        local data = dataFor(nickname, OMNIVICENT)
         assertNotNil(data, "the imported character still gets a data record for its class")
         assertNil(data.mainSpec, "an import assigns no main spec")
         assertTableEquals(data.offSpecs or {}, {}, "an import assigns no off-specs")
@@ -706,7 +709,8 @@ end
 
 tests["an import skips a name-realm that collides with an existing nickname and reports it"] = function()
     resetDB()
-    Roster:AddEntry(RANDOPUG, { GRIMGRACE })
+    local nickname = PRT.RosterValidation:TruncateUTF8(RANDOPUG, 12)
+    Roster:AddEntry(nickname, { GRIMGRACE })
 
     local result = Roster:ImportFromRecord({
         [RANDOPUG] = 3,
@@ -718,7 +722,7 @@ tests["an import skips a name-realm that collides with an existing nickname and 
     assertTableEquals(asSet(result.added), { [ELSIE] = true },
         "the rest of the import proceeds normally")
     assertEquals(#Roster:GetEntries(), 2)
-    assertTableEquals(entryNamed(RANDOPUG).characters, { GRIMGRACE },
+    assertTableEquals(entryNamed(nickname).characters, { GRIMGRACE },
         "the entry holding the colliding nickname is untouched")
 end
 
@@ -1223,6 +1227,226 @@ tests["the destination's existing characters are unaffected by a move"] = functi
         assertEquals(data.class, "ROGUE")
         assertEquals(data.mainSpec, ASSASSINATION)
     end)
+end
+
+tests["nickname lookup reads the current roster on every call"] = function()
+    resetDB()
+    assertTrue(Roster:AddEntry("Starcaller", { "Aster-MoonGuard" }))
+
+    assertEquals(Roster:ResolveNickname("ASTER-moonguard"), "Starcaller")
+
+    PurplexityRaidToolsRosterDB[1].nickname = "Starlight"
+    assertEquals(Roster:ResolveNickname("Aster-MoonGuard"), "Starlight")
+end
+
+tests["nickname lookup requires a complete matching realm"] = function()
+    resetDB()
+    assertTrue(Roster:AddEntry("Starcaller", { "Aster-MoonGuard" }))
+
+    assertNil(Roster:ResolveNickname("Aster"))
+    assertNil(Roster:ResolveNickname("Aster-Illidan"))
+end
+
+tests["a realm-less roster character never resolves as a nickname"] = function()
+    resetDB()
+    assertTrue(Roster:AddEntry("Starcaller", { "Aster" }))
+
+    assertNil(Roster:ResolveNickname("Aster-MoonGuard"))
+end
+
+tests["direct saves reject nicknames longer than twelve Unicode characters"] = function()
+    resetDB()
+    local before = snapshot()
+
+    local ok, err = Roster:AddEntry("1234567890123", { OMNIVICENT })
+
+    assertFalse(ok)
+    assertEquals(type(err), "string")
+    assertTableEquals(PurplexityRaidToolsRosterDB, before)
+end
+
+tests["direct saves count multibyte nicknames by Unicode character"] = function()
+    resetDB()
+
+    local ok, err = Roster:AddEntry("éééééééééééé", { OMNIVICENT })
+
+    assertTrue(ok, tostring(err))
+    assertEquals(PurplexityRaidToolsRosterDB[1].nickname, "éééééééééééé")
+end
+
+tests["direct saves reject control formatting and invalid UTF-8 nicknames"] = function()
+    for _, nickname in ipairs({
+        "Line\nBreak",
+        "|cffff0000Red",
+        string.char(0xC2, 0x80),
+        string.char(0xC0, 0xAF),
+        "123456789012" .. string.char(0xC0, 0xAF),
+    }) do
+        resetDB()
+        local before = snapshot()
+
+        local ok = Roster:AddEntry(nickname, { OMNIVICENT })
+
+        assertFalse(ok, "nickname should be rejected: " .. string.format("%q", nickname))
+        assertTableEquals(PurplexityRaidToolsRosterDB, before)
+    end
+end
+
+tests["character ownership conflicts ignore capitalization"] = function()
+    resetDB()
+    assertTrue(Roster:AddEntry("Starcaller", { "Aster-MoonGuard" }))
+    local before = snapshot()
+
+    local ok, err = Roster:AddEntry("Ember", { "ASTER-moonguard" })
+
+    assertFalse(ok)
+    assertEquals(type(err), "string")
+    assertTableEquals(PurplexityRaidToolsRosterDB, before)
+end
+
+tests["incoming roster preparation shortens nicknames without mutating its input"] = function()
+    local incoming = {
+        {
+            nickname = "ééééééééééééé",
+            characters = { "Aster-MoonGuard" },
+            characterData = { ["Aster-MoonGuard"] = {} },
+        },
+    }
+
+    local prepared, err = Roster:PrepareReplacement(incoming)
+
+    assertNotNil(prepared, tostring(err))
+    assertEquals(prepared[1].nickname, "éééééééééééé")
+    assertEquals(incoming[1].nickname, "ééééééééééééé")
+end
+
+tests["incoming roster preparation rejects normalized ownership collisions atomically"] = function()
+    local incoming = {
+        {
+            nickname = "Starcaller",
+            characters = { "Aster-MoonGuard" },
+            characterData = { ["Aster-MoonGuard"] = {} },
+        },
+        {
+            nickname = "Ember",
+            characters = { "ASTER-moonguard" },
+            characterData = { ["ASTER-moonguard"] = {} },
+        },
+    }
+
+    local prepared, err = Roster:PrepareReplacement(incoming)
+
+    assertNil(prepared)
+    assertEquals(type(err), "string")
+end
+
+tests["older stored nicknames normalize in place without replacing the roster table"] = function()
+    PurplexityRaidToolsRosterDB = {
+        {
+            nickname = "  ééééééééééééé  ",
+            characters = { "Aster-MoonGuard" },
+            characterData = { ["Aster-MoonGuard"] = {} },
+        },
+    }
+    local db = PurplexityRaidToolsRosterDB
+
+    local ok, err = Roster:NormalizeStoredEntries()
+
+    assertTrue(ok, tostring(err))
+    assertEquals(PurplexityRaidToolsRosterDB, db)
+    assertEquals(db[1].nickname, "éééééééééééé")
+end
+
+tests["invalid older stored data is preserved atomically"] = function()
+    PurplexityRaidToolsRosterDB = {
+        {
+            nickname = "Valid",
+            characters = { "Aster-MoonGuard" },
+            characterData = { ["Aster-MoonGuard"] = {} },
+        },
+        {
+            nickname = "Bad|Name",
+            characters = { "Ember-Illidan" },
+            characterData = { ["Ember-Illidan"] = {} },
+        },
+    }
+    local before = snapshot()
+
+    local ok, err = Roster:NormalizeStoredEntries()
+
+    assertFalse(ok)
+    assertEquals(type(err), "string")
+    assertTableEquals(PurplexityRaidToolsRosterDB, before)
+end
+
+tests["Unicode case folding is used when the client comparison API is available"] = function()
+    resetDB()
+    local savedCompare = rawget(_G, "strcmputf8i")
+    strcmputf8i = function(first, second)
+        local folded = { ["É"] = "é" }
+        first = first:gsub("É", folded["É"])
+        second = second:gsub("É", folded["É"])
+        if first == second then return 0 end
+        return first < second and -1 or 1
+    end
+
+    local exercised, exerciseError = pcall(function()
+        assertTrue(Roster:AddEntry("Starcaller", { "Élan-MoonGuard" }))
+        assertEquals(Roster:ResolveNickname("élan-moonguard"), "Starcaller")
+        assertFalse(Roster:AddEntry("Ember", { "élan-MoonGuard" }))
+    end)
+    strcmputf8i = savedCompare
+    if not exercised then
+        error(exerciseError, 0)
+    end
+end
+
+tests["every roster mutation is refused during combat"] = function()
+    resetDB()
+    assertTrue(Roster:AddEntry("Niv", { OMNIVICENT, NIVEN }))
+    assertTrue(Roster:AddEntry("Elsie", { ELSIE }))
+    local before = snapshot()
+    local savedCombat = rawget(_G, "InCombatLockdown")
+    InCombatLockdown = function() return true end
+
+    local attempts = {
+        function() return Roster:AddEntry("Ember", { GRIMGRACE }) end,
+        function() return Roster:UpdateEntry("Niv", "Niv", { OMNIVICENT }) end,
+        function() return Roster:RemoveEntry("Niv") end,
+        function() return Roster:ImportFromRecord({ [GRIMGRACE] = 3 }) end,
+        function() return Roster:RefreshClasses() end,
+        function() return Roster:ReplaceEntries(before) end,
+        function() return Roster:SetMainSpec(OMNIVICENT, DISCIPLINE) end,
+        function() return Roster:AddOffSpec(OMNIVICENT, HOLY) end,
+        function() return Roster:RemoveOffSpec(OMNIVICENT, HOLY) end,
+        function() return Roster:MoveCharacter(OMNIVICENT, "Niv", "Elsie") end,
+    }
+
+    local exercised, exerciseError = pcall(function()
+        for _, attempt in ipairs(attempts) do
+            local ok = attempt()
+            assertFalse(ok)
+            assertTableEquals(PurplexityRaidToolsRosterDB, before)
+        end
+    end)
+    InCombatLockdown = savedCombat
+    if not exercised then
+        error(exerciseError, 0)
+    end
+end
+
+tests["successful roster mutations notify listeners but rejected mutations do not"] = function()
+    resetDB()
+    local fired = 0
+    Roster:Listen(function()
+        fired = fired + 1
+    end)
+
+    assertTrue(Roster:AddEntry("Niv", { OMNIVICENT }))
+    assertEquals(fired, 1)
+
+    assertFalse(Roster:AddEntry("Niv", { ELSIE }))
+    assertEquals(fired, 1)
 end
 
 return tests

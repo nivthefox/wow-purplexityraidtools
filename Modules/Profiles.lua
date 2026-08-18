@@ -43,7 +43,10 @@ PRT:RegisterTab("Profiles", function(parent)
             return PRT.Profiles:GetCurrentName() == value
         end,
         function(value)
-            PRT.Profiles:Switch(value)
+            local ok, err = PRT.Profiles:Switch(value)
+            if not ok and err then
+                PrintError(err)
+            end
         end
     )
     profileDropdown:SetPoint("TOPLEFT", 0, yOffset)

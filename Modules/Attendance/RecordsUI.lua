@@ -230,7 +230,10 @@ StaticPopupDialogs["PRT_ATTENDANCE_REPLACE_ROSTER"] = {
     hideOnEscape = true,
     showAlert = true,
     OnAccept = function()
-        PRT.AttendanceSync:AcceptPendingRoster()
+        if not PRT.AttendanceSync:AcceptPendingRoster() then
+            promptedRoster = nil
+            PrintError("The roster cannot be changed during combat.")
+        end
     end,
     OnCancel = function()
         PRT.AttendanceSync:DeclinePendingRoster()
@@ -282,6 +285,12 @@ local function PromptPendingReplacements()
         end
     end
 end
+
+local pendingRosterFrame = CreateFrame("Frame")
+pendingRosterFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
+pendingRosterFrame:SetScript("OnEvent", function()
+    PromptPendingReplacements()
+end)
 
 --------------------------------------------------------------------------------
 -- Row widgets

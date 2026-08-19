@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.2.2] - 2026-08-18
+
 ### Added
 
 - Roster Nicknames can now replace character names in EllesmereUI and Danders Frames.
@@ -202,7 +204,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Initial alpha release with Don't Release and Ready Check modules.
 
-[Unreleased]: https://github.com/nivthefox/wow-purplexityraidtools/compare/v1.2.1...HEAD
+[Unreleased]: https://github.com/nivthefox/wow-purplexityraidtools/compare/v1.2.2...HEAD
+[1.2.2]: https://github.com/nivthefox/wow-purplexityraidtools/compare/v1.2.1...v1.2.2
 [1.2.1]: https://github.com/nivthefox/wow-purplexityraidtools/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/nivthefox/wow-purplexityraidtools/compare/v1.1.4...v1.2.0
 [1.1.4]: https://github.com/nivthefox/wow-purplexityraidtools/compare/v1.1.3...v1.1.4

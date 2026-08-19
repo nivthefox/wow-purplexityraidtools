@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Roster Nicknames can now replace character names in EllesmereUI and Danders Frames.
+
 ## [1.2.1] - 2026-08-18
 
 ### Fixed

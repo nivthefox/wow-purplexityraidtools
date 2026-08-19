@@ -13,6 +13,8 @@ local featureLoaded, featureLoadError = pcall(function()
     dofile("Modules/RosterNicknames/Blizzard.lua")
     dofile("Modules/RosterNicknames/NivUI.lua")
     dofile("Modules/RosterNicknames/ElvUI.lua")
+    dofile("Modules/RosterNicknames/EllesmereUI.lua")
+    dofile("Modules/RosterNicknames/DandersFrames.lua")
 end)
 
 local function requireFeature()
@@ -65,6 +67,8 @@ tests["roster nickname feature modules load without provider addons"] = function
     assertNotNil(PRT.RosterNicknameAdapters.Blizzard)
     assertNotNil(PRT.RosterNicknameAdapters.NivUI)
     assertNotNil(PRT.RosterNicknameAdapters.ElvUI)
+    assertNotNil(PRT.RosterNicknameAdapters.EllesmereUI)
+    assertNotNil(PRT.RosterNicknameAdapters.DandersFrames)
 end
 
 tests["a new profile defaults roster nicknames to disabled"] = function()
@@ -473,6 +477,153 @@ tests["ElvUI adapter registers full and Unicode-safe shortened tags"] = function
     }, function()
         assertEquals(tags["prt-roster-nickname"]("party1"), "Aster")
     end)
+end
+
+tests["EllesmereUI adapter preserves an existing nickname provider before PRT"] = function()
+    requireFeature()
+    local api = {
+        GetNicknameForUnit = function(unit)
+            if unit == "party1" then
+                return "MethodNick"
+            end
+            if unit == "party2" then
+                return "Aster"
+            end
+            return nil
+        end,
+    }
+    local adapter = PRT.RosterNicknameAdapters.EllesmereUI
+    adapter.registered = false
+    adapter.api = nil
+    adapter.previous = nil
+    adapter.resolver = nil
+    PurplexityRaidToolsRosterDB = { rosterEntry("Starcaller", "Aster-MoonGuard") }
+
+    withGlobals({
+        C_AddOns = {
+            IsAddOnLoaded = function(name)
+                return name == "EllesmereUIRaidFrames" or name == "EllesmereUIUnitFrames"
+            end,
+        },
+        EasyNicknameAPI = api,
+        UnitName = function() return "Aster" end,
+        UnitIsPlayer = function() return true end,
+        UnitFullName = function() return "Aster", "MoonGuard" end,
+        issecretvalue = function() return false end,
+    }, function()
+        assertTrue(adapter:Initialize())
+        local resolver = api.GetNicknameForUnit
+        assertTrue(adapter:Initialize())
+        assertEquals(api.GetNicknameForUnit, resolver)
+
+        withEnabledFeature(function()
+            assertEquals(resolver("party1"), "MethodNick")
+            assertEquals(resolver("party2"), "Starcaller")
+            assertEquals(resolver("party3"), "Starcaller")
+        end)
+
+        assertEquals(resolver("party2"), "Aster")
+        assertNil(resolver("party3"))
+    end)
+end
+
+tests["EllesmereUI adapter supplies the API when no other provider owns it"] = function()
+    requireFeature()
+    local adapter = PRT.RosterNicknameAdapters.EllesmereUI
+    adapter.registered = false
+    adapter.api = nil
+    adapter.previous = nil
+    adapter.resolver = nil
+    PurplexityRaidToolsRosterDB = { rosterEntry("Starcaller", "Aster-MoonGuard") }
+
+    withGlobals({
+        C_AddOns = { IsAddOnLoaded = function() return true end },
+        EasyNicknameAPI = false,
+        UnitName = function() return "Aster" end,
+        UnitIsPlayer = function() return true end,
+        UnitFullName = function() return "Aster", "MoonGuard" end,
+        issecretvalue = function() return false end,
+    }, function()
+        assertTrue(adapter:Initialize())
+        assertEquals(type(EasyNicknameAPI), "table")
+        assertEquals(type(EasyNicknameAPI.GetNicknameForUnit), "function")
+        withEnabledFeature(function()
+            assertEquals(EasyNicknameAPI.GetNicknameForUnit("party1"), "Starcaller")
+        end)
+    end)
+end
+
+tests["EllesmereUI adapter refreshes raid names only out of combat"] = function()
+    requireFeature()
+    local unitRefreshes, raidRefreshes = 0, 0
+
+    withGlobals({
+        InCombatLockdown = function() return false end,
+        _EUF_RefreshUnitNames = function() unitRefreshes = unitRefreshes + 1 end,
+        _ERF_RefreshAll = function() raidRefreshes = raidRefreshes + 1 end,
+    }, function()
+        PRT.RosterNicknameAdapters.EllesmereUI:Refresh()
+    end)
+
+    withGlobals({
+        InCombatLockdown = function() return true end,
+        _EUF_RefreshUnitNames = function() unitRefreshes = unitRefreshes + 1 end,
+        _ERF_RefreshAll = function() raidRefreshes = raidRefreshes + 1 end,
+    }, function()
+        PRT.RosterNicknameAdapters.EllesmereUI:Refresh()
+    end)
+
+    assertEquals(unitRefreshes, 2)
+    assertEquals(raidRefreshes, 1)
+end
+
+tests["Danders Frames adapter wraps its external name seam once and refreshes frames"] = function()
+    requireFeature()
+    local fallbackCalls, refreshes = 0, 0
+    local api = {
+        GetUnitName = function(_, unit)
+            fallbackCalls = fallbackCalls + 1
+            return "Normal-" .. unit
+        end,
+        Nicknames = {
+            RefreshAllFrames = function()
+                refreshes = refreshes + 1
+            end,
+        },
+    }
+    local adapter = PRT.RosterNicknameAdapters.DandersFrames
+    adapter.registered = false
+    adapter.api = nil
+    adapter.previous = nil
+    adapter.resolver = nil
+    PurplexityRaidToolsRosterDB = { rosterEntry("Starcaller", "Aster-MoonGuard") }
+
+    withGlobals({
+        DandersFrames = api,
+        UnitIsPlayer = function() return true end,
+        UnitFullName = function(unit)
+            if unit == "party1" then
+                return "Aster", "MoonGuard"
+            end
+            return "Nobody", "MoonGuard"
+        end,
+        issecretvalue = function() return false end,
+    }, function()
+        assertTrue(adapter:Initialize())
+        local resolver = api.GetUnitName
+        assertTrue(adapter:Initialize())
+        assertEquals(api.GetUnitName, resolver)
+
+        withEnabledFeature(function()
+            assertEquals(api:GetUnitName("party1"), "Starcaller")
+            assertEquals(api:GetUnitName("party2"), "Normal-party2")
+        end)
+        assertEquals(api:GetUnitName("party1"), "Normal-party1")
+        adapter:Refresh()
+    end)
+
+    assertEquals(fallbackCalls, 2)
+    assertEquals(refreshes, 1)
 end
 
 return tests

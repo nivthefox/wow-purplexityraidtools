@@ -146,31 +146,22 @@ if not ok then
     os.exit(1)
 end
 
--- Try Windows dir first, fall back to POSIX ls.
 local function discoverTestFiles(dir)
     local files = {}
-    local handle = io.popen('dir /b "' .. dir .. '" 2>nul')
-    if handle then
-        local output = handle:read("*a")
-        handle:close()
-        if output and output ~= "" then
-            for name in output:gmatch("[^\r\n]+") do
-                if name:match("^test_.*%.lua$") then
-                    files[#files + 1] = name
-                end
-            end
-        end
+    local pathSeparator = package.config:sub(1, 1)
+    local command
+    if pathSeparator == "\\" then
+        command = 'dir /b "' .. dir .. '" 2>nul'
+    else
+        command = 'ls -1 "' .. dir .. '"'
     end
-    if #files == 0 then
-        handle = io.popen('ls "' .. dir .. '"')
-        if handle then
-            local output = handle:read("*a")
-            handle:close()
-            for name in output:gmatch("[^\r\n]+") do
-                if name:match("^test_.*%.lua$") then
-                    files[#files + 1] = name
-                end
-            end
+
+    local handle = assert(io.popen(command))
+    local output = handle:read("*a")
+    assert(handle:close())
+    for name in output:gmatch("[^\r\n]+") do
+        if name:match("^test_.*%.lua$") then
+            files[#files + 1] = name
         end
     end
     table.sort(files)

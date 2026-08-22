@@ -245,7 +245,13 @@ export class SerializedRequestGate {
 }
 
 export class WarcraftLogsClient {
-    constructor({ clientID, clientSecret, fetchImpl = fetch, gate = new SerializedRequestGate() }) {
+    constructor({
+        clientID,
+        clientSecret,
+        fetchImpl = fetch,
+        gate = new SerializedRequestGate(),
+        retrySleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
+    }) {
         if (!clientID || !clientSecret) {
             throw new Error('WCL_CLIENT_ID and WCL_CLIENT_SECRET are required');
         }
@@ -253,7 +259,29 @@ export class WarcraftLogsClient {
         this.clientSecret = clientSecret;
         this.fetchImpl = fetchImpl;
         this.gate = gate;
+        this.retrySleep = retrySleep;
         this.token = null;
+    }
+
+    async graphqlResponse(options) {
+        for (let attempt = 0; attempt < 4; attempt += 1) {
+            const response = await this.gate.run(() => this.fetchImpl('https://www.warcraftlogs.com/api/v2/client', options));
+            if (response.ok) {
+                return response;
+            }
+            const retryable = response.status === 429 || response.status >= 500;
+            if (!retryable || attempt === 3) {
+                throw new Error(`Warcraft Logs GraphQL request failed with HTTP ${response.status ?? 'unknown'}`);
+            }
+            const retryAfterHeader = response.headers?.get?.('retry-after');
+            const retryAfter = Number(retryAfterHeader);
+            const delay = retryAfterHeader !== null && retryAfterHeader !== undefined
+                && Number.isFinite(retryAfter) && retryAfter >= 0
+                ? retryAfter * 1000
+                : 1000 * (2 ** attempt);
+            await this.retrySleep(delay);
+        }
+        throw new Error('Warcraft Logs GraphQL request failed');
     }
 
     async authenticate() {
@@ -280,17 +308,14 @@ export class WarcraftLogsClient {
         if (!this.token) {
             await this.authenticate();
         }
-        const response = await this.gate.run(() => this.fetchImpl('https://www.warcraftlogs.com/api/v2/client', {
+        const response = await this.graphqlResponse({
             method: 'POST',
             headers: {
                 Authorization: `Bearer ${this.token}`,
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({ query, variables }),
-        }));
-        if (!response.ok) {
-            throw new Error('Warcraft Logs GraphQL request failed');
-        }
+        });
         const body = await response.json();
         if (!isRecord(body) || body.errors) {
             contractError('GraphQL');

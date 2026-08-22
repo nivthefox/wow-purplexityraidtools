@@ -18,6 +18,8 @@ PurplexityRaidTools.lua
 ConfigFrame.lua
 Comms.lua
 SpellData.lua
+BossTimelineData.lua
+Modules/BossTimelineDatabase.lua
 Modules/GroupInspect.lua
 Modules/DontRelease.lua
 Modules/ReadyScreen.lua

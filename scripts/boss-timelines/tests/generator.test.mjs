@@ -1,0 +1,229 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+
+import { generateDatabase } from '../generator.mjs';
+import { serializeDatabase } from '../lua-data.mjs';
+
+function runtimeCode(index) {
+    return `generated-${String.fromCodePoint(65 + (index % 26))}-${Math.floor(index / 26)}`;
+}
+
+function candidate(index, duration = 100000 - index) {
+    return {
+        duration,
+        startTime: 1000 + index,
+        report: { code: runtimeCode(index), fightID: 1000 + index },
+    };
+}
+
+function modules(timerIDs = [7001]) {
+    return new Map([[4001, {
+        journalID: 4001,
+        encounterID: 5001,
+        bigwigs: new Set(timerIDs),
+        dbm: new Set(),
+    }]]);
+}
+
+function emptyDatabase() {
+    return { schemaVersion: 1, encounters: {} };
+}
+
+function historicalDatabase() {
+    return {
+        schemaVersion: 1,
+        encounters: {
+            9001: {
+                difficulties: {
+                    16: {
+                        phases: [{
+                            phaseID: 1,
+                            name: 'Historical',
+                            isIntermission: false,
+                            occurrences: [{ spellID: 9002, time: 9, observations: 3 }],
+                        }],
+                    },
+                },
+            },
+        },
+    };
+}
+
+function encounterBytes(source, encounterID) {
+    const marker = `[${encounterID}] = {`;
+    const start = source.indexOf(marker);
+    assert.notEqual(start, -1);
+    let depth = 0;
+    for (let index = source.indexOf('{', start); index < source.length; index += 1) {
+        if (source[index] === '{') {
+            depth += 1;
+        } else if (source[index] === '}') {
+            depth -= 1;
+            if (depth === 0) {
+                return source.slice(start, index + 2);
+            }
+        }
+    }
+    throw new Error('Encounter block did not terminate');
+}
+
+function createClient({ rankingsByDifficulty, ineligible = new Set(), noEvents = false, failTimeline = false }) {
+    return {
+        discoverZones: async () => [{
+            id: 3001,
+            frozen: false,
+            difficulties: [{ id: 5 }, { id: 4 }],
+            encounters: [{ id: 2001, journalID: 4001 }],
+        }],
+        candidateKills: async (encounterID, difficulty) => rankingsByDifficulty.get(difficulty) ?? [],
+        timelineFights: async (reportCode, fightIDs) => {
+            if (failTimeline) {
+                throw new Error('synthetic API failure');
+            }
+            const id = fightIDs[0];
+            const kill = !ineligible.has(id);
+            return {
+                phaseDefinitions: [{
+                    encounterID: 2001,
+                    phases: [{ id: 1, name: 'One', isIntermission: false }],
+                }],
+                fights: [{
+                    id,
+                    encounterID: 2001,
+                    difficulty: reportCode.includes('difficulty-four') ? 4 : 5,
+                    kill,
+                    startTime: 0,
+                    endTime: 60000,
+                    phaseTransitions: [],
+                }],
+                events: noEvents ? [] : [{ fight: id, timestamp: 12500, type: 'begincast', abilityGameID: 7001 }],
+            };
+        },
+    };
+}
+
+test('generation backfills ineligible longest kills to thirty and preserves frozen encounters', async () => {
+    const rankings = Array.from({ length: 35 }, (_, index) => candidate(index));
+    const ineligible = new Set(rankings.slice(0, 5).map((value) => value.report.fightID));
+    const result = await generateDatabase({
+        client: createClient({ rankingsByDifficulty: new Map([[5, rankings]]), ineligible }),
+        bossModules: modules(),
+        existingDatabase: historicalDatabase(),
+        buildTime: 100000000,
+    });
+    assert.deepEqual(result.encounters[9001], historicalDatabase().encounters[9001]);
+    assert.equal(
+        encounterBytes(serializeDatabase(result), 9001),
+        encounterBytes(serializeDatabase(historicalDatabase()), 9001),
+    );
+    assert.deepEqual(result.encounters[5001].difficulties[16].phases[0].occurrences, [
+        { spellID: 7001, time: 13, observations: 30 },
+    ]);
+});
+
+test('difficulties are generated independently and insufficient new combinations are omitted', async () => {
+    const mythic = [candidate(0), candidate(1), candidate(2)];
+    const heroic = [candidate(3), candidate(4)];
+    const result = await generateDatabase({
+        client: createClient({ rankingsByDifficulty: new Map([[5, mythic], [4, heroic]]) }),
+        bossModules: modules(),
+        existingDatabase: emptyDatabase(),
+        buildTime: 100000000,
+    });
+    assert.deepEqual(Object.keys(result.encounters[5001].difficulties), ['16']);
+});
+
+test('an unsupported new encounter is omitted without failing other active encounters', async () => {
+    const rankings = [candidate(0), candidate(1), candidate(2)];
+    const client = createClient({ rankingsByDifficulty: new Map([[5, rankings]]) });
+    const originalDiscover = client.discoverZones;
+    client.discoverZones = async () => {
+        const zones = await originalDiscover();
+        zones[0].encounters.push({ id: 2002, journalID: 4002 });
+        return zones;
+    };
+    let unsupportedCount = 0;
+    const result = await generateDatabase({
+        client,
+        bossModules: modules(),
+        existingDatabase: emptyDatabase(),
+        buildTime: 100000000,
+        onUnsupported: () => {
+            unsupportedCount += 1;
+        },
+    });
+    assert.deepEqual(Object.keys(result.encounters), ['5001']);
+    assert.equal(unsupportedCount, 1);
+});
+
+test('loss of evidence or qualifying abilities for existing data fails without mutating input', async () => {
+    const existing = historicalDatabase();
+    existing.encounters[5001] = {
+        difficulties: {
+            16: {
+                phases: [{
+                    phaseID: 1,
+                    name: 'One',
+                    isIntermission: false,
+                    occurrences: [{ spellID: 7001, time: 13, observations: 3 }],
+                }],
+            },
+        },
+    };
+    const before = serializeDatabase(existing);
+    await assert.rejects(() => generateDatabase({
+        client: createClient({ rankingsByDifficulty: new Map([[5, [candidate(0), candidate(1)]]]) }),
+        bossModules: modules(),
+        existingDatabase: existing,
+        buildTime: 100000000,
+    }), /minimum evidence/);
+    assert.equal(serializeDatabase(existing), before);
+
+    await assert.rejects(() => generateDatabase({
+        client: createClient({
+            rankingsByDifficulty: new Map([[5, [candidate(0), candidate(1), candidate(2)]]]),
+            noEvents: true,
+        }),
+        bossModules: modules(),
+        existingDatabase: existing,
+        buildTime: 100000000,
+    }), /no qualifying abilities/);
+    assert.equal(serializeDatabase(existing), before);
+});
+
+test('upstream failure is atomic and deterministic response reordering produces identical bytes', async () => {
+    const rankings = [candidate(0), candidate(1), candidate(2), candidate(3)];
+    const existing = historicalDatabase();
+    const before = serializeDatabase(existing);
+    await assert.rejects(() => generateDatabase({
+        client: createClient({ rankingsByDifficulty: new Map([[5, rankings]]), failTimeline: true }),
+        bossModules: modules(),
+        existingDatabase: existing,
+        buildTime: 100000000,
+    }), /synthetic API failure/);
+    assert.equal(serializeDatabase(existing), before);
+
+    const first = await generateDatabase({
+        client: createClient({ rankingsByDifficulty: new Map([[5, rankings]]) }),
+        bossModules: modules(),
+        existingDatabase: existing,
+        buildTime: 100000000,
+    });
+    const second = await generateDatabase({
+        client: createClient({ rankingsByDifficulty: new Map([[5, [...rankings].reverse()]]) }),
+        bossModules: modules(),
+        existingDatabase: existing,
+        buildTime: 200000000,
+    });
+    assert.equal(serializeDatabase(first), serializeDatabase(second));
+});
+
+test('invalid explicit alias mappings fail before accepting generated output', async () => {
+    await assert.rejects(() => generateDatabase({
+        client: createClient({ rankingsByDifficulty: new Map() }),
+        bossModules: modules(),
+        existingDatabase: emptyDatabase(),
+        buildTime: 100000000,
+        aliases: { bigwigs: new Map([['not-a-number', 7001]]), dbm: new Map() },
+    }), /aliases are malformed/);
+});

@@ -105,11 +105,11 @@ export function validateZonesResponse(response) {
             || (zone.encounters !== null && !Array.isArray(zone.encounters))) {
             contractError('zone discovery');
         }
-        if ((zone.difficulties ?? []).some((difficulty) => !isRecord(difficulty) || !isPositiveInteger(difficulty.id))) {
+        if ((zone.difficulties ?? []).some((difficulty) => !isRecord(difficulty) || !Number.isInteger(difficulty.id))) {
             contractError('zone discovery');
         }
         if ((zone.encounters ?? []).some((encounter) => !isRecord(encounter)
-            || !isPositiveInteger(encounter.id) || !isPositiveInteger(encounter.journalID))) {
+            || !isPositiveInteger(encounter.id) || !Number.isInteger(encounter.journalID))) {
             contractError('zone discovery');
         }
     }

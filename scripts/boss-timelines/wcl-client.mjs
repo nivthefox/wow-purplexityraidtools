@@ -101,18 +101,23 @@ export function validateZonesResponse(response) {
     }
     for (const zone of zones) {
         if (!isRecord(zone) || !isPositiveInteger(zone.id) || typeof zone.frozen !== 'boolean'
-            || !Array.isArray(zone.difficulties) || !Array.isArray(zone.encounters)) {
+            || (zone.difficulties !== null && !Array.isArray(zone.difficulties))
+            || (zone.encounters !== null && !Array.isArray(zone.encounters))) {
             contractError('zone discovery');
         }
-        if (zone.difficulties.some((difficulty) => !isRecord(difficulty) || !isPositiveInteger(difficulty.id))) {
+        if ((zone.difficulties ?? []).some((difficulty) => !isRecord(difficulty) || !isPositiveInteger(difficulty.id))) {
             contractError('zone discovery');
         }
-        if (zone.encounters.some((encounter) => !isRecord(encounter)
+        if ((zone.encounters ?? []).some((encounter) => !isRecord(encounter)
             || !isPositiveInteger(encounter.id) || !isPositiveInteger(encounter.journalID))) {
             contractError('zone discovery');
         }
     }
-    return zones;
+    return zones.map((zone) => ({
+        ...zone,
+        difficulties: zone.difficulties ?? [],
+        encounters: zone.encounters ?? [],
+    }));
 }
 
 export function validateCandidateResponse(response) {

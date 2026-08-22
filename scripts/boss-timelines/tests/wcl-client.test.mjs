@@ -47,6 +47,18 @@ test('zone, candidate, and timeline validators reject malformed consumed fields'
     assert.throws(() => validateTimelineResponse({ data: { reportData: { report: { phases: [], fights: [] } } } }), /contract/);
 });
 
+test('zone validation normalizes nullable difficulty and encounter lists', () => {
+    const zones = validateZonesResponse({
+        data: {
+            worldData: {
+                zones: [{ id: 1, frozen: true, difficulties: null, encounters: null }],
+            },
+        },
+    });
+    assert.deepEqual(zones[0].difficulties, []);
+    assert.deepEqual(zones[0].encounters, []);
+});
+
 test('timeline validation normalizes nullable single-phase transitions to an empty array', () => {
     const report = validateTimelineResponse({
         data: {

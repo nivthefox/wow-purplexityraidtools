@@ -12,8 +12,13 @@ import {
     validateZonesResponse,
 } from '../wcl-client.mjs';
 
-function response(body, ok = true) {
-    return { ok, json: async () => body };
+function response(body, ok = true, status = ok ? 200 : 500, retryAfter = null) {
+    return {
+        ok,
+        status,
+        headers: { get: (name) => (name === 'retry-after' ? retryAfter : null) },
+        json: async () => body,
+    };
 }
 
 function runtimeCode() {
@@ -210,4 +215,22 @@ test('credentials, token, and malformed-response canaries never appear in errors
     for (const canary of canaries) {
         assert.equal(message.includes(canary), false);
     }
+});
+
+test('GraphQL requests retry transient HTTP failures without exposing response bodies', async () => {
+    const responses = [
+        response({ access_token: 'ephemeral' }),
+        response({ private: 'response-canary' }, false, 503),
+        response({ data: { worldData: { zones: [] } } }),
+    ];
+    const delays = [];
+    const client = new WarcraftLogsClient({
+        clientID: 'client',
+        clientSecret: 'secret',
+        gate: { run: (request) => request() },
+        retrySleep: async (milliseconds) => { delays.push(milliseconds); },
+        fetchImpl: async () => responses.shift(),
+    });
+    assert.deepEqual(await client.discoverZones(), []);
+    assert.deepEqual(delays, [1000]);
 });

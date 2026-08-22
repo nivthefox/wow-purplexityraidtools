@@ -161,11 +161,14 @@ function extractBigWigsJournalID(source) {
     if (calls.length > 1) {
         throw new Error('BigWigs source contains multiple boss declarations');
     }
-    const numericArguments = calls[0].arguments.map(numericLiteral).filter((value) => value !== null);
-    if (numericArguments.length < 2) {
+    if (calls[0].arguments.length < 3) {
+        return null;
+    }
+    const journalID = numericLiteral(calls[0].arguments.at(-1));
+    if (!journalID) {
         throw new Error('BigWigs boss declaration has no journal ID');
     }
-    return numericArguments.at(-1);
+    return journalID;
 }
 
 function extractBigWigsTimerIDs(source) {

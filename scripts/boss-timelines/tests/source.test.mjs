@@ -37,6 +37,25 @@ end
     assert.deepEqual([...parseBossModule(source, 'bigwigs').timerIDs], [6007]);
 });
 
+test('BigWigs extraction reads the final journal ID when the instance ID is negative', () => {
+    const source = `
+local mod = BigWigs:NewBoss("Synthetic World Boss", -99, 4001)
+mod:SetEncounterID(5001)
+function mod:OnEngage()
+    self:Bar(6001, 10)
+end
+`;
+    const module = parseBossModule(source, 'bigwigs');
+    assert.equal(module.journalID, 4001);
+    assert.equal(module.encounterID, 5001);
+    assert.deepEqual([...module.timerIDs], [6001]);
+});
+
+test('BigWigs declarations without the optional journal ID are not encounter modules', () => {
+    const source = 'local mod = BigWigs:NewBoss("Synthetic Instance", 99)';
+    assert.equal(parseBossModule(source, 'bigwigs'), null);
+});
+
 test('source-like text inside strings does not create a boss module', () => {
     const source = `local pattern = "BigWigs:NewBoss(\\"Synthetic\\", 99, 4001)"`;
     assert.equal(parseBossModule(source, 'bigwigs'), null);

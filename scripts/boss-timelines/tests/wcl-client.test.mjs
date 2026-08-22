@@ -59,6 +59,23 @@ test('zone validation normalizes nullable difficulty and encounter lists', () =>
     assert.deepEqual(zones[0].encounters, []);
 });
 
+test('zone validation accepts integer metadata outside the selected raid difficulties', () => {
+    const zones = validateZonesResponse({
+        data: {
+            worldData: {
+                zones: [{
+                    id: 1,
+                    frozen: true,
+                    difficulties: [{ id: -1 }],
+                    encounters: [{ id: 2, journalID: 0 }],
+                }],
+            },
+        },
+    });
+    assert.equal(zones[0].difficulties[0].id, -1);
+    assert.equal(zones[0].encounters[0].journalID, 0);
+});
+
 test('timeline validation normalizes nullable single-phase transitions to an empty array', () => {
     const report = validateTimelineResponse({
         data: {

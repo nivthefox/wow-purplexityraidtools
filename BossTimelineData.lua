@@ -5,4 +5,3 @@ PRT.BossTimelineData = {
     encounters = {
     },
 }
-

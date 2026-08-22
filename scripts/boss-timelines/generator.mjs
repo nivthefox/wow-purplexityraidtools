@@ -84,6 +84,25 @@ function generationFailure(message) {
     return error;
 }
 
+function indexBossModulesByEncounterID(bossModules) {
+    const byEncounterID = new Map();
+    for (const modules of bossModules.values()) {
+        if (!modules.encounterID) {
+            continue;
+        }
+        const existing = byEncounterID.get(modules.encounterID);
+        if (existing && existing !== modules) {
+            throw generationFailure('Boss modules map one encounter ID to multiple journal IDs');
+        }
+        byEncounterID.set(modules.encounterID, modules);
+    }
+    return byEncounterID;
+}
+
+function resolveBossModules(bossModules, modulesByEncounterID, encounter) {
+    return bossModules.get(encounter.journalID) ?? modulesByEncounterID.get(encounter.id) ?? null;
+}
+
 function validateAliases(aliases) {
     for (const bossMod of ['bigwigs', 'dbm']) {
         if (!(aliases[bossMod] instanceof Map)) {
@@ -170,12 +189,13 @@ export async function generateDatabase({
         throw generationFailure('Boss timeline unsupported-encounter reporter is malformed');
     }
     const activeZones = await discoverCurrentTier(client, buildTime);
+    const modulesByEncounterID = indexBossModulesByEncounterID(bossModules);
     const encounters = { ...existingDatabase.encounters };
     const activeEncounterIDs = new Set();
 
     for (const zone of activeZones) {
         for (const encounter of zone.encounters) {
-            const modules = bossModules.get(encounter.journalID);
+            const modules = resolveBossModules(bossModules, modulesByEncounterID, encounter);
             const generated = await generateEncounter({
                 client,
                 encounter,
@@ -193,11 +213,13 @@ export async function generateDatabase({
         }
     }
 
-    for (const [journalID, modules] of bossModules) {
+    for (const modules of bossModules.values()) {
         if (!modules.encounterID || activeEncounterIDs.has(modules.encounterID)) {
             continue;
         }
-        const isActiveJournal = activeZones.some((zone) => zone.encounters.some((encounter) => encounter.journalID === journalID));
+        const isActiveJournal = activeZones.some((zone) => zone.encounters.some((encounter) => (
+            resolveBossModules(bossModules, modulesByEncounterID, encounter) === modules
+        )));
         if (isActiveJournal && existingDatabase.encounters[modules.encounterID]) {
             throw generationFailure('An existing active encounter could not be regenerated');
         }

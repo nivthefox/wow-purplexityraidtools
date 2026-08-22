@@ -156,6 +156,31 @@ test('an unsupported new encounter is omitted without failing other active encou
     assert.equal(unsupportedCount, 1);
 });
 
+test('generation falls back to the runtime encounter ID when WCL has no journal ID', async () => {
+    const rankings = [candidate(0), candidate(1), candidate(2)];
+    const client = createClient({ rankingsByDifficulty: new Map([[5, rankings]]) });
+    const originalTimelineFights = client.timelineFights;
+    client.discoverZones = async () => [{
+        id: 3001,
+        frozen: false,
+        difficulties: [{ id: 5 }],
+        encounters: [{ id: 5001, journalID: 0 }],
+    }];
+    client.timelineFights = async (...argumentsList) => {
+        const report = await originalTimelineFights(...argumentsList);
+        report.phaseDefinitions[0].encounterID = 5001;
+        report.fights[0].encounterID = 5001;
+        return report;
+    };
+    const result = await generateDatabase({
+        client,
+        bossModules: modules(),
+        existingDatabase: emptyDatabase(),
+        buildTime: 100000000,
+    });
+    assert.deepEqual(Object.keys(result.encounters), ['5001']);
+});
+
 test('loss of evidence or qualifying abilities for existing data fails without mutating input', async () => {
     const existing = historicalDatabase();
     existing.encounters[5001] = {

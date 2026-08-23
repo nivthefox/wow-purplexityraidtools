@@ -25,6 +25,13 @@ if not (PurplexityRaidTools.Comms) then
     dofile("Comms.lua")
 end
 
+if not PurplexityRaidTools.EncounterPhases
+    or not PurplexityRaidTools.EncounterPhases.BeginAttempt
+then
+    dofile("Modules/EncounterPhases/Registry.lua")
+    dofile("Modules/EncounterPhases/Runtime.lua")
+end
+
 if not PurplexityRaidTools.Notes then
     dofile("Modules/Notes/Notes.lua")
 end
@@ -685,15 +692,18 @@ end
 
 local NOTE_NO_ENCOUNTER_ID = "time:30;tag:everyone;text:Do Something"
 local NOTE_WITH_ENCOUNTER_ID = "EncounterID:3176;Name:Sszorak\ntime:30;tag:everyone;text:Spirit Link"
+local DRAFT_NOTE = "EncounterID:3420;Name:Sszorak\ntime:30;tag:everyone;text:Spirit Link"
 
 local function makeTimerSpy()
-    local spy = { started = false, stopped = false, lastNote = nil }
+    local spy = { started = false, stopped = false, lastNote = nil, phaseCalls = {} }
     function spy:Start(note, callbacks, phaseStart)
         self.started = true
         self.lastNote = note
     end
     function spy:Stop() self.stopped = true end
-    function spy:SetPhase() end
+    function spy:SetPhase(phase, now)
+        self.phaseCalls[#self.phaseCalls + 1] = { phase = phase, time = now }
+    end
     function spy:Tick() end
     return spy
 end
@@ -720,7 +730,15 @@ local function setupEncounterHarness(noteText, overrides)
     PRT.NotesTimer = timerSpy
     PRT.NotesPopups = makePopupsSpy()
     Notes.eventFrame = {
-        RegisterEvent = function() end,
+        registered = {},
+        unregistered = {},
+        RegisterEvent = function(self, event)
+            self.registered[event] = true
+        end,
+        UnregisterEvent = function(self, event)
+            self.unregistered[event] = true
+            self.registered[event] = nil
+        end,
         UnregisterAllEvents = function() end,
         SetScript = function(self, event, handler)
             if event == "OnEvent" then
@@ -765,6 +783,73 @@ tests["NoteApplies: note with no encounterID applies to any encounter"] = functi
         assertEquals(name, "TestNote")
         local parsed = PRT.NotesParser:Parse(text)
         assertNil(parsed.encounterID, "note should have no encounterID")
+    end)
+end
+
+tests["a completed encounter definition drives Notes through declared observations"] = function()
+    local previousDatabase = PRT.BossTimelineDatabase
+    PRT.BossTimelineDatabase = { encounters = { [3176] = {} } }
+    local ok, err = PRT.EncounterPhases:Register(3176, {
+        events = { "FAKE_PHASE_EVENT" },
+        GetPhases = function()
+            return {
+                { id = 1, name = "Opening" },
+                { id = 2, name = "Finale" },
+            }
+        end,
+        Begin = function()
+            return {}
+        end,
+        Observe = function(_, event, value)
+            if event == "FAKE_PHASE_EVENT" and value == "advance" then
+                return 2
+            end
+        end,
+        ProjectWCL = function(_, phaseIndex, _, occurrence)
+            return { phase = phaseIndex, time = occurrence.time }
+        end,
+    })
+    assertTrue(ok, err)
+
+    local _, timerSpy, globals = setupEncounterHarness(NOTE_WITH_ENCOUNTER_ID)
+    withGlobals(globals, function()
+        PRT.IsContentTypeEnabled = function()
+            return true
+        end
+        local eventFrame = Notes.eventFrame
+        eventFrame.handler(nil, "ENCOUNTER_START", 3176, "Sszorak", 16, 20)
+        assertTrue(eventFrame.registered.FAKE_PHASE_EVENT)
+
+        eventFrame.handler(nil, "FAKE_PHASE_EVENT", "advance")
+        eventFrame.handler(nil, "FAKE_PHASE_EVENT", "advance")
+        assertTableEquals(timerSpy.phaseCalls, { { phase = 2, time = 100 } })
+
+        eventFrame.handler(nil, "ENCOUNTER_END", 3176, "Sszorak", 16, 20, 0)
+        assertTrue(eventFrame.unregistered.FAKE_PHASE_EVENT)
+        eventFrame.handler(nil, "FAKE_PHASE_EVENT", "advance")
+        assertEquals(#timerSpy.phaseCalls, 1)
+    end)
+    PRT.BossTimelineDatabase = previousDatabase
+end
+
+tests["an inert encounter draft preserves the existing boss-mod fallback"] = function()
+    local bossModCallback
+    local _, timerSpy, globals = setupEncounterHarness(DRAFT_NOTE, {
+        BigWigsLoader = {
+            RegisterMessage = function(_, _, callback)
+                bossModCallback = callback
+            end,
+        },
+    })
+    withGlobals(globals, function()
+        PRT.IsContentTypeEnabled = function()
+            return true
+        end
+        local eventFrame = Notes.eventFrame
+        eventFrame.handler(nil, "ENCOUNTER_START", 3420, "Sszorak", 16, 20)
+        assertNotNil(bossModCallback)
+        bossModCallback(nil, {}, 2)
+        assertTableEquals(timerSpy.phaseCalls, { { phase = 2, time = 100 } })
     end)
 end
 

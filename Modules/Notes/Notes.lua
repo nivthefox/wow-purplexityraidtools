@@ -186,6 +186,9 @@ local phaseStart = nil
 local bossModHooked = false
 local warnedNoBossMod = false
 local testRunning = false
+local encounterPhaseAttempt = nil
+local useCanonicalPhases = false
+local registeredObservationEvents = {}
 
 -- difficultyID -> capitalized note-vocabulary difficulty string. The lowercase
 -- content-type strings from GetCurrentContentType must NEVER be used here.
@@ -293,7 +296,7 @@ local timerCallbacks = {
     end,
 }
 
-local function ApplyPhase(stage)
+local function ApplyPhase(stage, activationTime)
     if isSecret(stage) then
         return
     end
@@ -302,7 +305,7 @@ local function ApplyPhase(stage)
         return
     end
     encounterPhase = stage
-    phaseStart = GetTime()
+    phaseStart = activationTime or GetTime()
     PRT.NotesTimer:SetPhase(stage, phaseStart)
 end
 
@@ -321,6 +324,9 @@ local function HookBossMods()
             if isSecret(addon) or isSecret(stage) then
                 return
             end
+            if useCanonicalPhases then
+                return
+            end
             ApplyPhase(stage)
         end)
         hooked = true
@@ -329,6 +335,9 @@ local function HookBossMods()
     if type(DBM) == "table" and DBM.RegisterCallback then
         DBM:RegisterCallback("DBM_SetStage", function(_, addon, modId, stage)
             if isSecret(addon) or isSecret(modId) or isSecret(stage) then
+                return
+            end
+            if useCanonicalPhases then
                 return
             end
             ApplyPhase(stage)
@@ -346,7 +355,65 @@ local function StopTicker()
     end
 end
 
+local BASE_EVENTS = {
+    ADDON_LOADED = true,
+    ENCOUNTER_END = true,
+    ENCOUNTER_START = true,
+    GROUP_ROSTER_UPDATE = true,
+    PLAYER_SPECIALIZATION_CHANGED = true,
+}
+
+local function StopEncounterPhaseAttempt()
+    if encounterPhaseAttempt and PRT.EncounterPhases then
+        PRT.EncounterPhases:EndAttempt(encounterPhaseAttempt)
+    end
+    encounterPhaseAttempt = nil
+    useCanonicalPhases = false
+
+    if Notes.eventFrame and Notes.eventFrame.UnregisterEvent then
+        for event in pairs(registeredObservationEvents) do
+            Notes.eventFrame:UnregisterEvent(event)
+        end
+    end
+    registeredObservationEvents = {}
+end
+
+local function StartEncounterPhaseAttempt(encounterID, difficultyID)
+    if not PRT.EncounterPhases then
+        return
+    end
+    if not PRT.EncounterPhases:GetDefinition(encounterID) then
+        return
+    end
+
+    useCanonicalPhases = true
+    encounterPhaseAttempt = PRT.EncounterPhases:BeginAttempt(encounterID, difficultyID, {
+        activate = function(phase, now)
+            ApplyPhase(phase, now)
+        end,
+        isSecret = isSecret,
+        now = GetTime,
+        schedule = function(delay, callback)
+            if not C_Timer or not C_Timer.NewTimer then
+                return nil
+            end
+            return C_Timer.NewTimer(delay, callback)
+        end,
+    })
+    if not encounterPhaseAttempt then
+        return
+    end
+
+    for _, event in ipairs(PRT.EncounterPhases:GetAttemptEvents(encounterPhaseAttempt)) do
+        if not BASE_EVENTS[event] then
+            Notes.eventFrame:RegisterEvent(event)
+            registeredObservationEvents[event] = true
+        end
+    end
+end
+
 local function OnEncounterStart(encounterID, difficultyID)
+    StopEncounterPhaseAttempt()
     if isSecret(encounterID) or isSecret(difficultyID) then
         return
     end
@@ -370,7 +437,11 @@ local function OnEncounterStart(encounterID, difficultyID)
         Notes:TestStop()
     end
 
-    if not (type(BigWigsLoader) == "table" or type(DBM) == "table") then
+    StartEncounterPhaseAttempt(encounterID, tonumber(difficultyID))
+
+    if not useCanonicalPhases
+        and not (type(BigWigsLoader) == "table" or type(DBM) == "table")
+    then
         if not warnedNoBossMod then
             warnedNoBossMod = true
             print("PRT: No boss mod (BigWigs or DBM) detected. Only phase 1 reminders will fire.")
@@ -394,6 +465,7 @@ local function OnEncounterStart(encounterID, difficultyID)
 end
 
 local function OnEncounterEnd(success)
+    StopEncounterPhaseAttempt()
     StopTicker()
     PRT.NotesTimer:Stop()
     PRT.NotesPopups:DismissAll()
@@ -568,16 +640,19 @@ local function OnClearReceived(_, sender)
     PRT.NotesFrame:Hide()
 end
 
-local function OnEvent(_, event, arg1, arg2, arg3, arg4, arg5)
+local function OnEvent(_, event, ...)
     if event == "ENCOUNTER_START" then
         HookBossMods()
-        OnEncounterStart(arg1, arg3)
+        local encounterID, _, difficultyID = ...
+        OnEncounterStart(encounterID, difficultyID)
     elseif event == "ENCOUNTER_END" then
-        OnEncounterEnd(arg5)
+        OnEncounterEnd(select(5, ...))
     elseif event == "GROUP_ROSTER_UPDATE" or event == "PLAYER_SPECIALIZATION_CHANGED" then
         RefreshRelevance()
     elseif event == "ADDON_LOADED" then
         HookBossMods()
+    elseif encounterPhaseAttempt and PRT.EncounterPhases then
+        PRT.EncounterPhases:ObserveAttempt(encounterPhaseAttempt, event, ...)
     end
 end
 
@@ -637,6 +712,7 @@ function Notes:OnEnable()
 end
 
 function Notes:OnDisable()
+    StopEncounterPhaseAttempt()
     self.eventFrame:UnregisterAllEvents()
     self.eventFrame:SetScript("OnEvent", nil)
 

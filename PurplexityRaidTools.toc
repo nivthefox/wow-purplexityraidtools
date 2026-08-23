@@ -20,6 +20,10 @@ Comms.lua
 SpellData.lua
 BossTimelineData.lua
 Modules/BossTimelineDatabase.lua
+Modules/EncounterPhases/Registry.lua
+Modules/EncounterPhases/Runtime.lua
+Modules/EncounterPhases/Planning.lua
+Modules/EncounterPhases/TheVenomousAbyss.lua
 Modules/GroupInspect.lua
 Modules/DontRelease.lua
 Modules/ReadyScreen.lua

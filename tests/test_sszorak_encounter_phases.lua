@@ -3,26 +3,26 @@ local PRT = PurplexityRaidTools
 
 PRT.BossTimelineDatabase = {
     encounters = {
-        [3420] = { difficulties = {} },
-        [3445] = { difficulties = {} },
-        [3455] = { difficulties = {} },
-        [3470] = { difficulties = {} },
-        [3497] = {
+        [3420] = {
             difficulties = {
                 [16] = {
                     phases = {
                         {
                             phaseID = 1,
-                            name = "The Lost Explorers",
+                            name = "Sszorak",
                             isIntermission = false,
                             occurrences = {
-                                { spellID = 1290711, time = 35, observations = 3 },
+                                { spellID = 1285732, time = 35, observations = 3 },
                             },
                         },
                     },
                 },
             },
         },
+        [3445] = { difficulties = {} },
+        [3455] = { difficulties = {} },
+        [3470] = { difficulties = {} },
+        [3497] = { difficulties = {} },
     },
 }
 dofile("Modules/EncounterPhases/Registry.lua")
@@ -31,9 +31,9 @@ dofile("Modules/EncounterPhases/Planning.lua")
 dofile("Modules/EncounterPhases/TheVenomousAbyss.lua")
 
 local EncounterPhases = PRT.EncounterPhases
-local encounterID = 3497
+local encounterID = 3420
 local expectedPhases = {
-    { id = 1, name = "The Lost Explorers" },
+    { id = 1, name = "Sszorak" },
 }
 
 local function harness()
@@ -55,7 +55,7 @@ local function harness()
     return attempt, activations
 end
 
-tests["The Lost Explorers exposes one stable phase for every raid difficulty"] = function()
+tests["Sszorak exposes one stable phase for every raid difficulty"] = function()
     for _, difficultyID in ipairs({ 17, 14, 15, 16 }) do
         assertTableEquals(EncounterPhases:GetPhases(encounterID, difficultyID), expectedPhases)
     end
@@ -63,7 +63,7 @@ tests["The Lost Explorers exposes one stable phase for every raid difficulty"] =
     assertTrue(EncounterPhases:ValidateCompatibility(compatibility, {}))
 end
 
-tests["The Lost Explorers declares no runtime transition observations"] = function()
+tests["Sszorak declares no runtime transition observations"] = function()
     local attempt, activations = harness()
     assertTableEquals(EncounterPhases:GetAttemptEvents(attempt), {})
     assertFalse(EncounterPhases:ObserveAttempt(attempt, "UNIT_POWER_UPDATE", "boss1"))
@@ -71,19 +71,19 @@ tests["The Lost Explorers declares no runtime transition observations"] = functi
     assertEquals(#activations, 0)
 end
 
-tests["The Lost Explorers planning preserves canonical stored occurrences"] = function()
+tests["Sszorak planning preserves canonical stored occurrences"] = function()
     local model = EncounterPhases:GetPlanningModel(encounterID, 16)
     assertTableEquals(model, {
         encounterID = encounterID,
         difficultyID = 16,
         phases = expectedPhases,
         occurrences = {
-            { phase = 1, time = 35, spellID = 1290711 },
+            { phase = 1, time = 35, spellID = 1285732 },
         },
     })
 end
 
-tests["The Lost Explorers returns empty planning occurrences without stored difficulty data"] = function()
+tests["Sszorak returns empty planning occurrences without stored difficulty data"] = function()
     for _, difficultyID in ipairs({ 17, 14, 15 }) do
         local model = EncounterPhases:GetPlanningModel(encounterID, difficultyID)
         assertTableEquals(model.phases, expectedPhases)

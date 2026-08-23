@@ -72,6 +72,7 @@ function decideNekzali({ fight, events }) {
 }
 
 export const THE_VENOMOUS_ABYSS_PHASE_DECIDERS = new Map([
+    [3420, onePhase('Sszorak')],
     [3445, onePhase('Entombed Sentinels')],
     [3455, onePhase('Vashnik the Malignant')],
     [3470, decideNekzali],

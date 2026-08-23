@@ -16,6 +16,7 @@ end
 
 PRT.BossTimelineDatabase = {
     encounters = {
+        [3420] = { difficulties = {} },
         [3445] = {
             difficulties = {
                 [14] = canonicalDifficulty({

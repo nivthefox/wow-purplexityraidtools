@@ -2,7 +2,7 @@ local tests = {}
 local PRT = PurplexityRaidTools
 
 dofile("Modules/EncounterPhases/Registry.lua")
-PRT.BossTimelineDatabase = { encounters = { [3445] = {}, [3455] = {}, [3470] = {}, [3497] = {} } }
+PRT.BossTimelineDatabase = { encounters = { [3420] = {}, [3445] = {}, [3455] = {}, [3470] = {}, [3497] = {} } }
 dofile("Modules/EncounterPhases/TheVenomousAbyss.lua")
 
 local EncounterPhases = PRT.EncounterPhases
@@ -25,7 +25,7 @@ local function definition(getPhases)
 end
 
 tests["each unfinished Venomous Abyss encounter has an inert phase-identification draft"] = function()
-    local encounterIDs = { 3420, 3429, 3492 }
+    local encounterIDs = { 3429, 3492 }
     for _, encounterID in ipairs(encounterIDs) do
         local identify = EncounterPhases:GetDraftPhaseIdentifier(encounterID)
         assertEquals(type(identify), "function")
@@ -39,6 +39,14 @@ tests["Entombed Sentinels has a completed one-phase definition"] = function()
     assertNotNil(EncounterPhases:GetDefinition(3445))
     assertTableEquals(EncounterPhases:GetPhases(3445, 16), {
         { id = 1, name = "Entombed Sentinels" },
+    })
+end
+
+tests["Sszorak has a completed one-phase definition"] = function()
+    assertNil(EncounterPhases:GetDraftPhaseIdentifier(3420))
+    assertNotNil(EncounterPhases:GetDefinition(3420))
+    assertTableEquals(EncounterPhases:GetPhases(3420, 16), {
+        { id = 1, name = "Sszorak" },
     })
 end
 

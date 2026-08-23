@@ -1,5 +1,17 @@
 local EncounterPhases = PurplexityRaidTools.EncounterPhases
 
+local SSZORAK_PHASES = {
+    { id = 1, name = "Sszorak" },
+}
+
+local function GetSszorakPhases()
+    return SSZORAK_PHASES
+end
+
+local function BeginSszorakPhase()
+    return {}
+end
+
 local function IdentifySszorakPhase()
 end
 
@@ -119,7 +131,12 @@ end
 local function IdentifyLostExplorersPhase()
 end
 
-EncounterPhases:RegisterDraft(3420, IdentifySszorakPhase)
+EncounterPhases:Register(3420, {
+    events = {},
+    GetPhases = GetSszorakPhases,
+    Begin = BeginSszorakPhase,
+    Observe = IdentifySszorakPhase,
+})
 EncounterPhases:RegisterDraft(3429, IdentifyCoiledAltarPhase)
 EncounterPhases:Register(3445, {
     events = {},

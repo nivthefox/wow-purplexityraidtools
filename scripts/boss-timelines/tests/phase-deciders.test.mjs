@@ -26,6 +26,7 @@ function decide(encounterID, value, events = []) {
 
 test('approved one-phase encounters always span one canonical phase', () => {
     const encounters = [
+        [3420, 'Sszorak'],
         [3445, 'Entombed Sentinels'],
         [3455, 'Vashnik the Malignant'],
         [3497, 'The Lost Explorers'],

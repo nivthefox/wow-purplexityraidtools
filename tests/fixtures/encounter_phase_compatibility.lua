@@ -1,4 +1,18 @@
 return {
+    [3420] = {
+        [17] = {
+            { id = 1, name = "Sszorak" },
+        },
+        [14] = {
+            { id = 1, name = "Sszorak" },
+        },
+        [15] = {
+            { id = 1, name = "Sszorak" },
+        },
+        [16] = {
+            { id = 1, name = "Sszorak" },
+        },
+    },
     [3445] = {
         [17] = {
             { id = 1, name = "Entombed Sentinels" },

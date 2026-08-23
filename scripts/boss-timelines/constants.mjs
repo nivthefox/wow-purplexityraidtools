@@ -2,8 +2,6 @@ export const SCHEMA_VERSION = 1;
 export const MINIMUM_SAMPLES = 3;
 export const MAXIMUM_SAMPLES = 30;
 export const REQUEST_INTERVAL_MS = 1000;
-export const CANDIDATE_QUERY_WINDOW_MS = 24 * 60 * 60 * 1000;
-export const CANDIDATE_QUERY_PAGE_LIMIT = 20;
 export const CURRENT_TIER_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 export const WCL_DIFFICULTY_TO_WOW = new Map([
     [1, 17],

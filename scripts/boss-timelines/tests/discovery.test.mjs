@@ -59,21 +59,23 @@ test('current tier includes every encounter from every raid zone active within s
     const twoDaysAgo = buildTime - (2 * 24 * 60 * 60 * 1000);
     const client = {
         discoverZones: async () => zones,
-        candidateKills: async (encounterID, difficulty, startTime, endTime) => {
-            calls.push({ encounterID, difficulty, startTime, endTime });
+        candidateKills: async (encounterID, startTime, endTime) => {
+            calls.push({ encounterID, startTime, endTime });
+            const byDifficulty = new Map([[1, []], [3, []], [4, []], [5, []]]);
             if (encounterID === 10 || encounterID === 12) {
-                return [candidate(encounterID, 1000, twoDaysAgo)];
+                byDifficulty.set(4, [candidate(encounterID, 1000, twoDaysAgo)]);
+                byDifficulty.set(5, [candidate(encounterID, 1000, twoDaysAgo)]);
             }
-            return [];
+            return byDifficulty;
         },
     };
     const result = await discoverCurrentTier(client, buildTime);
     assert.equal(result.length, 2);
+    assert.equal(calls.length, 3);
     assert.deepEqual(result[0].encounters, zones[0].encounters);
     assert.equal(result[0].combinations.get(10).get(4)[0].startTime, twoDaysAgo);
     assert.deepEqual(calls[0], {
         encounterID: 10,
-        difficulty: 4,
         startTime: buildTime - 604800000,
         endTime: buildTime,
     });
@@ -87,7 +89,7 @@ test('no activity within seven days fails instead of erasing the current databas
             difficulties: [{ id: 5 }],
             encounters: [{ id: 10, journalID: 20 }],
         }],
-        candidateKills: async () => [],
+        candidateKills: async () => new Map([[1, []], [3, []], [4, []], [5, []]]),
     };
     await assert.rejects(() => discoverCurrentTier(client, 100000000), /No current raid tier/);
 });

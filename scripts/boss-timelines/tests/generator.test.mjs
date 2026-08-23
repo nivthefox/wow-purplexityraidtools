@@ -75,7 +75,12 @@ function createClient({ rankingsByDifficulty, ineligible = new Set(), noEvents =
             difficulties: [{ id: 5 }, { id: 4 }],
             encounters: [{ id: 2001, journalID: 4001 }],
         }],
-        candidateKills: async (encounterID, difficulty) => rankingsByDifficulty.get(difficulty) ?? [],
+        candidateKills: async () => new Map([
+            [1, rankingsByDifficulty.get(1) ?? []],
+            [3, rankingsByDifficulty.get(3) ?? []],
+            [4, rankingsByDifficulty.get(4) ?? []],
+            [5, rankingsByDifficulty.get(5) ?? []],
+        ]),
         timelineFights: async (reportCode, fightIDs) => {
             if (failTimeline) {
                 throw new Error('synthetic API failure');

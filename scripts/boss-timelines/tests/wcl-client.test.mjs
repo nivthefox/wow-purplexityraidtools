@@ -25,6 +25,25 @@ function runtimeCode() {
     return `runtime-${String.fromCodePoint(88)}`;
 }
 
+function candidatePage(rankings = []) {
+    return { page: 1, hasMorePages: true, rankings };
+}
+
+function candidateResponse(rankingsByDifficulty = new Map()) {
+    return {
+        data: {
+            worldData: {
+                encounter: {
+                    lfr: candidatePage(rankingsByDifficulty.get(1)),
+                    normal: candidatePage(rankingsByDifficulty.get(3)),
+                    heroic: candidatePage(rankingsByDifficulty.get(4)),
+                    mythic: candidatePage(rankingsByDifficulty.get(5)),
+                },
+            },
+        },
+    };
+}
+
 test('request gate separates starts by one second and never overlaps requests', async () => {
     let clock = 0;
     let active = 0;
@@ -104,31 +123,13 @@ test('timeline validation normalizes nullable single-phase transitions to an emp
     assert.deepEqual(report.fights[0].phaseTransitions, []);
 });
 
-test('client sends exact discovery and paginated candidate queries with the rolling window variables', async () => {
+test('client sends one page-one candidate request per encounter for every difficulty', async () => {
     const requests = [];
+    const heroic = [{ duration: 5000, startTime: 1000, report: { code: runtimeCode(), fightID: 101 } }];
     const bodies = [
         { access_token: 'ephemeral' },
         { data: { worldData: { zones: [] } } },
-        {
-            data: {
-                worldData: {
-                    encounter: {
-                        fightRankings: {
-                            page: 1,
-                            hasMorePages: true,
-                            rankings: [{ duration: 5000, startTime: 1000, report: { code: runtimeCode(), fightID: 101 } }],
-                        },
-                    },
-                },
-            },
-        },
-        {
-            data: {
-                worldData: {
-                    encounter: { fightRankings: { page: 2, hasMorePages: false, rankings: [] } },
-                },
-            },
-        },
+        candidateResponse(new Map([[4, heroic]])),
     ];
     const client = new WarcraftLogsClient({
         clientID: 'client-canary',
@@ -140,80 +141,15 @@ test('client sends exact discovery and paginated candidate queries with the roll
         },
     });
     await client.discoverZones();
-    await client.candidateKills(10, 5, 100, 200);
+    const result = await client.candidateKills(10, 100, 200);
+    assert.equal(requests.length, 3);
     assert.deepEqual(JSON.parse(requests[1].options.body), { query: DISCOVER_ZONES_QUERY, variables: {} });
     assert.deepEqual(JSON.parse(requests[2].options.body), {
         query: CANDIDATE_KILLS_QUERY,
-        variables: { encounterID: 10, difficulty: 5, region: 'US', dateFilter: 'date.100.200', page: 1 },
+        variables: { encounterID: 10, region: 'US', dateFilter: 'date.100.200' },
     });
-    assert.equal(JSON.parse(requests[3].options.body).variables.page, 2);
-});
-
-test('candidate queries split long sampling periods into adjacent daily windows', async () => {
-    const requests = [];
-    const bodies = [
-        { access_token: 'ephemeral' },
-        { data: { worldData: { encounter: { fightRankings: { page: 1, hasMorePages: false, rankings: [] } } } } },
-        { data: { worldData: { encounter: { fightRankings: { page: 1, hasMorePages: false, rankings: [] } } } } },
-    ];
-    const client = new WarcraftLogsClient({
-        clientID: 'client',
-        clientSecret: 'secret',
-        gate: { run: (request) => request() },
-        fetchImpl: async (url, options) => {
-            if (url.includes('/api/')) {
-                requests.push(JSON.parse(options.body).variables);
-            }
-            return response(bodies.shift());
-        },
-    });
-    await client.candidateKills(10, 5, 100, 172800100);
-    assert.deepEqual(requests, [
-        { encounterID: 10, difficulty: 5, region: 'US', dateFilter: 'date.100.86400100', page: 1 },
-        { encounterID: 10, difficulty: 5, region: 'US', dateFilter: 'date.86400100.172800100', page: 1 },
-    ]);
-});
-
-test('candidate queries bisect windows that exceed twenty pages without requesting page twenty-one', async () => {
-    const requests = [];
-    const client = new WarcraftLogsClient({
-        clientID: 'client',
-        clientSecret: 'secret',
-        gate: { run: (request) => request() },
-        fetchImpl: async (url, options) => {
-            if (url.includes('/oauth/')) {
-                return response({ access_token: 'ephemeral' });
-            }
-            const variables = JSON.parse(options.body).variables;
-            requests.push(variables);
-            const oversized = variables.dateFilter === 'date.100.86400100';
-            return response({
-                data: {
-                    worldData: {
-                        encounter: {
-                            fightRankings: {
-                                page: variables.page,
-                                hasMorePages: oversized,
-                                rankings: oversized ? [] : [{
-                                    duration: 5000,
-                                    startTime: 1000,
-                                    report: { code: runtimeCode(), fightID: requests.length },
-                                }],
-                            },
-                        },
-                    },
-                },
-            });
-        },
-    });
-    const rankings = await client.candidateKills(10, 5, 100, 86400100);
-    assert.equal(requests.length, 22);
-    assert.equal(requests.some((request) => request.page === 21), false);
-    assert.deepEqual(requests.slice(-2).map((request) => request.dateFilter), [
-        'date.100.43200100',
-        'date.43200100.86400100',
-    ]);
-    assert.equal(rankings.length, 2);
+    assert.deepEqual(result.get(4), heroic);
+    assert.deepEqual(result.get(1), []);
 });
 
 test('timeline requests group fights, tolerates metadata reordering, and paginates events from zero', async () => {
@@ -293,24 +229,13 @@ test('candidate contract failures identify the request without exposing response
             if (url.includes('/oauth/')) {
                 return response({ access_token: 'ephemeral' });
             }
-            return response({
-                data: {
-                    worldData: {
-                        encounter: {
-                            fightRankings: {
-                                page: 1,
-                                hasMorePages: false,
-                                rankings: [{ malformed: 'sample-canary' }],
-                            },
-                        },
-                    },
-                },
-            });
+            return response(candidateResponse(new Map([[4, [{ malformed: 'sample-canary' }]]])));
         },
     });
     await assert.rejects(
-        () => client.candidateKills(3455, 4, 100, 200),
-        (error) => error.message.includes('encounter 3455, difficulty 4, page 1')
+        () => client.candidateKills(3455, 100, 200),
+        (error) => error.message.includes('encounter 3455')
+            && error.message.includes('difficulty 4')
             && !error.message.includes('sample-canary'),
     );
 });

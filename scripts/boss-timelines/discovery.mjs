@@ -44,8 +44,9 @@ export async function discoverCurrentTier(client, buildTime) {
         const encounters = [...zone.encounters].sort((left, right) => left.id - right.id);
         for (const encounter of encounters) {
             const byDifficulty = new Map();
+            const rankingsByDifficulty = await client.candidateKills(encounter.id, startTime, buildTime);
             for (const difficulty of difficulties) {
-                const rankings = await client.candidateKills(encounter.id, difficulty, startTime, buildTime);
+                const rankings = rankingsByDifficulty.get(difficulty) ?? [];
                 const candidates = selectDistinctCandidates(rankings);
                 byDifficulty.set(difficulty, candidates);
                 if (candidates.length > 0) {

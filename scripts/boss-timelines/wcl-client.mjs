@@ -1,7 +1,5 @@
 import { REQUEST_INTERVAL_MS } from './constants.mjs';
 
-import { CANDIDATE_QUERY_PAGE_LIMIT, CANDIDATE_QUERY_WINDOW_MS } from './constants.mjs';
-
 export const DISCOVER_ZONES_QUERY = `query DiscoverZones {
   worldData {
     zones {
@@ -20,23 +18,49 @@ export const DISCOVER_ZONES_QUERY = `query DiscoverZones {
 
 export const CANDIDATE_KILLS_QUERY = `query CandidateKills(
   $encounterID: Int!
-  $difficulty: Int!
   $region: String!
   $dateFilter: String!
-  $page: Int!
 ) {
   worldData {
     encounter(id: $encounterID) {
-      fightRankings(
-        difficulty: $difficulty
+      lfr: fightRankings(
+        difficulty: 1
         serverRegion: $region
         metric: execution
         filter: $dateFilter
-        page: $page
+        page: 1
+      )
+      normal: fightRankings(
+        difficulty: 3
+        serverRegion: $region
+        metric: execution
+        filter: $dateFilter
+        page: 1
+      )
+      heroic: fightRankings(
+        difficulty: 4
+        serverRegion: $region
+        metric: execution
+        filter: $dateFilter
+        page: 1
+      )
+      mythic: fightRankings(
+        difficulty: 5
+        serverRegion: $region
+        metric: execution
+        filter: $dateFilter
+        page: 1
       )
     }
   }
 }`;
+
+const CANDIDATE_DIFFICULTY_FIELDS = new Map([
+    [1, 'lfr'],
+    [3, 'normal'],
+    [4, 'heroic'],
+    [5, 'mythic'],
+]);
 
 export const TIMELINE_FIGHTS_QUERY = `query TimelineFights(
   $reportCode: String!
@@ -123,33 +147,47 @@ export function validateZonesResponse(response) {
     }));
 }
 
-export function validateCandidateResponse(response) {
-    const rankings = response?.data?.worldData?.encounter?.fightRankings;
+function validateCandidateRankings(rankings, difficulty) {
     if (!isRecord(rankings) || !Number.isInteger(rankings.page) || rankings.page < 1
         || typeof rankings.hasMorePages !== 'boolean' || !Array.isArray(rankings.rankings)) {
-        contractError('candidate rankings', 'invalid pagination metadata');
+        contractError('candidate rankings', `difficulty ${difficulty} has invalid pagination metadata`);
+    }
+    if (rankings.page !== 1) {
+        contractError('candidate rankings', `difficulty ${difficulty} returned an unexpected page number`);
     }
     for (const [index, ranking] of rankings.rankings.entries()) {
         if (!isRecord(ranking)) {
-            contractError('candidate rankings', `ranking ${index} is not a record`);
+            contractError('candidate rankings', `difficulty ${difficulty} ranking ${index} is not a record`);
         }
         if (!isFiniteNumber(ranking.duration) || ranking.duration <= 0) {
-            contractError('candidate rankings', `ranking ${index} has an invalid duration`);
+            contractError('candidate rankings', `difficulty ${difficulty} ranking ${index} has an invalid duration`);
         }
         if (!isFiniteNumber(ranking.startTime)) {
-            contractError('candidate rankings', `ranking ${index} has an invalid start time`);
+            contractError('candidate rankings', `difficulty ${difficulty} ranking ${index} has an invalid start time`);
         }
         if (!isRecord(ranking.report)) {
-            contractError('candidate rankings', `ranking ${index} has an invalid report`);
+            contractError('candidate rankings', `difficulty ${difficulty} ranking ${index} has an invalid report`);
         }
         if (typeof ranking.report.code !== 'string' || ranking.report.code.length === 0) {
-            contractError('candidate rankings', `ranking ${index} has an invalid report code`);
+            contractError('candidate rankings', `difficulty ${difficulty} ranking ${index} has an invalid report code`);
         }
         if (!isPositiveInteger(ranking.report.fightID)) {
-            contractError('candidate rankings', `ranking ${index} has an invalid fight ID`);
+            contractError('candidate rankings', `difficulty ${difficulty} ranking ${index} has an invalid fight ID`);
         }
     }
-    return rankings;
+    return rankings.rankings;
+}
+
+export function validateCandidateResponse(response) {
+    const encounter = response?.data?.worldData?.encounter;
+    if (!isRecord(encounter)) {
+        contractError('candidate rankings', 'invalid encounter result');
+    }
+    const byDifficulty = new Map();
+    for (const [difficulty, field] of CANDIDATE_DIFFICULTY_FIELDS) {
+        byDifficulty.set(difficulty, validateCandidateRankings(encounter[field], difficulty));
+    }
+    return byDifficulty;
 }
 
 function validatePhaseDefinitions(phases) {
@@ -342,67 +380,19 @@ export class WarcraftLogsClient {
         return validateZonesResponse(await this.graphql(DISCOVER_ZONES_QUERY, {}));
     }
 
-    async candidateKillsInWindow(encounterID, difficulty, startTime, endTime) {
-        const rankings = [];
-        for (let page = 1; page <= CANDIDATE_QUERY_PAGE_LIMIT; page += 1) {
-            const variables = {
-                encounterID,
-                difficulty,
-                region: 'US',
-                dateFilter: `date.${startTime}.${endTime}`,
-                page,
-            };
-            let result;
-            try {
-                result = validateCandidateResponse(await this.graphql(CANDIDATE_KILLS_QUERY, variables));
-                if (result.page !== page) {
-                    contractError('candidate rankings', 'unexpected page number');
-                }
-            } catch (error) {
-                throw new Error(
-                    `Warcraft Logs candidate rankings failed for encounter ${encounterID}, difficulty ${difficulty}, page ${page}: ${error.message}`,
-                );
-            }
-            rankings.push(...result.rankings);
-            if (!result.hasMorePages) {
-                return rankings;
-            }
-        }
-        return null;
-    }
-
-    async candidateKills(encounterID, difficulty, startTime, endTime) {
-        const rankings = [];
-        const windows = [];
-        for (let windowStartTime = startTime; windowStartTime < endTime;) {
-            const windowEndTime = Math.min(windowStartTime + CANDIDATE_QUERY_WINDOW_MS, endTime);
-            windows.push({ startTime: windowStartTime, endTime: windowEndTime });
-            windowStartTime = windowEndTime;
-        }
-        while (windows.length > 0) {
-            const window = windows.shift();
-            const windowRankings = await this.candidateKillsInWindow(
-                encounterID,
-                difficulty,
-                window.startTime,
-                window.endTime,
-            );
-            if (windowRankings !== null) {
-                rankings.push(...windowRankings);
-                continue;
-            }
-            const midpoint = Math.floor((window.startTime + window.endTime) / 2);
-            if (midpoint <= window.startTime || midpoint >= window.endTime) {
-                throw new Error(
-                    `Warcraft Logs candidate rankings exceeded ${CANDIDATE_QUERY_PAGE_LIMIT} pages for encounter ${encounterID}, difficulty ${difficulty}`,
-                );
-            }
-            windows.unshift(
-                { startTime: window.startTime, endTime: midpoint },
-                { startTime: midpoint, endTime: window.endTime },
+    async candidateKills(encounterID, startTime, endTime) {
+        const variables = {
+            encounterID,
+            region: 'US',
+            dateFilter: `date.${startTime}.${endTime}`,
+        };
+        try {
+            return validateCandidateResponse(await this.graphql(CANDIDATE_KILLS_QUERY, variables));
+        } catch (error) {
+            throw new Error(
+                `Warcraft Logs candidate rankings failed for encounter ${encounterID}: ${error.message}`,
             );
         }
-        return rankings;
     }
 
     async timelineFights(reportCode, fightIDs) {

@@ -217,6 +217,37 @@ test('credentials, token, and malformed-response canaries never appear in errors
     }
 });
 
+test('candidate contract failures identify the request without exposing response data', async () => {
+    const client = new WarcraftLogsClient({
+        clientID: 'client',
+        clientSecret: 'secret',
+        gate: { run: (request) => request() },
+        fetchImpl: async (url) => {
+            if (url.includes('/oauth/')) {
+                return response({ access_token: 'ephemeral' });
+            }
+            return response({
+                data: {
+                    worldData: {
+                        encounter: {
+                            fightRankings: {
+                                page: 1,
+                                hasMorePages: false,
+                                rankings: [{ malformed: 'sample-canary' }],
+                            },
+                        },
+                    },
+                },
+            });
+        },
+    });
+    await assert.rejects(
+        () => client.candidateKills(3455, 4, 100, 200),
+        (error) => error.message.includes('encounter 3455, difficulty 4, page 1')
+            && !error.message.includes('sample-canary'),
+    );
+});
+
 test('GraphQL requests retry transient HTTP failures without exposing response bodies', async () => {
     const responses = [
         response({ access_token: 'ephemeral' }),

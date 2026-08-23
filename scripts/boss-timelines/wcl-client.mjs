@@ -78,8 +78,9 @@ export const TIMELINE_FIGHTS_QUERY = `query TimelineFights(
   }
 }`;
 
-function contractError(name) {
-    throw new Error(`Warcraft Logs ${name} response did not match the required contract`);
+function contractError(name, detail = null) {
+    const suffix = detail ? `: ${detail}` : '';
+    throw new Error(`Warcraft Logs ${name} response did not match the required contract${suffix}`);
 }
 
 function isRecord(value) {
@@ -124,14 +125,26 @@ export function validateCandidateResponse(response) {
     const rankings = response?.data?.worldData?.encounter?.fightRankings;
     if (!isRecord(rankings) || !Number.isInteger(rankings.page) || rankings.page < 1
         || typeof rankings.hasMorePages !== 'boolean' || !Array.isArray(rankings.rankings)) {
-        contractError('candidate rankings');
+        contractError('candidate rankings', 'invalid pagination metadata');
     }
-    for (const ranking of rankings.rankings) {
-        if (!isRecord(ranking) || !isFiniteNumber(ranking.duration) || ranking.duration <= 0
-            || !isFiniteNumber(ranking.startTime) || !isRecord(ranking.report)
-            || typeof ranking.report.code !== 'string' || ranking.report.code.length === 0
-            || !isPositiveInteger(ranking.report.fightID)) {
-            contractError('candidate rankings');
+    for (const [index, ranking] of rankings.rankings.entries()) {
+        if (!isRecord(ranking)) {
+            contractError('candidate rankings', `ranking ${index} is not a record`);
+        }
+        if (!isFiniteNumber(ranking.duration) || ranking.duration <= 0) {
+            contractError('candidate rankings', `ranking ${index} has an invalid duration`);
+        }
+        if (!isFiniteNumber(ranking.startTime)) {
+            contractError('candidate rankings', `ranking ${index} has an invalid start time`);
+        }
+        if (!isRecord(ranking.report)) {
+            contractError('candidate rankings', `ranking ${index} has an invalid report`);
+        }
+        if (typeof ranking.report.code !== 'string' || ranking.report.code.length === 0) {
+            contractError('candidate rankings', `ranking ${index} has an invalid report code`);
+        }
+        if (!isPositiveInteger(ranking.report.fightID)) {
+            contractError('candidate rankings', `ranking ${index} has an invalid fight ID`);
         }
     }
     return rankings;
@@ -338,9 +351,16 @@ export class WarcraftLogsClient {
                 dateFilter: `date.${startTime}.${endTime}`,
                 page,
             };
-            const result = validateCandidateResponse(await this.graphql(CANDIDATE_KILLS_QUERY, variables));
-            if (result.page !== page) {
-                contractError('candidate rankings');
+            let result;
+            try {
+                result = validateCandidateResponse(await this.graphql(CANDIDATE_KILLS_QUERY, variables));
+                if (result.page !== page) {
+                    contractError('candidate rankings', 'unexpected page number');
+                }
+            } catch (error) {
+                throw new Error(
+                    `Warcraft Logs candidate rankings failed for encounter ${encounterID}, difficulty ${difficulty}, page ${page}: ${error.message}`,
+                );
             }
             rankings.push(...result.rankings);
             if (!result.hasMorePages) {

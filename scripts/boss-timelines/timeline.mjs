@@ -129,20 +129,32 @@ function clusterEvents(events) {
     return clustered.sort((left, right) => left.offset - right.offset || left.spellID - right.spellID);
 }
 
-export function normalizeFight({ fight, phaseDefinitions, events, encounterID, difficulty, modules, aliases }) {
-    if (!fight.kill || fight.encounterID !== encounterID || fight.difficulty !== difficulty) {
-        return null;
+export function evaluateFight({ fight, phaseDefinitions, events, encounterID, difficulty, modules, aliases }) {
+    if (!fight.kill) {
+        return { rejectionReason: 'not-a-kill' };
+    }
+    if (fight.encounterID !== encounterID) {
+        return { rejectionReason: 'encounter-mismatch' };
+    }
+    if (fight.difficulty !== difficulty) {
+        return { rejectionReason: 'difficulty-mismatch' };
     }
     const phaseByID = phaseMetadataForEncounter(phaseDefinitions, encounterID);
     if (!phaseByID) {
-        return null;
+        return { rejectionReason: 'invalid-phase-definitions' };
     }
     const phases = createPhaseInstances(fight, phaseByID);
     if (!phases) {
-        return null;
+        return { rejectionReason: 'invalid-phase-transitions' };
     }
     const phaseEvents = attachEvents(fight, phases, events, modules, aliases).map(clusterEvents);
-    return { fightID: fight.id, phases, phaseEvents, signature: phaseSignature(phases) };
+    return {
+        normalizedFight: { fightID: fight.id, phases, phaseEvents, signature: phaseSignature(phases) },
+    };
+}
+
+export function normalizeFight(argumentsList) {
+    return evaluateFight(argumentsList).normalizedFight ?? null;
 }
 
 function median(values) {

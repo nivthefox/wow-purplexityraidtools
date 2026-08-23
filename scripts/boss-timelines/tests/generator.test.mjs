@@ -180,8 +180,12 @@ test('new encounter omissions report insufficient candidates, invalid kills, and
                 ineligible: new Set(rankings.map((value) => value.report.fightID)),
             }),
             reason: 'insufficient-valid-kills',
-            expected: { candidateCount: 3, validKillCount: 0 },
-            message: 'Boss timeline omitted encounter 5001, Mythic difficulty (WoW 16, WCL 5): validated 0 of 3 page-one candidates; at least 3 valid kills are required.',
+            expected: {
+                candidateCount: 3,
+                validKillCount: 0,
+                rejectionCounts: { 'not-a-kill': 3 },
+            },
+            message: 'Boss timeline omitted encounter 5001, Mythic difficulty (WoW 16, WCL 5): validated 0 of 3 page-one candidates; at least 3 valid kills are required. Rejections: not marked as a kill=3.',
         },
         {
             client: createClient({ rankingsByDifficulty: new Map([[5, rankings]]), noEvents: true }),
@@ -203,10 +207,60 @@ test('new encounter omissions report insufficient candidates, invalid kills, and
         assert.equal(omission.reason, scenario.reason);
         assert.equal(omission.encounterID, 5001);
         for (const [key, value] of Object.entries(scenario.expected)) {
-            assert.equal(omission[key], value);
+            assert.deepEqual(omission[key], value);
         }
         assert.equal(formatOmission(omission), scenario.message);
     }
+});
+
+test('invalid kill diagnostics account for every candidate by rejection rule', async () => {
+    const rankings = Array.from({ length: 8 }, (_, index) => candidate(index));
+    const client = createClient({ rankingsByDifficulty: new Map([[5, rankings]]) });
+    const timelineFights = client.timelineFights;
+    client.timelineFights = async (...argumentsList) => {
+        const report = await timelineFights(...argumentsList);
+        const index = report.fights[0].id - 1000;
+        if (index === 1) {
+            report.fights = [];
+        } else if (index === 2) {
+            report.fights[0].kill = false;
+        } else if (index === 3) {
+            report.fights[0].encounterID = 2002;
+        } else if (index === 4) {
+            report.fights[0].difficulty = 4;
+        } else if (index === 5) {
+            report.phaseDefinitions = [];
+        } else if (index === 6) {
+            report.phaseDefinitions[0].phases.push({ id: 2, name: 'Two', isIntermission: false });
+            report.fights[0].phaseTransitions = [{ id: 1, startTime: 0 }];
+        } else if (index === 7) {
+            report.phaseDefinitions[0].phases[0].name = 'Different';
+        }
+        return report;
+    };
+    const omissions = [];
+    await generateDatabase({
+        client,
+        bossModules: modules(),
+        existingDatabase: emptyDatabase(),
+        buildTime: 100000000,
+        onOmission: (omission) => omissions.push(omission),
+    });
+    const omission = omissions.find((value) => value.wowDifficulty === 16);
+    assert.equal(omission.validKillCount, 1);
+    assert.deepEqual(omission.rejectionCounts, {
+        'missing-timeline-fight': 1,
+        'not-a-kill': 1,
+        'encounter-mismatch': 1,
+        'difficulty-mismatch': 1,
+        'invalid-phase-definitions': 1,
+        'invalid-phase-transitions': 1,
+        'inconsistent-phase-sequence': 1,
+    });
+    assert.equal(
+        formatOmission(omission),
+        'Boss timeline omitted encounter 5001, Mythic difficulty (WoW 16, WCL 5): validated 1 of 8 page-one candidates; at least 3 valid kills are required. Rejections: missing from timeline response=1, not marked as a kill=1, encounter mismatch=1, difficulty mismatch=1, invalid phase definitions=1, invalid phase transitions=1, inconsistent phase sequence=1.',
+    );
 });
 
 test('generation falls back to the runtime encounter ID when WCL has no journal ID', async () => {

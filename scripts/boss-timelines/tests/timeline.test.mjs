@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { buildDifficulty, normalizeFight } from '../timeline.mjs';
+import { buildDifficulty, evaluateFight, normalizeFight } from '../timeline.mjs';
 
 const modules = { bigwigs: new Set([7001, 7999]), dbm: new Set([7002]) };
 const aliases = { bigwigs: new Map([[7999, 7003]]), dbm: new Map() };
@@ -110,6 +110,53 @@ test('invalid phase sequences and mismatched fights are excluded entirely', () =
         modules,
         aliases,
     }), null);
+});
+
+test('fight evaluation identifies the normalization rule that rejected a fight', () => {
+    const cases = [
+        {
+            reason: 'not-a-kill',
+            mutate: (value) => {
+                value.kill = false;
+            },
+        },
+        {
+            reason: 'encounter-mismatch',
+            mutate: (value) => {
+                value.encounterID = 5002;
+            },
+        },
+        {
+            reason: 'difficulty-mismatch',
+            mutate: (value) => {
+                value.difficulty = 4;
+            },
+        },
+        {
+            reason: 'invalid-phase-definitions',
+            phaseDefinitions: [],
+        },
+        {
+            reason: 'invalid-phase-transitions',
+            mutate: (value) => {
+                value.phaseTransitions = [{ id: 1, startTime: value.startTime }];
+            },
+        },
+    ];
+    for (const scenario of cases) {
+        const value = fight(1);
+        scenario.mutate?.(value);
+        const evaluation = evaluateFight({
+            fight: value,
+            phaseDefinitions: scenario.phaseDefinitions ?? phaseDefinitions(),
+            events: [],
+            encounterID: 5001,
+            difficulty: 5,
+            modules,
+            aliases,
+        });
+        assert.deepEqual(evaluation, { rejectionReason: scenario.reason });
+    }
 });
 
 test('occurrence indexes remain aligned across missing observations and exact half seconds round upward', () => {

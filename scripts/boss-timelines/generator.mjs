@@ -2,13 +2,23 @@ import { BOSS_TIMELINE_ALIASES } from './aliases.mjs';
 import { MAXIMUM_SAMPLES, MINIMUM_SAMPLES, SCHEMA_VERSION, WCL_DIFFICULTY_TO_WOW } from './constants.mjs';
 import { discoverCurrentTier } from './discovery.mjs';
 import { validateDatabase } from './schema.mjs';
-import { buildDifficulty, normalizeFight } from './timeline.mjs';
+import { buildDifficulty, evaluateFight } from './timeline.mjs';
 
 const WOW_DIFFICULTY_NAMES = new Map([
     [17, 'LFR'],
     [14, 'Normal'],
     [15, 'Heroic'],
     [16, 'Mythic'],
+]);
+
+const REJECTION_LABELS = new Map([
+    ['missing-timeline-fight', 'missing from timeline response'],
+    ['not-a-kill', 'not marked as a kill'],
+    ['encounter-mismatch', 'encounter mismatch'],
+    ['difficulty-mismatch', 'difficulty mismatch'],
+    ['invalid-phase-definitions', 'invalid phase definitions'],
+    ['invalid-phase-transitions', 'invalid phase transitions'],
+    ['inconsistent-phase-sequence', 'inconsistent phase sequence'],
 ]);
 
 function candidateIdentity(candidate) {
@@ -25,10 +35,15 @@ function groupCandidatesByReport(candidates) {
     return groups;
 }
 
+function countRejection(rejectionCounts, reason) {
+    rejectionCounts[reason] = (rejectionCounts[reason] ?? 0) + 1;
+}
+
 async function selectEligibleKills(client, candidates, encounterID, difficulty, modules, aliases) {
     const groups = groupCandidatesByReport(candidates);
     const loadedReports = new Map();
     const selected = [];
+    const rejectionCounts = {};
     let selectedSignature = null;
 
     for (const candidate of candidates) {
@@ -43,9 +58,12 @@ async function selectEligibleKills(client, candidates, encounterID, difficulty, 
             for (const reportCandidate of reportCandidates) {
                 const fight = fightsByID.get(reportCandidate.report.fightID);
                 if (!fight) {
+                    normalizedByIdentity.set(candidateIdentity(reportCandidate), {
+                        rejectionReason: 'missing-timeline-fight',
+                    });
                     continue;
                 }
-                const normalized = normalizeFight({
+                const evaluation = evaluateFight({
                     fight,
                     phaseDefinitions: report.phaseDefinitions,
                     events: report.events,
@@ -54,19 +72,20 @@ async function selectEligibleKills(client, candidates, encounterID, difficulty, 
                     modules,
                     aliases,
                 });
-                if (normalized) {
-                    normalizedByIdentity.set(candidateIdentity(reportCandidate), normalized);
-                }
+                normalizedByIdentity.set(candidateIdentity(reportCandidate), evaluation);
             }
             loadedReports.set(reportCode, normalizedByIdentity);
         }
 
-        const normalized = normalizedByIdentity.get(candidateIdentity(candidate));
-        if (!normalized) {
+        const evaluation = normalizedByIdentity.get(candidateIdentity(candidate));
+        if (evaluation.rejectionReason) {
+            countRejection(rejectionCounts, evaluation.rejectionReason);
             continue;
         }
+        const normalized = evaluation.normalizedFight;
         selectedSignature ??= normalized.signature;
         if (normalized.signature !== selectedSignature) {
+            countRejection(rejectionCounts, 'inconsistent-phase-sequence');
             continue;
         }
         selected.push(normalized);
@@ -74,7 +93,7 @@ async function selectEligibleKills(client, candidates, encounterID, difficulty, 
             break;
         }
     }
-    return selected;
+    return { kills: selected, rejectionCounts };
 }
 
 function hasOccurrences(difficulty) {
@@ -96,6 +115,17 @@ function difficultyContext(omission) {
     return `encounter ${omission.encounterID}, ${name} difficulty (WoW ${omission.wowDifficulty}, WCL ${omission.wclDifficulty})`;
 }
 
+function formatRejections(rejectionCounts) {
+    const values = [];
+    for (const [reason, label] of REJECTION_LABELS) {
+        const count = rejectionCounts[reason] ?? 0;
+        if (count > 0) {
+            values.push(`${label}=${count}`);
+        }
+    }
+    return values.join(', ');
+}
+
 export function formatOmission(omission) {
     if (omission.reason === 'missing-boss-module') {
         return `Boss timeline omitted encounter ${omission.encounterID} (journal ${omission.journalID}): neither boss mod has a matching module.`;
@@ -105,7 +135,8 @@ export function formatOmission(omission) {
         return `Boss timeline omitted ${context}: found ${omission.candidateCount} page-one candidates; at least ${MINIMUM_SAMPLES} are required.`;
     }
     if (omission.reason === 'insufficient-valid-kills') {
-        return `Boss timeline omitted ${context}: validated ${omission.validKillCount} of ${omission.candidateCount} page-one candidates; at least ${MINIMUM_SAMPLES} valid kills are required.`;
+        const rejections = formatRejections(omission.rejectionCounts);
+        return `Boss timeline omitted ${context}: validated ${omission.validKillCount} of ${omission.candidateCount} page-one candidates; at least ${MINIMUM_SAMPLES} valid kills are required. Rejections: ${rejections}.`;
     }
     if (omission.reason === 'no-qualifying-abilities') {
         return `Boss timeline omitted ${context}: ${omission.validKillCount} valid kills produced no qualifying boss abilities.`;
@@ -183,7 +214,7 @@ async function generateEncounter({
             onOmission(omission);
             continue;
         }
-        const kills = await selectEligibleKills(
+        const selection = await selectEligibleKills(
             client,
             candidates,
             encounter.id,
@@ -191,7 +222,12 @@ async function generateEncounter({
             modules,
             aliases,
         );
+        const { kills, rejectionCounts } = selection;
         if (kills.length < MINIMUM_SAMPLES) {
+            const rejectedCount = Object.values(rejectionCounts).reduce((total, count) => total + count, 0);
+            if (kills.length + rejectedCount !== candidates.length) {
+                throw generationFailure('Boss timeline rejection diagnostics are inconsistent');
+            }
             const omission = {
                 encounterID,
                 wclDifficulty,
@@ -199,6 +235,7 @@ async function generateEncounter({
                 reason: 'insufficient-valid-kills',
                 candidateCount: candidates.length,
                 validKillCount: kills.length,
+                rejectionCounts,
             };
             if (previous) {
                 throw generationFailure(`An existing encounter difficulty no longer has the minimum valid kills. ${formatOmission(omission)}`);

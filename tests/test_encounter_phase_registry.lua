@@ -2,6 +2,7 @@ local tests = {}
 local PRT = PurplexityRaidTools
 
 dofile("Modules/EncounterPhases/Registry.lua")
+PRT.BossTimelineDatabase = { encounters = { [3470] = {} } }
 dofile("Modules/EncounterPhases/TheVenomousAbyss.lua")
 
 local EncounterPhases = PRT.EncounterPhases
@@ -26,14 +27,24 @@ local function definition(getPhases)
     }
 end
 
-tests["each Venomous Abyss encounter has an inert phase-identification draft"] = function()
-    local encounterIDs = { 3420, 3429, 3445, 3470, 3492, 3497 }
+tests["each unfinished Venomous Abyss encounter has an inert phase-identification draft"] = function()
+    local encounterIDs = { 3420, 3429, 3445, 3492, 3497 }
     for _, encounterID in ipairs(encounterIDs) do
         local identify = EncounterPhases:GetDraftPhaseIdentifier(encounterID)
         assertEquals(type(identify), "function")
         assertNil(identify({}, "ANY_EVENT"))
         assertNil(EncounterPhases:GetDefinition(encounterID))
     end
+end
+
+tests["Nekzali has a completed three-phase definition"] = function()
+    assertNil(EncounterPhases:GetDraftPhaseIdentifier(3470))
+    assertNotNil(EncounterPhases:GetDefinition(3470))
+    assertTableEquals(EncounterPhases:GetPhases(3470, 16), {
+        { id = 1, name = "Stage One: Soulcoiler Initiation" },
+        { id = 2, name = "Intermission: Ritual of Awakening" },
+        { id = 3, name = "Stage Two: Uncoiling" },
+    })
 end
 
 tests["registration requires an encounter in the bundled timeline database"] = function()

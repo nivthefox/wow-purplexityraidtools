@@ -362,6 +362,11 @@ local BASE_EVENTS = {
     GROUP_ROSTER_UPDATE = true,
     PLAYER_SPECIALIZATION_CHANGED = true,
 }
+local BOSS1_OBSERVATION_EVENTS = {
+    UNIT_SPELLCAST_CHANNEL_START = true,
+    UNIT_SPELLCAST_START = true,
+    UNIT_SPELLCAST_SUCCEEDED = true,
+}
 
 local function StopEncounterPhaseAttempt()
     if encounterPhaseAttempt and PRT.EncounterPhases then
@@ -406,7 +411,11 @@ local function StartEncounterPhaseAttempt(encounterID, difficultyID)
 
     for _, event in ipairs(PRT.EncounterPhases:GetAttemptEvents(encounterPhaseAttempt)) do
         if not BASE_EVENTS[event] then
-            Notes.eventFrame:RegisterEvent(event)
+            if BOSS1_OBSERVATION_EVENTS[event] then
+                Notes.eventFrame:RegisterUnitEvent(event, "boss1")
+            else
+                Notes.eventFrame:RegisterEvent(event)
+            end
             registeredObservationEvents[event] = true
         end
     end
@@ -652,7 +661,11 @@ local function OnEvent(_, event, ...)
     elseif event == "ADDON_LOADED" then
         HookBossMods()
     elseif encounterPhaseAttempt and PRT.EncounterPhases then
-        PRT.EncounterPhases:ObserveAttempt(encounterPhaseAttempt, event, ...)
+        if BOSS1_OBSERVATION_EVENTS[event] then
+            PRT.EncounterPhases:ObserveAttempt(encounterPhaseAttempt, event, (...))
+        else
+            PRT.EncounterPhases:ObserveAttempt(encounterPhaseAttempt, event, ...)
+        end
     end
 end
 

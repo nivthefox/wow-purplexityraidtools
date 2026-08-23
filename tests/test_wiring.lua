@@ -731,9 +731,14 @@ local function setupEncounterHarness(noteText, overrides)
     PRT.NotesPopups = makePopupsSpy()
     Notes.eventFrame = {
         registered = {},
+        registeredUnits = {},
         unregistered = {},
         RegisterEvent = function(self, event)
             self.registered[event] = true
+        end,
+        RegisterUnitEvent = function(self, event, unit)
+            self.registered[event] = true
+            self.registeredUnits[event] = unit
         end,
         UnregisterEvent = function(self, event)
             self.unregistered[event] = true
@@ -828,6 +833,51 @@ tests["a completed encounter definition drives Notes through declared observatio
         assertTrue(eventFrame.unregistered.FAKE_PHASE_EVENT)
         eventFrame.handler(nil, "FAKE_PHASE_EVENT", "advance")
         assertEquals(#timerSpy.phaseCalls, 1)
+    end)
+    PRT.BossTimelineDatabase = previousDatabase
+end
+
+tests["a boss unit observation is registered narrowly and drops secret trailing arguments"] = function()
+    local previousDatabase = PRT.BossTimelineDatabase
+    local secret = {}
+    PRT.BossTimelineDatabase = { encounters = { [3177] = {} } }
+    local ok, err = PRT.EncounterPhases:Register(3177, {
+        events = { "UNIT_SPELLCAST_START" },
+        GetPhases = function()
+            return {
+                { id = 1, name = "Opening" },
+                { id = 2, name = "Finale" },
+            }
+        end,
+        Begin = function()
+            return {}
+        end,
+        Observe = function(_, event, unit)
+            if event == "UNIT_SPELLCAST_START" and unit == "boss1" then
+                return 2
+            end
+        end,
+        ProjectWCL = function(_, phaseIndex, _, occurrence)
+            return { phase = phaseIndex, time = occurrence.time }
+        end,
+    })
+    assertTrue(ok, err)
+
+    local _, timerSpy, globals = setupEncounterHarness("EncounterID:3177;Name:Unit Event", {
+        issecretvalue = function(value)
+            return value == secret
+        end,
+    })
+    withGlobals(globals, function()
+        PRT.IsContentTypeEnabled = function()
+            return true
+        end
+        local eventFrame = Notes.eventFrame
+        eventFrame.handler(nil, "ENCOUNTER_START", 3177, "Unit Event", 16, 20)
+        assertEquals(eventFrame.registeredUnits.UNIT_SPELLCAST_START, "boss1")
+
+        eventFrame.handler(nil, "UNIT_SPELLCAST_START", "boss1", secret)
+        assertTableEquals(timerSpy.phaseCalls, { { phase = 2, time = 100 } })
     end)
     PRT.BossTimelineDatabase = previousDatabase
 end

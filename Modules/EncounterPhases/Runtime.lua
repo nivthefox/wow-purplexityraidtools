@@ -148,9 +148,14 @@ function EncounterPhases:BeginAttempt(encounterID, difficultyID, callbacks)
         attempt.eventSet[event] = true
     end
 
-    local ok, state = pcall(definition.Begin, difficultyID, function(delay, event, ...)
-        return scheduleObservation(attempt, delay, event, ...)
-    end)
+    local ok, state = pcall(
+        definition.Begin,
+        difficultyID,
+        function(delay, event, ...)
+            return scheduleObservation(attempt, delay, event, ...)
+        end,
+        callbacks.now
+    )
     if not ok or type(state) ~= "table" then
         attempt.active = false
         cancelTimers(attempt)

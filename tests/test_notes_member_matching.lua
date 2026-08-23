@@ -25,6 +25,10 @@
 
 local tests = {}
 
+if not PurplexityRaidTools.NotesPlanner then
+    dofile("Modules/Notes/NotesPlanner.lua")
+end
+
 if not PurplexityRaidTools.NotesEditor then
     dofile("Modules/Notes/NotesEditor.lua")
 end

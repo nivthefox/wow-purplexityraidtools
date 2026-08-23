@@ -1,4 +1,5 @@
 local PRT = PurplexityRaidTools
+local NotesPlanner = PRT.NotesPlanner
 local NotesEditor = {}
 PRT.NotesEditor = NotesEditor
 
@@ -8,20 +9,17 @@ local BLOCK_HEIGHT = 34
 local BLOCK_GAP = 4
 local RULER_WIDTH = 50
 local EDIT_PANEL_WIDTH = 260
-local DEFAULT_FRAME_WIDTH = 700
+local DEFAULT_FRAME_WIDTH = 920
 local DEFAULT_FRAME_HEIGHT = 550
+local BOSS_CHANNEL_WIDTH = 210
+local BOSS_ABILITY_HEIGHT = 30
+local BOSS_CHANNEL_PADDING = 8
 local GRID_INTERVAL = 30
 local TICK_INTERVAL = 5
 local TICK_LABEL_INTERVAL = 10
-local PHASE_PAD = 10
-local TOP_PAD = 6
+local TOP_PAD = 20
 
-local DIFFICULTY_OPTIONS = {
-    { name = "Normal",  value = "Normal" },
-    { name = "Heroic",  value = "Heroic" },
-    { name = "Mythic",  value = "Mythic" },
-    { name = "LFR",     value = "LFR" },
-}
+local DIFFICULTY_OPTIONS = NotesPlanner:GetDifficultyOptions()
 
 local DISPLAY_TYPE_OPTIONS = {
     { name = "Icon (cooldown swipe)", value = "Icon" },
@@ -45,9 +43,129 @@ local BACKDROP_INFO = {
 
 local frame
 local state = {}
+local encounterNameCache
+local requestedSpellIDs = {}
 
 local function GetSettings()
     return PRT:GetSetting("notes")
+end
+
+local function CountKeys(values)
+    local count = 0
+    for _ in pairs(values) do
+        count = count + 1
+    end
+    return count
+end
+
+local function LoadEncounterNames()
+    if encounterNameCache then
+        return encounterNameCache
+    end
+
+    encounterNameCache = {}
+    local database = PRT.BossTimelineDatabase
+    local encounters = database and database.encounters
+    if type(encounters) ~= "table"
+        or type(EJ_GetNumTiers) ~= "function"
+        or type(EJ_SelectTier) ~= "function"
+        or type(EJ_GetInstanceByIndex) ~= "function"
+        or type(EJ_GetEncounterInfoByIndex) ~= "function"
+    then
+        return encounterNameCache
+    end
+
+    local targets = {}
+    for encounterID in pairs(encounters) do
+        targets[encounterID] = true
+    end
+    local remaining = CountKeys(targets)
+    local selectedTier = type(EJ_GetCurrentTier) == "function" and EJ_GetCurrentTier()
+
+    local ok = pcall(function()
+        for tier = EJ_GetNumTiers(), 1, -1 do
+            EJ_SelectTier(tier)
+            local instanceIndex = 1
+            while remaining > 0 do
+                local journalInstanceID = EJ_GetInstanceByIndex(instanceIndex, true)
+                if not journalInstanceID then
+                    break
+                end
+                if type(EJ_SelectInstance) == "function" then
+                    EJ_SelectInstance(journalInstanceID)
+                end
+                local encounterIndex = 1
+                while remaining > 0 do
+                    local name, _, _, _, _, _, dungeonEncounterID =
+                        EJ_GetEncounterInfoByIndex(encounterIndex, journalInstanceID)
+                    if not name then
+                        break
+                    end
+                    if targets[dungeonEncounterID] and not encounterNameCache[dungeonEncounterID] then
+                        encounterNameCache[dungeonEncounterID] = name
+                        remaining = remaining - 1
+                    end
+                    encounterIndex = encounterIndex + 1
+                end
+                instanceIndex = instanceIndex + 1
+            end
+            if remaining == 0 then
+                break
+            end
+        end
+    end)
+
+    if selectedTier and type(EJ_SelectTier) == "function" then
+        pcall(EJ_SelectTier, selectedTier)
+    end
+    if not ok then
+        encounterNameCache = {}
+    end
+    return encounterNameCache
+end
+
+local function GetEncounterChoices()
+    local names = LoadEncounterNames()
+    local currentEncounterID = state.parsedNote and state.parsedNote.encounterID
+    return NotesPlanner:BuildEncounterChoices(
+        PRT.BossTimelineDatabase,
+        currentEncounterID,
+        function(encounterID)
+            return names[encounterID]
+        end
+    )
+end
+
+local function FindEncounterChoice(encounterID)
+    for _, choice in ipairs(GetEncounterChoices()) do
+        if choice.value == encounterID then
+            return choice
+        end
+    end
+end
+
+local function IsContextLocked()
+    return NotesPlanner:IsContextLocked(
+        state.mode,
+        state.parsedNote,
+        state.contextAnnotationNote
+    )
+end
+
+local function ResolveBossSpell(spellID)
+    local name = C_Spell and C_Spell.GetSpellName and C_Spell.GetSpellName(spellID)
+    local icon = C_Spell and C_Spell.GetSpellTexture and C_Spell.GetSpellTexture(spellID)
+    if name and icon then
+        return name, icon
+    end
+    if not requestedSpellIDs[spellID]
+        and C_Spell
+        and C_Spell.RequestLoadSpellData
+    then
+        requestedSpellIDs[spellID] = true
+        C_Spell.RequestLoadSpellData(spellID)
+    end
+    return name, icon
 end
 
 local function NonEmpty(text)
@@ -349,91 +467,30 @@ local function BuildPlayerCtx()
     }
 end
 
+local function RefreshPlanningModel()
+    state.planningModel = nil
+    local encounterID = state.parsedNote and tonumber(state.parsedNote.encounterID)
+    if not encounterID or not PRT.EncounterPhases then
+        return
+    end
+    local difficultyID = NotesPlanner:GetDifficultyID(state.difficulty)
+    state.planningModel = PRT.EncounterPhases:GetPlanningModel(encounterID, difficultyID)
+end
+
 local function DerivePhases(parsedNote)
-    if not parsedNote or not parsedNote.reminders then
-        return { { num = 1, name = "Phase 1", start = 0, duration = PHASE_PAD } }
-    end
-
-    local phaseNums = {}
-    local phaseSet = {}
-    for phaseKey, bucket in pairs(parsedNote.reminders) do
-        local num = tonumber(phaseKey)
-        if num and not phaseSet[num] then
-            phaseSet[num] = true
-            phaseNums[#phaseNums + 1] = num
-        end
-    end
-
-    if #phaseNums == 0 then
-        return { { num = 1, name = "Phase 1", start = 0, duration = PHASE_PAD } }
-    end
-
-    table.sort(phaseNums)
-
-    local phases = {}
-    local offset = 0
-    for _, num in ipairs(phaseNums) do
-        local bucket = parsedNote.reminders[tostring(num)]
-        local maxTime = 0
-        if bucket then
-            for _, r in ipairs(bucket) do
-                if r.time > maxTime then
-                    maxTime = r.time
-                end
-            end
-        end
-        local duration = maxTime + PHASE_PAD
-        phases[#phases + 1] = {
-            num = num,
-            name = "Phase " .. num,
-            start = offset,
-            duration = duration,
-        }
-        offset = offset + duration
-    end
-
-    return phases
+    return NotesPlanner:BuildPhases(parsedNote, state.planningModel)
 end
 
 local function TimeToY(time, phaseNum, phases, activePhase)
-    if activePhase == "all" then
-        for _, p in ipairs(phases) do
-            if p.num == phaseNum then
-                return (p.start + time) * VPPS + TOP_PAD
-            end
-        end
-        return time * VPPS + TOP_PAD
-    end
-    return time * VPPS + TOP_PAD
+    return NotesPlanner:TimeToY(time, phaseNum, phases, activePhase, VPPS, TOP_PAD)
 end
 
 local function YToTimeAndPhase(y, phases, activePhase)
-    local absTime = (y - TOP_PAD) / VPPS
-    if activePhase == "all" then
-        for i = #phases, 1, -1 do
-            if absTime >= phases[i].start then
-                return math.max(0, math.floor(absTime - phases[i].start + 0.5)), phases[i].num
-            end
-        end
-        return math.max(0, math.floor(absTime + 0.5)), phases[1] and phases[1].num or 1
-    end
-    return math.max(0, math.floor(absTime + 0.5)), activePhase
+    return NotesPlanner:YToTimeAndPhase(y, phases, activePhase, VPPS, TOP_PAD)
 end
 
 local function TotalDuration(phases, activePhase)
-    if activePhase == "all" then
-        local last = phases[#phases]
-        if not last then
-            return PHASE_PAD
-        end
-        return last.start + last.duration
-    end
-    for _, p in ipairs(phases) do
-        if p.num == activePhase then
-            return p.duration
-        end
-    end
-    return PHASE_PAD
+    return NotesPlanner:TotalDuration(phases, activePhase)
 end
 
 local function CollectReminders(parsedNote, activePhase)
@@ -546,13 +603,17 @@ local function RestoreEditorPosition()
     end
 end
 
-local titleBar, modeBar, phaseTabs, timelineArea, editPanel
-local rulerFrame, bodyScroll, canvas, cursorLine, cursorLabel
+local titleBar, modeBar, phaseTabs, bossHeading, timelineArea, editPanel
+local rulerFrame, bodyScroll, canvas, assignmentCanvas, bossChannel
+local cursorOverlay, cursorLine, cursorLabel
 local blockPool = {}
+local bossAbilityPool = {}
 local gridPool = {}
+local bossGridPool = {}
 local tickPool = {}
 local phaseTabPool = {}
 local phaseDividerPool = {}
+local bossDividerPool = {}
 local freeformPool = {}
 
 local function RecyclePool(pool)
@@ -624,6 +685,46 @@ local function CreateBlock(parent)
     return block
 end
 
+local function CreateBossAbility(parent)
+    local ability = CreateFrame("Frame", nil, parent, "BackdropTemplate")
+    ability:SetHeight(BOSS_ABILITY_HEIGHT)
+    ability:SetBackdrop(BACKDROP_INFO)
+    ability:SetBackdropColor(0.12, 0.1, 0.18, 0.96)
+    ability:SetBackdropBorderColor(0.5, 0.4, 0.75, 0.8)
+    ability:EnableMouse(true)
+    ability:SetScript("OnEnter", function(self)
+        if not self.abilityName or not GameTooltip then
+            return
+        end
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        local spellDataAvailable = not self.abilityName:match("^Unknown Spell %(")
+        if self.spellID and spellDataAvailable and GameTooltip.SetSpellByID then
+            GameTooltip:SetSpellByID(self.spellID)
+        else
+            GameTooltip:SetText(self.abilityName, 1, 1, 1)
+        end
+        GameTooltip:Show()
+    end)
+    ability:SetScript("OnLeave", function()
+        if GameTooltip then
+            GameTooltip:Hide()
+        end
+    end)
+
+    ability.icon = ability:CreateTexture(nil, "ARTWORK")
+    ability.icon:SetSize(22, 22)
+    ability.icon:SetPoint("LEFT", 4, 0)
+
+    ability.name = ability:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    ability.name:SetPoint("LEFT", ability.icon, "RIGHT", 5, 0)
+    ability.name:SetPoint("RIGHT", -4, 0)
+    ability.name:SetJustifyH("LEFT")
+    ability.name:SetWordWrap(false)
+    ability.name:SetTextColor(0.85, 0.82, 0.95)
+
+    return ability
+end
+
 local function CreateGridLine(parent)
     local line = parent:CreateTexture(nil, "BACKGROUND")
     line:SetHeight(1)
@@ -649,7 +750,7 @@ local function CreatePhaseDivider(parent)
     holder.line:SetColorTexture(0.91, 0.27, 0.37, 1)
 
     holder.label = holder:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    holder.label:SetPoint("TOPLEFT", holder.line, "BOTTOMLEFT", 4, -2)
+    holder.label:SetPoint("BOTTOMLEFT", holder.line, "TOPLEFT", 4, 2)
     holder.label:SetTextColor(0.91, 0.27, 0.37, 1)
 
     return holder
@@ -1091,22 +1192,42 @@ local function BuildFrame()
         titleBar.nameEdit:HighlightText()
     end)
 
-    titleBar.encounterText = titleBar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    titleBar.encounterText:SetPoint("LEFT", titleBar.nameText, "RIGHT", 12, 0)
-    titleBar.encounterText:SetTextColor(0.5, 0.5, 0.5)
+    titleBar.encounterDropdown = CreateFieldDropdown(titleBar,
+        GetEncounterChoices,
+        function(value)
+            if IsContextLocked() or not state.parsedNote then
+                return
+            end
+            local choice = FindEncounterChoice(value)
+            if not choice then
+                return
+            end
+            state.parsedNote.encounterID = value
+            state.parsedNote.name = choice.encounterName
+            state.encounterName = choice.encounterName
+            NotesEditor:SaveCurrentNote()
+            NotesEditor:Render()
+        end
+    )
+    titleBar.encounterDropdown:SetSize(210, 20)
 
     titleBar.difficultyDropdown = CreateFieldDropdown(titleBar,
         function() return DIFFICULTY_OPTIONS end,
         function(value)
+            if IsContextLocked() then
+                return
+            end
             if state.parsedNote then
                 state.parsedNote.difficulty = value
             end
             state.difficulty = value
             NotesEditor:SaveCurrentNote()
+            NotesEditor:Render()
         end
     )
     titleBar.difficultyDropdown:SetSize(100, 20)
-    titleBar.difficultyDropdown:SetPoint("LEFT", titleBar.encounterText, "RIGHT", 12, 0)
+    titleBar.difficultyDropdown:SetPoint("RIGHT", -4, 0)
+    titleBar.encounterDropdown:SetPoint("RIGHT", titleBar.difficultyDropdown, "LEFT", -12, 0)
 
     modeBar = CreateFrame("Frame", nil, frame)
     modeBar:SetHeight(24)
@@ -1149,7 +1270,19 @@ local function BuildFrame()
     phaseTabs = CreateFrame("Frame", nil, frame)
     phaseTabs:SetHeight(24)
     phaseTabs:SetPoint("TOPLEFT", modeBar, "BOTTOMLEFT", 0, -2)
-    phaseTabs:SetPoint("TOPRIGHT", modeBar, "BOTTOMRIGHT", 0, -2)
+
+    bossHeading = CreateFrame("Frame", nil, frame, "BackdropTemplate")
+    bossHeading:SetSize(BOSS_CHANNEL_WIDTH, 24)
+    bossHeading:SetPoint("TOPRIGHT", modeBar, "BOTTOMRIGHT", -24, -2)
+    bossHeading:SetBackdrop(BACKDROP_INFO)
+    bossHeading:SetBackdropColor(0.08, 0.07, 0.12, 0.9)
+    bossHeading:SetBackdropBorderColor(0.5, 0.4, 0.75, 0.7)
+    bossHeading.text = bossHeading:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    bossHeading.text:SetPoint("CENTER")
+    bossHeading.text:SetText("Boss Abilities")
+    bossHeading.text:SetTextColor(0.85, 0.8, 1)
+
+    phaseTabs:SetPoint("TOPRIGHT", bossHeading, "TOPLEFT", 0, 0)
 
     timelineArea = CreateFrame("Frame", nil, frame)
     timelineArea:SetPoint("TOPLEFT", phaseTabs, "BOTTOMLEFT", 0, -2)
@@ -1169,11 +1302,33 @@ local function BuildFrame()
     bodyScroll:SetPoint("BOTTOMRIGHT", -26, 0)
 
     canvas = CreateFrame("Frame", nil, bodyScroll)
-    canvas:SetSize(400, 2000)
+    canvas:SetSize(620, 2000)
     bodyScroll:SetScrollChild(canvas)
 
-    canvas:EnableMouse(true)
-    canvas:SetScript("OnMouseDown", function(self, button)
+    bossChannel = CreateFrame("Frame", nil, canvas, "BackdropTemplate")
+    bossChannel:SetWidth(BOSS_CHANNEL_WIDTH)
+    bossChannel:SetPoint("TOPRIGHT")
+    bossChannel:SetPoint("BOTTOMRIGHT")
+    bossChannel:SetBackdrop(BACKDROP_INFO)
+    bossChannel:SetBackdropColor(0.05, 0.045, 0.08, 0.96)
+    bossChannel:SetBackdropBorderColor(0.5, 0.4, 0.75, 0.7)
+
+    bossChannel.unavailable = bossChannel:CreateFontString(
+        nil,
+        "OVERLAY",
+        "GameFontDisableSmall"
+    )
+    bossChannel.unavailable:SetPoint("TOPLEFT", 12, -16)
+    bossChannel.unavailable:SetPoint("RIGHT", -12, 0)
+    bossChannel.unavailable:SetJustifyH("CENTER")
+    bossChannel.unavailable:SetWordWrap(true)
+
+    assignmentCanvas = CreateFrame("Frame", nil, canvas)
+    assignmentCanvas:SetPoint("TOPLEFT")
+    assignmentCanvas:SetPoint("BOTTOMLEFT")
+    assignmentCanvas:SetPoint("RIGHT", bossChannel, "LEFT")
+    assignmentCanvas:EnableMouse(true)
+    assignmentCanvas:SetScript("OnMouseDown", function(self, button)
         if button ~= "LeftButton" then
             return
         end
@@ -1185,12 +1340,17 @@ local function BuildFrame()
         NotesEditor:OpenAddPanel(time, phaseNum)
     end)
 
-    cursorLine = canvas:CreateTexture(nil, "OVERLAY")
+    cursorOverlay = CreateFrame("Frame", nil, canvas)
+    cursorOverlay:SetAllPoints()
+    cursorOverlay:SetFrameLevel(canvas:GetFrameLevel() + 20)
+    cursorOverlay:EnableMouse(false)
+
+    cursorLine = cursorOverlay:CreateTexture(nil, "OVERLAY")
     cursorLine:SetHeight(1)
     cursorLine:SetColorTexture(0.94, 0.75, 0.25, 0.8)
     cursorLine:Hide()
 
-    cursorLabel = canvas:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    cursorLabel = cursorOverlay:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     cursorLabel:SetTextColor(0.94, 0.75, 0.25, 1)
     cursorLabel:Hide()
 
@@ -1216,10 +1376,24 @@ local function BuildFrame()
         local y = canvas:GetTop() - (cursorY / scale)
         local phases = DerivePhases(state.parsedNote)
         local time, _ = YToTimeAndPhase(y, phases, state.activePhase)
-        cursorLine:SetPoint("TOPLEFT", canvas, "TOPLEFT", 0, -y)
-        cursorLine:SetPoint("TOPRIGHT", canvas, "TOPRIGHT", 0, -y)
-        cursorLabel:SetPoint("TOPLEFT", canvas, "TOPLEFT", 4, -(y + 2))
+        cursorLine:ClearAllPoints()
+        cursorLine:SetPoint("TOPLEFT", cursorOverlay, "TOPLEFT", 0, -y)
+        cursorLine:SetPoint("TOPRIGHT", cursorOverlay, "TOPRIGHT", 0, -y)
+        cursorLabel:ClearAllPoints()
+        cursorLabel:SetPoint("TOPLEFT", cursorOverlay, "TOPLEFT", 4, -(y + 2))
         cursorLabel:SetText(FormatTime(time))
+    end)
+
+    local spellEventFrame = CreateFrame("Frame", nil, frame)
+    spellEventFrame:RegisterEvent("SPELL_DATA_LOAD_RESULT")
+    spellEventFrame:SetScript("OnEvent", function(_, _, spellID, success)
+        if not success or not requestedSpellIDs[spellID] then
+            return
+        end
+        requestedSpellIDs[spellID] = nil
+        if frame:IsShown() then
+            NotesEditor:Render()
+        end
     end)
 
     editPanel = BuildEditPanel()
@@ -1242,12 +1416,22 @@ function NotesEditor:RenderPhaseTabs()
     RecyclePool(phaseTabPool)
 
     local phases = DerivePhases(state.parsedNote)
+    if state.activePhase ~= "all" then
+        local activeExists = false
+        for _, phase in ipairs(phases) do
+            if phase.num == state.activePhase then
+                activeExists = true
+                break
+            end
+        end
+        if not activeExists then
+            state.activePhase = "all"
+        end
+    end
     if #phases <= 1 then
-        phaseTabs:SetHeight(1)
         return
     end
 
-    phaseTabs:SetHeight(24)
     local xOff = 4
 
     local allTab = GetFromPool(phaseTabPool, function()
@@ -1255,7 +1439,7 @@ function NotesEditor:RenderPhaseTabs()
     end)
     allTab:SetWidth(80)
     allTab:SetPoint("TOPLEFT", xOff, -1)
-    allTab.text:SetText("All Phases")
+    allTab.text:SetText(NotesPlanner:FormatPhaseTabLabel())
     if state.activePhase == "all" then
         allTab.underline:Show()
         allTab.text:SetTextColor(1, 1, 1)
@@ -1272,13 +1456,13 @@ function NotesEditor:RenderPhaseTabs()
     allTab:Show()
     xOff = xOff + 84
 
-    for _, phase in ipairs(phases) do
+    for phaseIndex, phase in ipairs(phases) do
         local tab = GetFromPool(phaseTabPool, function()
             return CreatePhaseTab(phaseTabs)
         end)
         tab:SetWidth(80)
         tab:SetPoint("TOPLEFT", xOff, -1)
-        tab.text:SetText(phase.name)
+        tab.text:SetText(NotesPlanner:FormatPhaseTabLabel(phaseIndex))
         if state.activePhase == phase.num then
             tab.underline:Show()
             tab.text:SetTextColor(1, 1, 1)
@@ -1299,39 +1483,65 @@ end
 
 function NotesEditor:RenderTimeline()
     RecyclePool(blockPool)
+    RecyclePool(bossAbilityPool)
     RecyclePool(gridPool)
+    RecyclePool(bossGridPool)
     RecyclePool(tickPool)
     RecyclePool(phaseDividerPool)
+    RecyclePool(bossDividerPool)
     RecyclePool(freeformPool)
 
     local phases = DerivePhases(state.parsedNote)
     local totalDur = TotalDuration(phases, state.activePhase)
     local canvasHeight = totalDur * VPPS + TOP_PAD + 20
     canvas:SetHeight(canvasHeight)
-    canvas:SetWidth(bodyScroll:GetWidth() - 26)
+    canvas:SetWidth(math.max(BOSS_CHANNEL_WIDTH + 1, bodyScroll:GetWidth()))
     bodyScroll:UpdateScrollChildRect()
 
     for t = GRID_INTERVAL, totalDur, GRID_INTERVAL do
         local y = t * VPPS + TOP_PAD
         local line = GetFromPool(gridPool, function()
-            return CreateGridLine(canvas)
+            return CreateGridLine(assignmentCanvas)
         end)
-        line:SetPoint("TOPLEFT", canvas, "TOPLEFT", 0, -y)
-        line:SetPoint("TOPRIGHT", canvas, "TOPRIGHT", 0, -y)
+        line:SetPoint("TOPLEFT", assignmentCanvas, "TOPLEFT", 0, -y)
+        line:SetPoint("TOPRIGHT", assignmentCanvas, "TOPRIGHT", 0, -y)
         line:Show()
+
+        local bossLine = GetFromPool(bossGridPool, function()
+            return CreateGridLine(bossChannel)
+        end)
+        bossLine:SetPoint("TOPLEFT", bossChannel, "TOPLEFT", 0, -y)
+        bossLine:SetPoint("TOPRIGHT", bossChannel, "TOPRIGHT", 0, -y)
+        bossLine:Show()
+    end
+
+    local function PlacePhaseDivider(phase, y)
+        local divider = GetFromPool(phaseDividerPool, function()
+            return CreatePhaseDivider(assignmentCanvas)
+        end)
+        divider:SetPoint("TOPLEFT", assignmentCanvas, "TOPLEFT", 0, -y)
+        divider:SetPoint("TOPRIGHT", assignmentCanvas, "TOPRIGHT", 0, -y)
+        divider.label:SetText(phase.name)
+        divider:Show()
+
+        local bossDivider = GetFromPool(bossDividerPool, function()
+            return CreatePhaseDivider(bossChannel)
+        end)
+        bossDivider:SetPoint("TOPLEFT", bossChannel, "TOPLEFT", 0, -y)
+        bossDivider:SetPoint("TOPRIGHT", bossChannel, "TOPRIGHT", 0, -y)
+        bossDivider.label:SetText("")
+        bossDivider:Show()
     end
 
     if state.activePhase == "all" then
-        for i, phase in ipairs(phases) do
-            if i > 1 then
-                local y = phase.start * VPPS + TOP_PAD
-                local divider = GetFromPool(phaseDividerPool, function()
-                    return CreatePhaseDivider(canvas)
-                end)
-                divider:SetPoint("TOPLEFT", canvas, "TOPLEFT", 0, -y)
-                divider:SetPoint("TOPRIGHT", canvas, "TOPRIGHT", 0, -y)
-                divider.label:SetText(phase.name)
-                divider:Show()
+        for _, phase in ipairs(phases) do
+            PlacePhaseDivider(phase, phase.start * VPPS + TOP_PAD)
+        end
+    else
+        for _, phase in ipairs(phases) do
+            if phase.num == state.activePhase then
+                PlacePhaseDivider(phase, TOP_PAD)
+                break
             end
         end
     end
@@ -1366,7 +1576,7 @@ function NotesEditor:RenderTimeline()
                 break
             end
         end
-        local dur = phase and phase.duration or PHASE_PAD
+        local dur = phase and phase.duration or NotesPlanner.PHASE_PAD
         for t = 0, dur, TICK_INTERVAL do
             if t % TICK_LABEL_INTERVAL == 0 then
                 PlaceTick(t, t * VPPS + TOP_PAD)
@@ -1437,11 +1647,11 @@ function NotesEditor:RenderTimeline()
     for _, fl in ipairs(freeformLines) do
         local y = TimeToY(fl.time, fl.phase, phases, state.activePhase)
         local sep = GetFromPool(freeformPool, function()
-            return CreateFreeformSeparator(canvas)
+            return CreateFreeformSeparator(assignmentCanvas)
         end)
-        sep:SetPoint("TOPLEFT", canvas, "TOPLEFT", 0, -y)
-        sep:SetPoint("RIGHT", canvas, "RIGHT", 0, 0)
-        sep:SetFrameLevel(canvas:GetFrameLevel() + 3)
+        sep:SetPoint("TOPLEFT", assignmentCanvas, "TOPLEFT", 0, -y)
+        sep:SetPoint("RIGHT", assignmentCanvas, "RIGHT", 0, 0)
+        sep:SetFrameLevel(assignmentCanvas:GetFrameLevel() + 3)
 
         sep.line:SetColorTexture(0.4, 0.7, 1, 0.5)
         sep.label:SetTextColor(0.4, 0.7, 1, 0.8)
@@ -1449,16 +1659,63 @@ function NotesEditor:RenderTimeline()
         sep.label:SetText(fl.text)
         sep:Show()
     end
+
+    local unavailableMessage = NotesPlanner:GetUnavailableMessage(state.planningModel)
+    bossChannel.unavailable:SetText(unavailableMessage or "")
+    if unavailableMessage then
+        bossChannel.unavailable:Show()
+    else
+        bossChannel.unavailable:Hide()
+    end
+
+    local abilities = NotesPlanner:BuildAbilityEntries(
+        state.planningModel,
+        phases,
+        state.activePhase,
+        ResolveBossSpell,
+        {
+            scale = VPPS,
+            topPad = TOP_PAD,
+            height = BOSS_ABILITY_HEIGHT,
+            gap = BLOCK_GAP,
+        }
+    )
+    for _, ability in ipairs(abilities) do
+        local block = GetFromPool(bossAbilityPool, function()
+            return CreateBossAbility(bossChannel)
+        end)
+        local columns = math.max(1, ability.columnCount)
+        local availableWidth = BOSS_CHANNEL_WIDTH - (BOSS_CHANNEL_PADDING * 2)
+        local width = (
+            availableWidth - ((columns - 1) * BLOCK_GAP)
+        ) / columns
+        local x = BOSS_CHANNEL_PADDING + ability.column * (width + BLOCK_GAP)
+
+        block:SetWidth(math.max(1, width))
+        block:SetPoint("TOPLEFT", bossChannel, "TOPLEFT", x, -ability.y)
+        block:SetFrameLevel(bossChannel:GetFrameLevel() + 5)
+        block.icon:SetTexture(ability.icon)
+        block.name:SetText(ability.name)
+        block.abilityName = ability.name
+        block.spellID = ability.spellID
+        block:Show()
+    end
 end
 
 function NotesEditor:RenderBlock(reminder, y, stackIdx, height, phases, playerCtx)
     local block = GetFromPool(blockPool, function()
-        return CreateBlock(canvas)
+        return CreateBlock(assignmentCanvas)
     end)
 
-    block:SetPoint("TOPLEFT", canvas, "TOPLEFT", stackIdx * (BLOCK_WIDTH + BLOCK_GAP), -y)
+    block:SetPoint(
+        "TOPLEFT",
+        assignmentCanvas,
+        "TOPLEFT",
+        stackIdx * (BLOCK_WIDTH + BLOCK_GAP),
+        -y
+    )
     block:SetHeight(height)
-    block:SetFrameLevel(canvas:GetFrameLevel() + 5)
+    block:SetFrameLevel(assignmentCanvas:GetFrameLevel() + 5)
 
     local r, g, b = ClassColorForTag(reminder.tag)
     block.who:SetText(reminder.tag or "")
@@ -1507,22 +1764,27 @@ function NotesEditor:Render()
         return
     end
 
+    RefreshPlanningModel()
+    local modeState = NotesPlanner:GetEditorModeState(state.mode, IsContextLocked())
+    NotesPlanner:ApplyEditorModeState(modeState, {
+        showOnlyMine = modeBar.showMineCheck,
+        showOnlyMineLabel = modeBar.showMineLabel,
+        annotate = modeBar.annotateBtn,
+        import = modeBar.rawBtn,
+        boss = bossChannel,
+        encounter = titleBar.encounterDropdown,
+        difficulty = titleBar.difficultyDropdown,
+    })
     if state.mode == "annotate" then
-        modeBar.showMineCheck:Show()
-        modeBar.showMineLabel:Show()
-        modeBar.rawBtn:Hide()
-        modeBar.annotateBtn:Hide()
         frame:SetTitle("Annotate Note")
     else
-        modeBar.showMineCheck:Hide()
-        modeBar.showMineLabel:Hide()
-        modeBar.rawBtn:Show()
-        modeBar.annotateBtn:Show()
         frame:SetTitle("Edit Note")
     end
 
     titleBar.nameText:SetText(state.noteName or "New Note")
-    titleBar.encounterText:SetText(state.encounterName or "")
+    titleBar.encounterDropdown:SetValue(
+        state.parsedNote and state.parsedNote.encounterID
+    )
     titleBar.difficultyDropdown:SetValue(state.difficulty)
 
     self:RenderPhaseTabs()
@@ -1609,6 +1871,18 @@ local function BuildRawFrame()
     end)
 end
 
+local function LoadAnnotationNote(noteName)
+    if not noteName then
+        return nil
+    end
+    local text = PRT.Notes:GetAnnotation(noteName)
+    if not text then
+        return nil
+    end
+    local parsed = PRT.NotesParser:Parse(text)
+    return parsed
+end
+
 function NotesEditor:ShowRawMode()
     BuildRawFrame()
 
@@ -1625,6 +1899,17 @@ function NotesEditor:SaveRawText()
     local parsed, err = PRT.NotesParser:Parse(rawText)
     if err then
         rawFrame.errorText:SetText(err)
+        return false
+    end
+
+    local contextValid, contextError = NotesPlanner:ValidateImportedContext(
+        state.parsedNote,
+        state.contextAnnotationNote,
+        parsed,
+        state.mode
+    )
+    if not contextValid then
+        rawFrame.errorText:SetText(contextError or "")
         return false
     end
 
@@ -1675,6 +1960,7 @@ local function EnsureAnnotationNote()
             reminders = {},
             lines = {},
         }
+        state.contextAnnotationNote = state.annotationNote
     end
     return state.annotationNote
 end
@@ -2015,6 +2301,7 @@ function NotesEditor:SaveCurrentAnnotation()
     if not state.annotationNote then
         return
     end
+    state.contextAnnotationNote = state.annotationNote
     local text = PRT.NotesSerializer:Serialize(state.annotationNote)
     PRT.Notes:SaveAnnotation(state.noteName, text)
     NotesEditor:NotifyConfigSaved(state.noteName)
@@ -2040,15 +2327,11 @@ function NotesEditor:ReloadNote()
         return
     end
 
-    if state.mode == "annotate" then
-        local annText = PRT.Notes:GetAnnotation(state.noteName)
-        if annText then
-            local annParsed = PRT.NotesParser:Parse(annText)
-            if annParsed then
-                state.annotationNote = annParsed
-                parsed = PRT.NotesMerge:Merge(parsed, annParsed)
-            end
-        end
+    local annParsed = LoadAnnotationNote(state.noteName)
+    state.contextAnnotationNote = annParsed
+    if state.mode == "annotate" and annParsed then
+        state.annotationNote = annParsed
+        parsed = PRT.NotesMerge:Merge(parsed, annParsed)
     end
 
     state.parsedNote = parsed
@@ -2065,6 +2348,8 @@ function NotesEditor:Open(name, text, mode)
         difficulty = nil,
         parsedNote = { encounterID = nil, reminders = {}, lines = {} },
         annotationNote = nil,
+        contextAnnotationNote = nil,
+        planningModel = nil,
         mode = mode or "edit",
         activePhase = "all",
         rawMode = false,
@@ -2082,15 +2367,11 @@ function NotesEditor:Open(name, text, mode)
             or ""
         state.difficulty = state.parsedNote.difficulty
 
-        if state.mode == "annotate" then
-            local annText = PRT.Notes:GetAnnotation(name)
-            if annText then
-                local annParsed = PRT.NotesParser:Parse(annText)
-                if annParsed then
-                    state.annotationNote = annParsed
-                    state.parsedNote = PRT.NotesMerge:Merge(state.parsedNote, annParsed)
-                end
-            end
+        local annParsed = LoadAnnotationNote(name)
+        state.contextAnnotationNote = annParsed
+        if state.mode == "annotate" and annParsed then
+            state.annotationNote = annParsed
+            state.parsedNote = PRT.NotesMerge:Merge(state.parsedNote, annParsed)
         end
     end
 

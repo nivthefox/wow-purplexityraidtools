@@ -3,7 +3,6 @@ local PRT = PurplexityRaidTools
 
 PRT.BossTimelineDatabase = {
     encounters = {
-        [3379] = { difficulties = {} },
         [3420] = { difficulties = {} },
         [3421] = { difficulties = {} },
         [3429] = { difficulties = {} },
@@ -125,7 +124,7 @@ tests["Nekzali exposes stable phases for every raid difficulty"] = function()
         assertTableEquals(EncounterPhases:GetPhases(encounterID, difficultyID), expectedPhases)
     end
     local compatibility = dofile("tests/fixtures/encounter_phase_compatibility.lua")
-    assertTrue(EncounterPhases:ValidateCompatibility(compatibility, {}))
+    assertTrue(EncounterPhases:ValidateCompatibility({ [encounterID] = compatibility[encounterID] }, {}))
 end
 
 tests["Nekzali declares only the boss cast observations used by its detector"] = function()

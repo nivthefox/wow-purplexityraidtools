@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { LAIRS_PHASE_DECIDERS } from '../encounters/Lairs.mjs';
+import { THE_VENOMOUS_ABYSS_PHASE_DECIDERS } from '../encounters/TheVenomousAbyss.mjs';
 import { decidePhases, getPhaseDecider } from '../phase-deciders.mjs';
 
 function fight(encounterID, startTime = 1000, endTime = 31000) {
@@ -54,6 +56,11 @@ test('approved one-phase encounters always span one canonical phase', () => {
             endTime: 31000,
         }]);
     }
+});
+
+test('Nymrissa is registered as a Lair rather than a Venomous Abyss encounter', () => {
+    assert.equal(LAIRS_PHASE_DECIDERS.has(3379), true);
+    assert.equal(THE_VENOMOUS_ABYSS_PHASE_DECIDERS.has(3379), false);
 });
 
 test('Nekzali uses its own Ritual of Awakening and Uncoiling casts as actual boundaries', () => {

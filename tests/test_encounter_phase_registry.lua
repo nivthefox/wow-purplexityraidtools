@@ -3,6 +3,7 @@ local PRT = PurplexityRaidTools
 
 dofile("Modules/EncounterPhases/Registry.lua")
 PRT.BossTimelineDatabase = { encounters = { [3379] = {}, [3420] = {}, [3421] = {}, [3429] = {}, [3445] = {}, [3455] = {}, [3470] = {}, [3492] = {}, [3497] = {} } }
+dofile("Modules/EncounterPhases/Lairs.lua")
 dofile("Modules/EncounterPhases/TheVenomousAbyss.lua")
 
 local EncounterPhases = PRT.EncounterPhases
@@ -102,6 +103,11 @@ tests["The Lost Explorers has a completed one-phase definition"] = function()
     assertTableEquals(EncounterPhases:GetPhases(3497, 16), {
         { id = 1, name = "The Lost Explorers" },
     })
+end
+
+tests["published phase identities are compatible across encounter content types"] = function()
+    local compatibility = dofile("tests/fixtures/encounter_phase_compatibility.lua")
+    assertTrue(EncounterPhases:ValidateCompatibility(compatibility, {}))
 end
 
 tests["registration requires an encounter in the bundled timeline database"] = function()

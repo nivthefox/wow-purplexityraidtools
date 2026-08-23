@@ -3,7 +3,6 @@ local PRT = PurplexityRaidTools
 
 PRT.BossTimelineDatabase = {
     encounters = {
-        [3379] = { difficulties = {} },
         [3420] = {
             difficulties = {
                 [16] = {
@@ -64,7 +63,7 @@ tests["Sszorak exposes one stable phase for every raid difficulty"] = function()
         assertTableEquals(EncounterPhases:GetPhases(encounterID, difficultyID), expectedPhases)
     end
     local compatibility = dofile("tests/fixtures/encounter_phase_compatibility.lua")
-    assertTrue(EncounterPhases:ValidateCompatibility(compatibility, {}))
+    assertTrue(EncounterPhases:ValidateCompatibility({ [encounterID] = compatibility[encounterID] }, {}))
 end
 
 tests["Sszorak declares no runtime transition observations"] = function()

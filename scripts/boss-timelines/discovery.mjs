@@ -1,4 +1,4 @@
-import { CURRENT_TIER_WINDOW_MS, RAID_DIFFICULTIES } from './constants.mjs';
+import { CURRENT_TIER_WINDOW_MS, SUPPORTED_WCL_DIFFICULTIES } from './constants.mjs';
 
 function candidateIdentity(candidate) {
     return `${candidate.report.code}\u0000${candidate.report.fightID}`;
@@ -25,21 +25,21 @@ export function selectDistinctCandidates(rankings) {
     });
 }
 
-export function raidZones(zones) {
+export function supportedZones(zones) {
     return zones.filter((zone) => !zone.frozen
-        && zone.difficulties.some((difficulty) => RAID_DIFFICULTIES.has(difficulty.id))
+        && zone.difficulties.some((difficulty) => SUPPORTED_WCL_DIFFICULTIES.has(difficulty.id))
         && zone.encounters.length > 0);
 }
 
 export async function discoverCurrentTier(client, buildTime) {
     const startTime = buildTime - CURRENT_TIER_WINDOW_MS;
     const discovered = [];
-    for (const zone of raidZones(await client.discoverZones())) {
+    for (const zone of supportedZones(await client.discoverZones())) {
         const combinations = new Map();
         let active = false;
         const difficulties = zone.difficulties
             .map((difficulty) => difficulty.id)
-            .filter((difficulty) => RAID_DIFFICULTIES.has(difficulty))
+            .filter((difficulty) => SUPPORTED_WCL_DIFFICULTIES.has(difficulty))
             .sort((left, right) => left - right);
         const encounters = [...zone.encounters].sort((left, right) => left.id - right.id);
         for (const encounter of encounters) {
@@ -60,7 +60,7 @@ export async function discoverCurrentTier(client, buildTime) {
         }
     }
     if (discovered.length === 0) {
-        throw new Error('No current raid tier was discoverable in the rolling seven-day window');
+        throw new Error('No current encounter content was discoverable in the rolling seven-day window');
     }
     return discovered;
 }

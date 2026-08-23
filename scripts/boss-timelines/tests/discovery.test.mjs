@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { discoverCurrentTier, raidZones, selectDistinctCandidates } from '../discovery.mjs';
+import { discoverCurrentTier, selectDistinctCandidates, supportedZones } from '../discovery.mjs';
 
 function code(index) {
     return `synthetic-${String.fromCodePoint(65 + index)}`;
@@ -30,16 +30,16 @@ test('candidate selection keeps more than thirty candidates for eligibility back
     assert.equal(selectDistinctCandidates(values).length, 35);
 });
 
-test('raid discovery excludes frozen and non-raid zones', () => {
+test('supported zone discovery includes Lairs and excludes frozen or unsupported content', () => {
     const zones = [
         { id: 1, frozen: false, difficulties: [{ id: 5 }], encounters: [{ id: 10, journalID: 20 }] },
         { id: 2, frozen: true, difficulties: [{ id: 5 }], encounters: [{ id: 11, journalID: 21 }] },
         { id: 3, frozen: false, difficulties: [{ id: 10 }], encounters: [{ id: 12, journalID: 22 }] },
     ];
-    assert.deepEqual(raidZones(zones), [zones[0]]);
+    assert.deepEqual(supportedZones(zones), [zones[0]]);
 });
 
-test('current tier includes every encounter from every raid zone active within seven days', async () => {
+test('current tier includes every encounter from every supported zone active within seven days', async () => {
     const zones = [
         {
             id: 1,
@@ -91,5 +91,5 @@ test('no activity within seven days fails instead of erasing the current databas
         }],
         candidateKills: async () => new Map([[1, []], [3, []], [4, []], [5, []]]),
     };
-    await assert.rejects(() => discoverCurrentTier(client, 100000000), /No current raid tier/);
+    await assert.rejects(() => discoverCurrentTier(client, 100000000), /No current encounter content/);
 });

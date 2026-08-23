@@ -1,6 +1,10 @@
+import { LAIRS_PHASE_DECIDERS } from './encounters/Lairs.mjs';
 import { THE_VENOMOUS_ABYSS_PHASE_DECIDERS } from './encounters/TheVenomousAbyss.mjs';
 
-const PHASE_DECIDERS = new Map(THE_VENOMOUS_ABYSS_PHASE_DECIDERS);
+const PHASE_DECIDERS = new Map([
+    ...LAIRS_PHASE_DECIDERS,
+    ...THE_VENOMOUS_ABYSS_PHASE_DECIDERS,
+]);
 
 function invalidDecider(encounterID, detail) {
     throw new Error(`Encounter ${encounterID} phase decider returned invalid phases: ${detail}`);

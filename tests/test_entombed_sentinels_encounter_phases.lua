@@ -16,7 +16,6 @@ end
 
 PRT.BossTimelineDatabase = {
     encounters = {
-        [3379] = { difficulties = {} },
         [3420] = { difficulties = {} },
         [3421] = { difficulties = {} },
         [3429] = { difficulties = {} },
@@ -93,7 +92,7 @@ tests["Entombed Sentinels exposes one stable phase for every raid difficulty"] =
         assertTableEquals(EncounterPhases:GetPhases(encounterID, difficultyID), expectedPhases)
     end
     local compatibility = dofile("tests/fixtures/encounter_phase_compatibility.lua")
-    assertTrue(EncounterPhases:ValidateCompatibility(compatibility, {}))
+    assertTrue(EncounterPhases:ValidateCompatibility({ [encounterID] = compatibility[encounterID] }, {}))
 end
 
 tests["Entombed Sentinels declares no runtime transition observations"] = function()

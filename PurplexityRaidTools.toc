@@ -23,6 +23,7 @@ Modules/BossTimelineDatabase.lua
 Modules/EncounterPhases/Registry.lua
 Modules/EncounterPhases/Runtime.lua
 Modules/EncounterPhases/Planning.lua
+Modules/EncounterPhases/Lairs.lua
 Modules/EncounterPhases/TheVenomousAbyss.lua
 Modules/GroupInspect.lua
 Modules/DontRelease.lua

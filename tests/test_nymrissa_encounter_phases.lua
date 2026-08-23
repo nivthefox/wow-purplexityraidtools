@@ -19,20 +19,12 @@ PRT.BossTimelineDatabase = {
                 },
             },
         },
-        [3420] = { difficulties = {} },
-        [3421] = { difficulties = {} },
-        [3429] = { difficulties = {} },
-        [3445] = { difficulties = {} },
-        [3455] = { difficulties = {} },
-        [3470] = { difficulties = {} },
-        [3492] = { difficulties = {} },
-        [3497] = { difficulties = {} },
     },
 }
 dofile("Modules/EncounterPhases/Registry.lua")
 dofile("Modules/EncounterPhases/Runtime.lua")
 dofile("Modules/EncounterPhases/Planning.lua")
-dofile("Modules/EncounterPhases/TheVenomousAbyss.lua")
+dofile("Modules/EncounterPhases/Lairs.lua")
 
 local EncounterPhases = PRT.EncounterPhases
 local encounterID = 3379
@@ -57,12 +49,12 @@ local function harness()
     return attempt, activations
 end
 
-tests["Nymrissa exposes one stable phase for every raid difficulty"] = function()
+tests["Nymrissa exposes one stable phase for every supported difficulty"] = function()
     for _, difficultyID in ipairs({ 17, 14, 15, 16 }) do
         assertTableEquals(EncounterPhases:GetPhases(encounterID, difficultyID), expectedPhases)
     end
     local compatibility = dofile("tests/fixtures/encounter_phase_compatibility.lua")
-    assertTrue(EncounterPhases:ValidateCompatibility(compatibility, {}))
+    assertTrue(EncounterPhases:ValidateCompatibility({ [encounterID] = compatibility[encounterID] }, {}))
 end
 
 tests["Nymrissa declares no runtime transition observations"] = function()

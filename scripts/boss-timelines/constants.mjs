@@ -9,4 +9,4 @@ export const WCL_DIFFICULTY_TO_WOW = new Map([
     [4, 15],
     [5, 16],
 ]);
-export const RAID_DIFFICULTIES = new Set(WCL_DIFFICULTY_TO_WOW.keys());
+export const SUPPORTED_WCL_DIFFICULTIES = new Set(WCL_DIFFICULTY_TO_WOW.keys());

@@ -215,7 +215,6 @@ function decideUlatek({ fight, events }) {
 }
 
 export const THE_VENOMOUS_ABYSS_PHASE_DECIDERS = new Map([
-    [3379, onePhase('Nymrissa Wavecaller')],
     [3420, onePhase('Sszorak')],
     [3421, onePhase('The Twin Fangs')],
     [3429, decideCoiledAltar],

@@ -2,7 +2,7 @@ import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { generateDatabase } from './boss-timelines/generator.mjs';
+import { formatOmission, generateDatabase } from './boss-timelines/generator.mjs';
 import { parseDatabase, serializeDatabase } from './boss-timelines/lua-data.mjs';
 import { loadBossModules } from './boss-timelines/source-files.mjs';
 import { WarcraftLogsClient } from './boss-timelines/wcl-client.mjs';
@@ -47,21 +47,16 @@ async function main() {
         clientID: process.env.WCL_CLIENT_ID,
         clientSecret: process.env.WCL_CLIENT_SECRET,
     });
-    let unsupportedCount = 0;
     const database = await generateDatabase({
         client,
         bossModules,
         existingDatabase,
         buildTime: Date.now(),
-        onUnsupported: () => {
-            unsupportedCount += 1;
+        onOmission: (omission) => {
+            process.stdout.write(`${formatOmission(omission)}\n`);
         },
     });
     await writeAtomically(outputPath, serializeDatabase(database));
-    if (unsupportedCount > 0) {
-        const noun = unsupportedCount === 1 ? 'encounter' : 'encounters';
-        process.stdout.write(`Boss timeline generation omitted ${unsupportedCount} current ${noun} because neither boss mod has a module.\n`);
-    }
 }
 
 main().catch((error) => {

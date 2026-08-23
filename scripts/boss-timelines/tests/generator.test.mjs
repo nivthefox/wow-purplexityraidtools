@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { generateDatabase } from '../generator.mjs';
+import { formatOmission, generateDatabase } from '../generator.mjs';
 import { serializeDatabase } from '../lua-data.mjs';
 
 function runtimeCode(index) {
@@ -147,18 +147,66 @@ test('an unsupported new encounter is omitted without failing other active encou
         zones[0].encounters.push({ id: 2002, journalID: 4002 });
         return zones;
     };
-    let unsupportedCount = 0;
+    const omissions = [];
     const result = await generateDatabase({
         client,
         bossModules: modules(),
         existingDatabase: emptyDatabase(),
         buildTime: 100000000,
-        onUnsupported: () => {
-            unsupportedCount += 1;
-        },
+        onOmission: (omission) => omissions.push(omission),
     });
     assert.deepEqual(Object.keys(result.encounters), ['5001']);
-    assert.equal(unsupportedCount, 1);
+    assert.deepEqual(omissions.filter((omission) => omission.reason === 'missing-boss-module'), [
+        { encounterID: 2002, journalID: 4002, reason: 'missing-boss-module' },
+    ]);
+    assert.equal(
+        formatOmission(omissions.find((omission) => omission.reason === 'missing-boss-module')),
+        'Boss timeline omitted encounter 2002 (journal 4002): neither boss mod has a matching module.',
+    );
+});
+
+test('new encounter omissions report insufficient candidates, invalid kills, and missing abilities', async () => {
+    const rankings = [candidate(0), candidate(1), candidate(2)];
+    const scenarios = [
+        {
+            client: createClient({ rankingsByDifficulty: new Map([[5, rankings.slice(0, 2)]]) }),
+            reason: 'insufficient-candidates',
+            expected: { candidateCount: 2 },
+            message: 'Boss timeline omitted encounter 5001, Mythic difficulty (WoW 16, WCL 5): found 2 page-one candidates; at least 3 are required.',
+        },
+        {
+            client: createClient({
+                rankingsByDifficulty: new Map([[5, rankings]]),
+                ineligible: new Set(rankings.map((value) => value.report.fightID)),
+            }),
+            reason: 'insufficient-valid-kills',
+            expected: { candidateCount: 3, validKillCount: 0 },
+            message: 'Boss timeline omitted encounter 5001, Mythic difficulty (WoW 16, WCL 5): validated 0 of 3 page-one candidates; at least 3 valid kills are required.',
+        },
+        {
+            client: createClient({ rankingsByDifficulty: new Map([[5, rankings]]), noEvents: true }),
+            reason: 'no-qualifying-abilities',
+            expected: { candidateCount: 3, validKillCount: 3 },
+            message: 'Boss timeline omitted encounter 5001, Mythic difficulty (WoW 16, WCL 5): 3 valid kills produced no qualifying boss abilities.',
+        },
+    ];
+    for (const scenario of scenarios) {
+        const omissions = [];
+        await generateDatabase({
+            client: scenario.client,
+            bossModules: modules(),
+            existingDatabase: emptyDatabase(),
+            buildTime: 100000000,
+            onOmission: (omission) => omissions.push(omission),
+        });
+        const omission = omissions.find((value) => value.wowDifficulty === 16);
+        assert.equal(omission.reason, scenario.reason);
+        assert.equal(omission.encounterID, 5001);
+        for (const [key, value] of Object.entries(scenario.expected)) {
+            assert.equal(omission[key], value);
+        }
+        assert.equal(formatOmission(omission), scenario.message);
+    }
 });
 
 test('generation falls back to the runtime encounter ID when WCL has no journal ID', async () => {

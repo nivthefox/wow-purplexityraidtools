@@ -4,6 +4,13 @@ import { discoverCurrentTier } from './discovery.mjs';
 import { validateDatabase } from './schema.mjs';
 import { buildDifficulty, normalizeFight } from './timeline.mjs';
 
+const WOW_DIFFICULTY_NAMES = new Map([
+    [17, 'LFR'],
+    [14, 'Normal'],
+    [15, 'Heroic'],
+    [16, 'Mythic'],
+]);
+
 function candidateIdentity(candidate) {
     return `${candidate.report.code}\u0000${candidate.report.fightID}`;
 }
@@ -84,6 +91,28 @@ function generationFailure(message) {
     return error;
 }
 
+function difficultyContext(omission) {
+    const name = WOW_DIFFICULTY_NAMES.get(omission.wowDifficulty);
+    return `encounter ${omission.encounterID}, ${name} difficulty (WoW ${omission.wowDifficulty}, WCL ${omission.wclDifficulty})`;
+}
+
+export function formatOmission(omission) {
+    if (omission.reason === 'missing-boss-module') {
+        return `Boss timeline omitted encounter ${omission.encounterID} (journal ${omission.journalID}): neither boss mod has a matching module.`;
+    }
+    const context = difficultyContext(omission);
+    if (omission.reason === 'insufficient-candidates') {
+        return `Boss timeline omitted ${context}: found ${omission.candidateCount} page-one candidates; at least ${MINIMUM_SAMPLES} are required.`;
+    }
+    if (omission.reason === 'insufficient-valid-kills') {
+        return `Boss timeline omitted ${context}: validated ${omission.validKillCount} of ${omission.candidateCount} page-one candidates; at least ${MINIMUM_SAMPLES} valid kills are required.`;
+    }
+    if (omission.reason === 'no-qualifying-abilities') {
+        return `Boss timeline omitted ${context}: ${omission.validKillCount} valid kills produced no qualifying boss abilities.`;
+    }
+    throw generationFailure('Boss timeline omission reason is malformed');
+}
+
 function indexBossModulesByEncounterID(bossModules) {
     const byEncounterID = new Map();
     for (const modules of bossModules.values()) {
@@ -123,10 +152,14 @@ async function generateEncounter({
     modules,
     aliases,
     existingDatabase,
-    onUnsupported,
+    onOmission,
 }) {
     if (!modules || !modules.encounterID) {
-        onUnsupported();
+        onOmission({
+            encounterID: encounter.id,
+            journalID: encounter.journalID,
+            reason: 'missing-boss-module',
+        });
         return null;
     }
 
@@ -137,9 +170,17 @@ async function generateEncounter({
         const candidates = byDifficulty.get(wclDifficulty) ?? [];
         const previous = existingDifficulty(existingDatabase, encounterID, wowDifficulty);
         if (candidates.length < MINIMUM_SAMPLES) {
+            const omission = {
+                encounterID,
+                wclDifficulty,
+                wowDifficulty,
+                reason: 'insufficient-candidates',
+                candidateCount: candidates.length,
+            };
             if (previous) {
-                throw generationFailure('An existing encounter difficulty no longer has the minimum evidence');
+                throw generationFailure(`An existing encounter difficulty no longer has the minimum evidence. ${formatOmission(omission)}`);
             }
+            onOmission(omission);
             continue;
         }
         const kills = await selectEligibleKills(
@@ -151,16 +192,34 @@ async function generateEncounter({
             aliases,
         );
         if (kills.length < MINIMUM_SAMPLES) {
+            const omission = {
+                encounterID,
+                wclDifficulty,
+                wowDifficulty,
+                reason: 'insufficient-valid-kills',
+                candidateCount: candidates.length,
+                validKillCount: kills.length,
+            };
             if (previous) {
-                throw generationFailure('An existing encounter difficulty no longer has the minimum valid kills');
+                throw generationFailure(`An existing encounter difficulty no longer has the minimum valid kills. ${formatOmission(omission)}`);
             }
+            onOmission(omission);
             continue;
         }
         const difficulty = buildDifficulty(kills);
         if (!difficulty || !hasOccurrences(difficulty)) {
+            const omission = {
+                encounterID,
+                wclDifficulty,
+                wowDifficulty,
+                reason: 'no-qualifying-abilities',
+                candidateCount: candidates.length,
+                validKillCount: kills.length,
+            };
             if (previous) {
-                throw generationFailure('An existing encounter difficulty produced no qualifying abilities');
+                throw generationFailure(`An existing encounter difficulty produced no qualifying abilities. ${formatOmission(omission)}`);
             }
+            onOmission(omission);
             continue;
         }
         difficulties[wowDifficulty] = difficulty;
@@ -181,12 +240,12 @@ export async function generateDatabase({
     existingDatabase,
     buildTime,
     aliases = BOSS_TIMELINE_ALIASES,
-    onUnsupported = () => {},
+    onOmission = () => {},
 }) {
     validateDatabase(existingDatabase);
     validateAliases(aliases);
-    if (typeof onUnsupported !== 'function') {
-        throw generationFailure('Boss timeline unsupported-encounter reporter is malformed');
+    if (typeof onOmission !== 'function') {
+        throw generationFailure('Boss timeline omission reporter is malformed');
     }
     const activeZones = await discoverCurrentTier(client, buildTime);
     const modulesByEncounterID = indexBossModulesByEncounterID(bossModules);
@@ -203,7 +262,7 @@ export async function generateDatabase({
                 modules,
                 aliases,
                 existingDatabase,
-                onUnsupported,
+                onOmission,
             });
             if (!generated) {
                 continue;

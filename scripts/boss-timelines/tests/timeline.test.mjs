@@ -55,18 +55,14 @@ test('normalization is phase relative, repeats semantic phases, and assigns boun
         { fight: 2, timestamp: 61000, type: 'cast', abilityGameID: 7002 },
         { fight: 2, timestamp: 71000, type: 'begincast', abilityGameID: 7003 },
     ], 51000);
-    assert.equal(first.signature, JSON.stringify([
-        { id: 1, name: 'Opening', isIntermission: false },
-        { id: 2, name: 'Intermission', isIntermission: true },
-        { id: 1, name: 'Opening', isIntermission: false },
-    ]));
+    assert.equal(first.signature, JSON.stringify([1, 2, 1]));
     assert.deepEqual(first.phaseEvents, second.phaseEvents);
     assert.equal(first.phaseEvents[1][0].offset, 0);
 });
 
 test('invalid phase sequences and mismatched fights are excluded entirely', () => {
     const invalid = fight(1);
-    invalid.phaseTransitions = [{ id: 1, startTime: 1000 }];
+    invalid.phaseTransitions = [{ id: 1, startTime: 1001 }];
     assert.equal(normalizeFight({
         fight: invalid,
         phaseDefinitions: phaseDefinitions(),
@@ -133,13 +129,9 @@ test('fight evaluation identifies the normalization rule that rejected a fight',
             },
         },
         {
-            reason: 'invalid-phase-definitions',
-            phaseDefinitions: [],
-        },
-        {
             reason: 'invalid-phase-transitions',
             mutate: (value) => {
-                value.phaseTransitions = [{ id: 1, startTime: value.startTime }];
+                value.phaseTransitions = [{ id: 1, startTime: value.startTime + 1 }];
             },
         },
     ];
@@ -157,6 +149,46 @@ test('fight evaluation identifies the normalization rule that rejected a fight',
         });
         assert.deepEqual(evaluation, { rejectionReason: scenario.reason });
     }
+});
+
+test('missing phase definitions use transition IDs or a single-phase fallback', () => {
+    const multiPhase = evaluateFight({
+        fight: fight(1),
+        phaseDefinitions: [],
+        events: [],
+        encounterID: 5001,
+        difficulty: 5,
+        modules,
+        aliases,
+    }).normalizedFight;
+    assert.deepEqual(multiPhase.phases.map((phase) => ({
+        id: phase.id,
+        name: phase.name,
+        isIntermission: phase.isIntermission,
+    })), [
+        { id: 1, name: 'Phase 1', isIntermission: false },
+        { id: 2, name: 'Phase 2', isIntermission: false },
+        { id: 1, name: 'Phase 1', isIntermission: false },
+    ]);
+
+    const singlePhaseFight = fight(2);
+    singlePhaseFight.phaseTransitions = [];
+    const singlePhase = evaluateFight({
+        fight: singlePhaseFight,
+        phaseDefinitions: [],
+        events: [],
+        encounterID: 5001,
+        difficulty: 5,
+        modules,
+        aliases,
+    }).normalizedFight;
+    assert.deepEqual(singlePhase.phases, [{
+        id: 1,
+        name: 'Phase 1',
+        isIntermission: false,
+        startTime: 1000,
+        endTime: 31000,
+    }]);
 });
 
 test('occurrence indexes remain aligned across missing observations and exact half seconds round upward', () => {

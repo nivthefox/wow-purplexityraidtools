@@ -2,22 +2,28 @@ import { MAXIMUM_SAMPLES, MINIMUM_SAMPLES } from './constants.mjs';
 
 function phaseMetadataForEncounter(phaseDefinitions, encounterID) {
     const matches = phaseDefinitions.filter((entry) => entry.encounterID === encounterID);
-    if (matches.length !== 1 || matches[0].phases.length === 0) {
-        return null;
-    }
     const byID = new Map();
-    for (const phase of matches[0].phases) {
-        if (byID.has(phase.id)) {
-            return null;
+    for (const match of matches) {
+        for (const phase of match.phases) {
+            const existing = byID.get(phase.id);
+            if (!existing || phase.name.localeCompare(existing.name) < 0
+                || (phase.name === existing.name && existing.isIntermission && !phase.isIntermission)) {
+                byID.set(phase.id, phase);
+            }
         }
-        byID.set(phase.id, phase);
     }
     return byID;
 }
 
+function fallbackPhase(phaseID) {
+    return { id: phaseID, name: `Phase ${phaseID}`, isIntermission: false };
+}
+
 function createPhaseInstances(fight, phaseByID) {
-    if (phaseByID.size === 1 && fight.phaseTransitions.length === 0) {
-        const phase = phaseByID.values().next().value;
+    if (fight.phaseTransitions.length === 0) {
+        const phase = phaseByID.size === 1
+            ? phaseByID.values().next().value
+            : fallbackPhase(1);
         return [{ ...phase, startTime: fight.startTime, endTime: fight.endTime }];
     }
 
@@ -25,33 +31,27 @@ function createPhaseInstances(fight, phaseByID) {
     if (transitions.length === 0 || transitions[0].startTime !== fight.startTime) {
         return null;
     }
-    const seen = new Set();
     const phases = [];
     for (let index = 0; index < transitions.length; index += 1) {
         const transition = transitions[index];
-        const metadata = phaseByID.get(transition.id);
-        if (!metadata || (index > 0 && transition.startTime <= transitions[index - 1].startTime)) {
+        const metadata = phaseByID.get(transition.id) ?? fallbackPhase(transition.id);
+        if (index > 0 && transition.startTime <= transitions[index - 1].startTime) {
             return null;
         }
-        seen.add(transition.id);
         phases.push({
             ...metadata,
             startTime: transition.startTime,
             endTime: transitions[index + 1]?.startTime ?? fight.endTime,
         });
     }
-    if (seen.size !== phaseByID.size || phases.at(-1).endTime > fight.endTime) {
+    if (phases.at(-1).endTime > fight.endTime) {
         return null;
     }
     return phases;
 }
 
 function phaseSignature(phases) {
-    return JSON.stringify(phases.map((phase) => ({
-        id: phase.id,
-        name: phase.name,
-        isIntermission: phase.isIntermission,
-    })));
+    return JSON.stringify(phases.map((phase) => phase.id));
 }
 
 function eventIdentity(event) {
@@ -140,9 +140,6 @@ export function evaluateFight({ fight, phaseDefinitions, events, encounterID, di
         return { rejectionReason: 'difficulty-mismatch' };
     }
     const phaseByID = phaseMetadataForEncounter(phaseDefinitions, encounterID);
-    if (!phaseByID) {
-        return { rejectionReason: 'invalid-phase-definitions' };
-    }
     const phases = createPhaseInstances(fight, phaseByID);
     if (!phases) {
         return { rejectionReason: 'invalid-phase-transitions' };

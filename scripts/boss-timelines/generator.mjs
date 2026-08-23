@@ -16,7 +16,6 @@ const REJECTION_LABELS = new Map([
     ['not-a-kill', 'not marked as a kill'],
     ['encounter-mismatch', 'encounter mismatch'],
     ['difficulty-mismatch', 'difficulty mismatch'],
-    ['invalid-phase-definitions', 'invalid phase definitions'],
     ['invalid-phase-transitions', 'invalid phase transitions'],
     ['inconsistent-phase-sequence', 'inconsistent phase sequence'],
 ]);

@@ -232,9 +232,13 @@ test('invalid kill diagnostics account for every candidate by rejection rule', a
             report.phaseDefinitions = [];
         } else if (index === 6) {
             report.phaseDefinitions[0].phases.push({ id: 2, name: 'Two', isIntermission: false });
-            report.fights[0].phaseTransitions = [{ id: 1, startTime: 0 }];
+            report.fights[0].phaseTransitions = [{ id: 1, startTime: 1 }];
         } else if (index === 7) {
-            report.phaseDefinitions[0].phases[0].name = 'Different';
+            report.phaseDefinitions[0].phases.push({ id: 2, name: 'Two', isIntermission: false });
+            report.fights[0].phaseTransitions = [
+                { id: 1, startTime: 0 },
+                { id: 2, startTime: 30000 },
+            ];
         }
         return report;
     };
@@ -247,20 +251,42 @@ test('invalid kill diagnostics account for every candidate by rejection rule', a
         onOmission: (omission) => omissions.push(omission),
     });
     const omission = omissions.find((value) => value.wowDifficulty === 16);
-    assert.equal(omission.validKillCount, 1);
+    assert.equal(omission.validKillCount, 2);
     assert.deepEqual(omission.rejectionCounts, {
         'missing-timeline-fight': 1,
         'not-a-kill': 1,
         'encounter-mismatch': 1,
         'difficulty-mismatch': 1,
-        'invalid-phase-definitions': 1,
         'invalid-phase-transitions': 1,
         'inconsistent-phase-sequence': 1,
     });
     assert.equal(
         formatOmission(omission),
-        'Boss timeline omitted encounter 5001, Mythic difficulty (WoW 16, WCL 5): validated 1 of 8 page-one candidates; at least 3 valid kills are required. Rejections: missing from timeline response=1, not marked as a kill=1, encounter mismatch=1, difficulty mismatch=1, invalid phase definitions=1, invalid phase transitions=1, inconsistent phase sequence=1.',
+        'Boss timeline omitted encounter 5001, Mythic difficulty (WoW 16, WCL 5): validated 2 of 8 page-one candidates; at least 3 valid kills are required. Rejections: missing from timeline response=1, not marked as a kill=1, encounter mismatch=1, difficulty mismatch=1, invalid phase transitions=1, inconsistent phase sequence=1.',
     );
+});
+
+test('missing phase definitions never prevent otherwise valid fights from generating', async () => {
+    const rankings = [candidate(0), candidate(1), candidate(2)];
+    const client = createClient({ rankingsByDifficulty: new Map([[5, rankings]]) });
+    const timelineFights = client.timelineFights;
+    client.timelineFights = async (...argumentsList) => {
+        const report = await timelineFights(...argumentsList);
+        report.phaseDefinitions = [];
+        return report;
+    };
+    const result = await generateDatabase({
+        client,
+        bossModules: modules(),
+        existingDatabase: emptyDatabase(),
+        buildTime: 100000000,
+    });
+    assert.deepEqual(result.encounters[5001].difficulties[16].phases[0], {
+        phaseID: 1,
+        name: 'Phase 1',
+        isIntermission: false,
+        occurrences: [{ spellID: 7001, time: 13, observations: 3 }],
+    });
 });
 
 test('generation falls back to the runtime encounter ID when WCL has no journal ID', async () => {

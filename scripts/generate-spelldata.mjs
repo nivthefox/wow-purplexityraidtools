@@ -2,16 +2,16 @@ import { writeFile } from 'node:fs/promises';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { fetchSimcData } from './lib/fetch-simc.mjs';
-import { parseSpecializationData } from './lib/parse-specialization-data.mjs';
-import { parseSpellData, parseFieldLayout } from './lib/parse-spell-data.mjs';
-import { parseClassSpells } from './lib/parse-class-spells.mjs';
-import { parseSpecializationSpells } from './lib/parse-specialization-spells.mjs';
-import { parseTraitData } from './lib/parse-trait-data.mjs';
-import { buildSpecAbilities } from './lib/build-spec-abilities.mjs';
-import { extractModifiers } from './lib/extract-modifiers.mjs';
-import { generateLua } from './lib/generate-lua.mjs';
-import { validate } from './lib/validate.mjs';
+import { fetchSimcData } from './spell-data/fetch-simc.mjs';
+import { parseSpecializationData } from './spell-data/parse-specialization-data.mjs';
+import { parseSpellData, parseFieldLayout } from './spell-data/parse-spell-data.mjs';
+import { parseClassSpells } from './spell-data/parse-class-spells.mjs';
+import { parseSpecializationSpells } from './spell-data/parse-specialization-spells.mjs';
+import { parseTraitData } from './spell-data/parse-trait-data.mjs';
+import { buildSpecAbilities } from './spell-data/build-spec-abilities.mjs';
+import { extractModifiers } from './spell-data/extract-modifiers.mjs';
+import { generateLua } from './spell-data/generate-lua.mjs';
+import { validate } from './spell-data/validate.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const OUTPUT_PATH = resolve(__dirname, '..', 'SpellData.lua');

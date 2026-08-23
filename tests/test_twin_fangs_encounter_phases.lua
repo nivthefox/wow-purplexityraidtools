@@ -3,6 +3,7 @@ local PRT = PurplexityRaidTools
 
 PRT.BossTimelineDatabase = {
     encounters = {
+        [3379] = { difficulties = {} },
         [3420] = { difficulties = {} },
         [3421] = {
             difficulties = {

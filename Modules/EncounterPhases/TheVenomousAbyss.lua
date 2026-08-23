@@ -1,5 +1,20 @@
 local EncounterPhases = PurplexityRaidTools.EncounterPhases
 
+local NYMRISSA_PHASES = {
+    { id = 1, name = "Nymrissa Wavecaller" },
+}
+
+local function GetNymrissaPhases()
+    return NYMRISSA_PHASES
+end
+
+local function BeginNymrissaPhase()
+    return {}
+end
+
+local function IdentifyNymrissaPhase()
+end
+
 local SSZORAK_PHASES = {
     { id = 1, name = "Sszorak" },
 }
@@ -331,6 +346,12 @@ end
 local function IdentifyLostExplorersPhase()
 end
 
+EncounterPhases:Register(3379, {
+    events = {},
+    GetPhases = GetNymrissaPhases,
+    Begin = BeginNymrissaPhase,
+    Observe = IdentifyNymrissaPhase,
+})
 EncounterPhases:Register(3420, {
     events = {},
     GetPhases = GetSszorakPhases,

@@ -2,7 +2,7 @@ local tests = {}
 local PRT = PurplexityRaidTools
 
 dofile("Modules/EncounterPhases/Registry.lua")
-PRT.BossTimelineDatabase = { encounters = { [3420] = {}, [3421] = {}, [3429] = {}, [3445] = {}, [3455] = {}, [3470] = {}, [3492] = {}, [3497] = {} } }
+PRT.BossTimelineDatabase = { encounters = { [3379] = {}, [3420] = {}, [3421] = {}, [3429] = {}, [3445] = {}, [3455] = {}, [3470] = {}, [3492] = {}, [3497] = {} } }
 dofile("Modules/EncounterPhases/TheVenomousAbyss.lua")
 
 local EncounterPhases = PRT.EncounterPhases
@@ -32,6 +32,14 @@ tests["The Coiled Altar has a completed four-phase definition"] = function()
         { id = 2, name = "Stage Two: Usurper's Reprisal" },
         { id = 3, name = "Intermission: The Claimed Vessel" },
         { id = 4, name = "Stage Three: Coiled Union" },
+    })
+end
+
+tests["Nymrissa has a completed one-phase definition"] = function()
+    assertNil(EncounterPhases:GetDraftPhaseIdentifier(3379))
+    assertNotNil(EncounterPhases:GetDefinition(3379))
+    assertTableEquals(EncounterPhases:GetPhases(3379, 16), {
+        { id = 1, name = "Nymrissa Wavecaller" },
     })
 end
 

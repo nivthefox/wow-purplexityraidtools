@@ -3,7 +3,22 @@ local PRT = PurplexityRaidTools
 
 PRT.BossTimelineDatabase = {
     encounters = {
-        [3379] = { difficulties = {} },
+        [3379] = {
+            difficulties = {
+                [16] = {
+                    phases = {
+                        {
+                            phaseID = 1,
+                            name = "Nymrissa Wavecaller",
+                            isIntermission = false,
+                            occurrences = {
+                                { spellID = 1260837, time = 11, observations = 3 },
+                            },
+                        },
+                    },
+                },
+            },
+        },
         [3420] = { difficulties = {} },
         [3421] = { difficulties = {} },
         [3429] = { difficulties = {} },
@@ -11,22 +26,7 @@ PRT.BossTimelineDatabase = {
         [3455] = { difficulties = {} },
         [3470] = { difficulties = {} },
         [3492] = { difficulties = {} },
-        [3497] = {
-            difficulties = {
-                [16] = {
-                    phases = {
-                        {
-                            phaseID = 1,
-                            name = "The Lost Explorers",
-                            isIntermission = false,
-                            occurrences = {
-                                { spellID = 1290711, time = 35, observations = 3 },
-                            },
-                        },
-                    },
-                },
-            },
-        },
+        [3497] = { difficulties = {} },
     },
 }
 dofile("Modules/EncounterPhases/Registry.lua")
@@ -35,9 +35,9 @@ dofile("Modules/EncounterPhases/Planning.lua")
 dofile("Modules/EncounterPhases/TheVenomousAbyss.lua")
 
 local EncounterPhases = PRT.EncounterPhases
-local encounterID = 3497
+local encounterID = 3379
 local expectedPhases = {
-    { id = 1, name = "The Lost Explorers" },
+    { id = 1, name = "Nymrissa Wavecaller" },
 }
 
 local function harness()
@@ -52,14 +52,12 @@ local function harness()
         now = function()
             return 100
         end,
-        schedule = function()
-        end,
     })
     assertNotNil(attempt, err)
     return attempt, activations
 end
 
-tests["The Lost Explorers exposes one stable phase for every raid difficulty"] = function()
+tests["Nymrissa exposes one stable phase for every raid difficulty"] = function()
     for _, difficultyID in ipairs({ 17, 14, 15, 16 }) do
         assertTableEquals(EncounterPhases:GetPhases(encounterID, difficultyID), expectedPhases)
     end
@@ -67,27 +65,27 @@ tests["The Lost Explorers exposes one stable phase for every raid difficulty"] =
     assertTrue(EncounterPhases:ValidateCompatibility(compatibility, {}))
 end
 
-tests["The Lost Explorers declares no runtime transition observations"] = function()
+tests["Nymrissa declares no runtime transition observations"] = function()
     local attempt, activations = harness()
     assertTableEquals(EncounterPhases:GetAttemptEvents(attempt), {})
-    assertFalse(EncounterPhases:ObserveAttempt(attempt, "UNIT_POWER_UPDATE", "boss1"))
+    assertFalse(EncounterPhases:ObserveAttempt(attempt, "ENCOUNTER_TIMELINE_EVENT_ADDED", {}))
     assertEquals(attempt.activePhase, 1)
     assertEquals(#activations, 0)
 end
 
-tests["The Lost Explorers planning preserves canonical stored occurrences"] = function()
+tests["Nymrissa planning preserves canonical stored occurrences"] = function()
     local model = EncounterPhases:GetPlanningModel(encounterID, 16)
     assertTableEquals(model, {
         encounterID = encounterID,
         difficultyID = 16,
         phases = expectedPhases,
         occurrences = {
-            { phase = 1, time = 35, spellID = 1290711 },
+            { phase = 1, time = 11, spellID = 1260837 },
         },
     })
 end
 
-tests["The Lost Explorers returns empty planning occurrences without stored difficulty data"] = function()
+tests["Nymrissa returns empty planning occurrences without stored difficulty data"] = function()
     for _, difficultyID in ipairs({ 17, 14, 15 }) do
         local model = EncounterPhases:GetPlanningModel(encounterID, difficultyID)
         assertTableEquals(model.phases, expectedPhases)

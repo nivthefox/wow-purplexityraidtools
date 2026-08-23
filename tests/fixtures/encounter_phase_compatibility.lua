@@ -1,4 +1,18 @@
 return {
+    [3379] = {
+        [17] = {
+            { id = 1, name = "Nymrissa Wavecaller" },
+        },
+        [14] = {
+            { id = 1, name = "Nymrissa Wavecaller" },
+        },
+        [15] = {
+            { id = 1, name = "Nymrissa Wavecaller" },
+        },
+        [16] = {
+            { id = 1, name = "Nymrissa Wavecaller" },
+        },
+    },
     [3420] = {
         [17] = {
             { id = 1, name = "Sszorak" },

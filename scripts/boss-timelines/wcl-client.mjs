@@ -1,6 +1,6 @@
 import { REQUEST_INTERVAL_MS } from './constants.mjs';
 
-import { CANDIDATE_QUERY_WINDOW_MS } from './constants.mjs';
+import { CANDIDATE_QUERY_PAGE_LIMIT, CANDIDATE_QUERY_WINDOW_MS } from './constants.mjs';
 
 export const DISCOVER_ZONES_QUERY = `query DiscoverZones {
   worldData {
@@ -342,38 +342,65 @@ export class WarcraftLogsClient {
         return validateZonesResponse(await this.graphql(DISCOVER_ZONES_QUERY, {}));
     }
 
+    async candidateKillsInWindow(encounterID, difficulty, startTime, endTime) {
+        const rankings = [];
+        for (let page = 1; page <= CANDIDATE_QUERY_PAGE_LIMIT; page += 1) {
+            const variables = {
+                encounterID,
+                difficulty,
+                region: 'US',
+                dateFilter: `date.${startTime}.${endTime}`,
+                page,
+            };
+            let result;
+            try {
+                result = validateCandidateResponse(await this.graphql(CANDIDATE_KILLS_QUERY, variables));
+                if (result.page !== page) {
+                    contractError('candidate rankings', 'unexpected page number');
+                }
+            } catch (error) {
+                throw new Error(
+                    `Warcraft Logs candidate rankings failed for encounter ${encounterID}, difficulty ${difficulty}, page ${page}: ${error.message}`,
+                );
+            }
+            rankings.push(...result.rankings);
+            if (!result.hasMorePages) {
+                return rankings;
+            }
+        }
+        return null;
+    }
+
     async candidateKills(encounterID, difficulty, startTime, endTime) {
         const rankings = [];
-        let windowStartTime = startTime;
-        while (windowStartTime < endTime) {
+        const windows = [];
+        for (let windowStartTime = startTime; windowStartTime < endTime;) {
             const windowEndTime = Math.min(windowStartTime + CANDIDATE_QUERY_WINDOW_MS, endTime);
-            let page = 1;
-            while (true) {
-                const variables = {
-                    encounterID,
-                    difficulty,
-                    region: 'US',
-                    dateFilter: `date.${windowStartTime}.${windowEndTime}`,
-                    page,
-                };
-                let result;
-                try {
-                    result = validateCandidateResponse(await this.graphql(CANDIDATE_KILLS_QUERY, variables));
-                    if (result.page !== page) {
-                        contractError('candidate rankings', 'unexpected page number');
-                    }
-                } catch (error) {
-                    throw new Error(
-                        `Warcraft Logs candidate rankings failed for encounter ${encounterID}, difficulty ${difficulty}, page ${page}: ${error.message}`,
-                    );
-                }
-                rankings.push(...result.rankings);
-                if (!result.hasMorePages) {
-                    break;
-                }
-                page += 1;
-            }
+            windows.push({ startTime: windowStartTime, endTime: windowEndTime });
             windowStartTime = windowEndTime;
+        }
+        while (windows.length > 0) {
+            const window = windows.shift();
+            const windowRankings = await this.candidateKillsInWindow(
+                encounterID,
+                difficulty,
+                window.startTime,
+                window.endTime,
+            );
+            if (windowRankings !== null) {
+                rankings.push(...windowRankings);
+                continue;
+            }
+            const midpoint = Math.floor((window.startTime + window.endTime) / 2);
+            if (midpoint <= window.startTime || midpoint >= window.endTime) {
+                throw new Error(
+                    `Warcraft Logs candidate rankings exceeded ${CANDIDATE_QUERY_PAGE_LIMIT} pages for encounter ${encounterID}, difficulty ${difficulty}`,
+                );
+            }
+            windows.unshift(
+                { startTime: window.startTime, endTime: midpoint },
+                { startTime: midpoint, endTime: window.endTime },
+            );
         }
         return rankings;
     }

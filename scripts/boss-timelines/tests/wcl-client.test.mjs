@@ -174,6 +174,48 @@ test('candidate queries split long sampling periods into adjacent daily windows'
     ]);
 });
 
+test('candidate queries bisect windows that exceed twenty pages without requesting page twenty-one', async () => {
+    const requests = [];
+    const client = new WarcraftLogsClient({
+        clientID: 'client',
+        clientSecret: 'secret',
+        gate: { run: (request) => request() },
+        fetchImpl: async (url, options) => {
+            if (url.includes('/oauth/')) {
+                return response({ access_token: 'ephemeral' });
+            }
+            const variables = JSON.parse(options.body).variables;
+            requests.push(variables);
+            const oversized = variables.dateFilter === 'date.100.86400100';
+            return response({
+                data: {
+                    worldData: {
+                        encounter: {
+                            fightRankings: {
+                                page: variables.page,
+                                hasMorePages: oversized,
+                                rankings: oversized ? [] : [{
+                                    duration: 5000,
+                                    startTime: 1000,
+                                    report: { code: runtimeCode(), fightID: requests.length },
+                                }],
+                            },
+                        },
+                    },
+                },
+            });
+        },
+    });
+    const rankings = await client.candidateKills(10, 5, 100, 86400100);
+    assert.equal(requests.length, 22);
+    assert.equal(requests.some((request) => request.page === 21), false);
+    assert.deepEqual(requests.slice(-2).map((request) => request.dateFilter), [
+        'date.100.43200100',
+        'date.43200100.86400100',
+    ]);
+    assert.equal(rankings.length, 2);
+});
+
 test('timeline requests group fights, tolerates metadata reordering, and paginates events from zero', async () => {
     const starts = [];
     const reportBody = (nextPageTimestamp, eventStartTime, reverse = false) => ({

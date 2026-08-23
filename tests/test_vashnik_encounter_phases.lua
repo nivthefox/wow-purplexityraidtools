@@ -24,6 +24,7 @@ PRT.BossTimelineDatabase = {
             },
         },
         [3470] = { difficulties = {} },
+        [3492] = { difficulties = {} },
         [3497] = { difficulties = {} },
     },
 }

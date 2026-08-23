@@ -2,7 +2,7 @@ local tests = {}
 local PRT = PurplexityRaidTools
 
 dofile("Modules/EncounterPhases/Registry.lua")
-PRT.BossTimelineDatabase = { encounters = { [3420] = {}, [3421] = {}, [3429] = {}, [3445] = {}, [3455] = {}, [3470] = {}, [3497] = {} } }
+PRT.BossTimelineDatabase = { encounters = { [3420] = {}, [3421] = {}, [3429] = {}, [3445] = {}, [3455] = {}, [3470] = {}, [3492] = {}, [3497] = {} } }
 dofile("Modules/EncounterPhases/TheVenomousAbyss.lua")
 
 local EncounterPhases = PRT.EncounterPhases
@@ -24,16 +24,6 @@ local function definition(getPhases)
     }
 end
 
-tests["each unfinished Venomous Abyss encounter has an inert phase-identification draft"] = function()
-    local encounterIDs = { 3492 }
-    for _, encounterID in ipairs(encounterIDs) do
-        local identify = EncounterPhases:GetDraftPhaseIdentifier(encounterID)
-        assertEquals(type(identify), "function")
-        assertNil(identify({}, "ANY_EVENT"))
-        assertNil(EncounterPhases:GetDefinition(encounterID))
-    end
-end
-
 tests["The Coiled Altar has a completed four-phase definition"] = function()
     assertNil(EncounterPhases:GetDraftPhaseIdentifier(3429))
     assertNotNil(EncounterPhases:GetDefinition(3429))
@@ -42,6 +32,17 @@ tests["The Coiled Altar has a completed four-phase definition"] = function()
         { id = 2, name = "Stage Two: Usurper's Reprisal" },
         { id = 3, name = "Intermission: The Claimed Vessel" },
         { id = 4, name = "Stage Three: Coiled Union" },
+    })
+end
+
+tests["Ula'tek has a completed four-phase definition"] = function()
+    assertNil(EncounterPhases:GetDraftPhaseIdentifier(3492))
+    assertNotNil(EncounterPhases:GetDefinition(3492))
+    assertTableEquals(EncounterPhases:GetPhases(3492, 16), {
+        { id = 1, name = "Stage One: Fury of the Serpent Mother" },
+        { id = 2, name = "Stage Two: Children of the Doomscale" },
+        { id = 3, name = "Intermission: The Shattering" },
+        { id = 4, name = "Stage Three: Ula'tek's Ascension" },
     })
 end
 

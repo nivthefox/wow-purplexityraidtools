@@ -103,6 +103,32 @@ return {
             { id = 3, name = "Stage Two: Uncoiling" },
         },
     },
+    [3492] = {
+        [17] = {
+            { id = 1, name = "Stage One: Fury of the Serpent Mother" },
+            { id = 2, name = "Stage Two: Children of the Doomscale" },
+            { id = 3, name = "Intermission: The Shattering" },
+            { id = 4, name = "Stage Three: Ula'tek's Ascension" },
+        },
+        [14] = {
+            { id = 1, name = "Stage One: Fury of the Serpent Mother" },
+            { id = 2, name = "Stage Two: Children of the Doomscale" },
+            { id = 3, name = "Intermission: The Shattering" },
+            { id = 4, name = "Stage Three: Ula'tek's Ascension" },
+        },
+        [15] = {
+            { id = 1, name = "Stage One: Fury of the Serpent Mother" },
+            { id = 2, name = "Stage Two: Children of the Doomscale" },
+            { id = 3, name = "Intermission: The Shattering" },
+            { id = 4, name = "Stage Three: Ula'tek's Ascension" },
+        },
+        [16] = {
+            { id = 1, name = "Stage One: Fury of the Serpent Mother" },
+            { id = 2, name = "Stage Two: Children of the Doomscale" },
+            { id = 3, name = "Intermission: The Shattering" },
+            { id = 4, name = "Stage Three: Ula'tek's Ascension" },
+        },
+    },
     [3497] = {
         [17] = {
             { id = 1, name = "The Lost Explorers" },

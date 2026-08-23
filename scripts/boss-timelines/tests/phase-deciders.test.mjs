@@ -163,6 +163,82 @@ test('The Coiled Altar rejects kills without the complete ordered transition seq
     ]), null);
 });
 
+test("Ula'tek uses Hatching Doom, the second boss Call of the Serpent, and a 53-second intermission", () => {
+    const value = fight(3492, 5000, 450000);
+    value.enemyNPCs = [
+        { id: 90, gameID: 257758 },
+        { id: 91, gameID: 259555 },
+    ];
+    const events = [
+        { fight: 10, timestamp: 315000, type: 'begincast', abilityGameID: 1304012, sourceID: 90 },
+        { fight: 10, timestamp: 165002, type: 'begincast', abilityGameID: 1306862, sourceID: 0 },
+        { fight: 10, timestamp: 67000, type: 'begincast', abilityGameID: 1304012, sourceID: 90 },
+        { fight: 10, timestamp: 165000, type: 'begincast', abilityGameID: 1306862, sourceID: 0 },
+        { fight: 11, timestamp: 60000, type: 'begincast', abilityGameID: 1304012, sourceID: 90 },
+        { fight: 10, timestamp: 200000, type: 'begincast', abilityGameID: 1304012, sourceID: 91 },
+    ];
+    assert.deepEqual(decide(3492, value, events), [
+        {
+            id: 1,
+            name: 'Stage One: Fury of the Serpent Mother',
+            isIntermission: false,
+            startTime: 5000,
+            endTime: 165000,
+        },
+        {
+            id: 2,
+            name: 'Stage Two: Children of the Doomscale',
+            isIntermission: false,
+            startTime: 165000,
+            endTime: 315000,
+        },
+        {
+            id: 3,
+            name: 'Intermission: The Shattering',
+            isIntermission: true,
+            startTime: 315000,
+            endTime: 368000,
+        },
+        {
+            id: 4,
+            name: "Stage Three: Ula'tek's Ascension",
+            isIntermission: false,
+            startTime: 368000,
+            endTime: 450000,
+        },
+    ]);
+});
+
+test("Ula'tek rejects kills without the complete ordered Normal transition evidence", () => {
+    const value = fight(3492, 5000, 350000);
+    value.enemyNPCs = [{ id: 90, gameID: 257758 }];
+    const hatchingDoom = {
+        fight: 10,
+        timestamp: 165000,
+        type: 'begincast',
+        abilityGameID: 1306862,
+        sourceID: 0,
+    };
+    const firstCall = {
+        fight: 10,
+        timestamp: 67000,
+        type: 'begincast',
+        abilityGameID: 1304012,
+        sourceID: 90,
+    };
+    assert.equal(decide(3492, value, [hatchingDoom, firstCall]), null);
+    assert.equal(decide(3492, value, [
+        hatchingDoom,
+        firstCall,
+        { ...firstCall, timestamp: 315000 },
+    ]), null);
+    assert.equal(decide(3492, value, [
+        { ...hatchingDoom, type: 'cast' },
+        firstCall,
+        { ...firstCall, timestamp: 250000 },
+    ]), null);
+});
+
 test('shared validation rejects gaps and out-of-fight boundaries', () => {
     const value = fight(9001);
     assert.throws(() => decidePhases({

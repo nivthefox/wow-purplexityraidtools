@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- The Notes editor now shows boss ability timelines alongside assignments.
+
+### Changed
+
+- Notes now use encounter-specific phases for supported fights.
+
 ## [1.2.2] - 2026-08-18
 
 ### Added

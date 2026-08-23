@@ -13,6 +13,20 @@ return {
             { id = 1, name = "Entombed Sentinels" },
         },
     },
+    [3455] = {
+        [17] = {
+            { id = 1, name = "Vashnik the Malignant" },
+        },
+        [14] = {
+            { id = 1, name = "Vashnik the Malignant" },
+        },
+        [15] = {
+            { id = 1, name = "Vashnik the Malignant" },
+        },
+        [16] = {
+            { id = 1, name = "Vashnik the Malignant" },
+        },
+    },
     [3470] = {
         [17] = {
             { id = 1, name = "Stage One: Soulcoiler Initiation" },

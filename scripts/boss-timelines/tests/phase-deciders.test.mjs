@@ -24,8 +24,13 @@ function decide(encounterID, value, events = []) {
     });
 }
 
-test('Entombed Sentinels and The Lost Explorers always span one canonical phase', () => {
-    for (const [encounterID, name] of [[3445, 'Entombed Sentinels'], [3497, 'The Lost Explorers']]) {
+test('approved one-phase encounters always span one canonical phase', () => {
+    const encounters = [
+        [3445, 'Entombed Sentinels'],
+        [3455, 'Vashnik the Malignant'],
+        [3497, 'The Lost Explorers'],
+    ];
+    for (const [encounterID, name] of encounters) {
         const value = fight(encounterID);
         value.phaseTransitions = [
             { id: 1, startTime: 1000 },

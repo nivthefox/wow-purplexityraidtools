@@ -2,7 +2,7 @@ local tests = {}
 local PRT = PurplexityRaidTools
 
 dofile("Modules/EncounterPhases/Registry.lua")
-PRT.BossTimelineDatabase = { encounters = { [3445] = {}, [3470] = {} } }
+PRT.BossTimelineDatabase = { encounters = { [3445] = {}, [3455] = {}, [3470] = {} } }
 dofile("Modules/EncounterPhases/TheVenomousAbyss.lua")
 
 local EncounterPhases = PRT.EncounterPhases
@@ -39,6 +39,14 @@ tests["Entombed Sentinels has a completed one-phase definition"] = function()
     assertNotNil(EncounterPhases:GetDefinition(3445))
     assertTableEquals(EncounterPhases:GetPhases(3445, 16), {
         { id = 1, name = "Entombed Sentinels" },
+    })
+end
+
+tests["Vashnik has a completed one-phase definition"] = function()
+    assertNil(EncounterPhases:GetDraftPhaseIdentifier(3455))
+    assertNotNil(EncounterPhases:GetDefinition(3455))
+    assertTableEquals(EncounterPhases:GetPhases(3455, 16), {
+        { id = 1, name = "Vashnik the Malignant" },
     })
 end
 

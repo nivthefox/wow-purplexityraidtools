@@ -21,6 +21,21 @@ end
 local function IdentifyEntombedSentinelsPhase()
 end
 
+local VASHNIK_PHASES = {
+    { id = 1, name = "Vashnik the Malignant" },
+}
+
+local function GetVashnikPhases()
+    return VASHNIK_PHASES
+end
+
+local function BeginVashnikPhase()
+    return {}
+end
+
+local function IdentifyVashnikPhase()
+end
+
 local NEKZALI_PHASES = {
     { id = 1, name = "Stage One: Soulcoiler Initiation" },
     { id = 2, name = "Intermission: Ritual of Awakening" },
@@ -99,6 +114,12 @@ EncounterPhases:Register(3445, {
     GetPhases = GetEntombedSentinelsPhases,
     Begin = BeginEntombedSentinelsPhase,
     Observe = IdentifyEntombedSentinelsPhase,
+})
+EncounterPhases:Register(3455, {
+    events = {},
+    GetPhases = GetVashnikPhases,
+    Begin = BeginVashnikPhase,
+    Observe = IdentifyVashnikPhase,
 })
 EncounterPhases:Register(3470, {
     events = {

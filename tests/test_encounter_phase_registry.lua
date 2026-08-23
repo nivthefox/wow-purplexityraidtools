@@ -2,7 +2,7 @@ local tests = {}
 local PRT = PurplexityRaidTools
 
 dofile("Modules/EncounterPhases/Registry.lua")
-PRT.BossTimelineDatabase = { encounters = { [3420] = {}, [3421] = {}, [3445] = {}, [3455] = {}, [3470] = {}, [3497] = {} } }
+PRT.BossTimelineDatabase = { encounters = { [3420] = {}, [3421] = {}, [3429] = {}, [3445] = {}, [3455] = {}, [3470] = {}, [3497] = {} } }
 dofile("Modules/EncounterPhases/TheVenomousAbyss.lua")
 
 local EncounterPhases = PRT.EncounterPhases
@@ -25,13 +25,24 @@ local function definition(getPhases)
 end
 
 tests["each unfinished Venomous Abyss encounter has an inert phase-identification draft"] = function()
-    local encounterIDs = { 3429, 3492 }
+    local encounterIDs = { 3492 }
     for _, encounterID in ipairs(encounterIDs) do
         local identify = EncounterPhases:GetDraftPhaseIdentifier(encounterID)
         assertEquals(type(identify), "function")
         assertNil(identify({}, "ANY_EVENT"))
         assertNil(EncounterPhases:GetDefinition(encounterID))
     end
+end
+
+tests["The Coiled Altar has a completed four-phase definition"] = function()
+    assertNil(EncounterPhases:GetDraftPhaseIdentifier(3429))
+    assertNotNil(EncounterPhases:GetDefinition(3429))
+    assertTableEquals(EncounterPhases:GetPhases(3429, 16), {
+        { id = 1, name = "Stage One: Serpent's Bargain" },
+        { id = 2, name = "Stage Two: Usurper's Reprisal" },
+        { id = 3, name = "Intermission: The Claimed Vessel" },
+        { id = 4, name = "Stage Three: Coiled Union" },
+    })
 end
 
 tests["Entombed Sentinels has a completed one-phase definition"] = function()
@@ -98,6 +109,17 @@ tests["registration accepts a complete definition for all raid difficulties"] = 
     assertNil(err)
     assertEquals(EncounterPhases:GetDefinition(9102), candidate)
     assertTableEquals(EncounterPhases:GetPhases(9102, 16), fixture.phases)
+end
+
+tests["registration accepts only narrow boss unit event declarations"] = function()
+    PRT.BossTimelineDatabase = { encounters = { [9107] = {}, [9108] = {} } }
+    local candidate = definition()
+    candidate.events = { { event = "UNIT_SPELLCAST_CHANNEL_STOP", unit = "boss2" } }
+    assertTrue(EncounterPhases:Register(9107, candidate))
+
+    local invalid = definition()
+    invalid.events = { { event = "UNIT_SPELLCAST_CHANNEL_STOP", unit = "player" } }
+    assertFalse(EncounterPhases:Register(9108, invalid))
 end
 
 tests["registration rejects the obsolete WCL projection field"] = function()

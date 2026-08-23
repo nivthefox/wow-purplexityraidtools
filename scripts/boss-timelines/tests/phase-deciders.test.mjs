@@ -105,6 +105,64 @@ test('Nekzali rejects kills without both ordered boss transition casts', () => {
     ]), null);
 });
 
+test('The Coiled Altar uses Zuljan death and Ghastly Regeneration buff boundaries', () => {
+    const value = fight(3429, 5000, 65000);
+    value.enemyNPCs = [
+        { id: 80, gameID: 257911 },
+        { id: 81, gameID: 259854 },
+    ];
+    const events = [
+        { fight: 10, timestamp: 50000, type: 'removebuff', abilityGameID: 1304033, sourceID: 80 },
+        { fight: 10, timestamp: 15000, type: 'death', abilityGameID: 1, sourceID: 90, targetID: 99 },
+        { fight: 10, timestamp: 35000, type: 'applybuff', abilityGameID: 1304033, sourceID: 80 },
+        { fight: 11, timestamp: 14000, type: 'death', abilityGameID: 1, sourceID: 90, targetID: 80 },
+        { fight: 10, timestamp: 20000, type: 'death', abilityGameID: 1, sourceID: 90, targetID: 80 },
+    ];
+    assert.deepEqual(decide(3429, value, events), [
+        {
+            id: 1,
+            name: "Stage One: Serpent's Bargain",
+            isIntermission: false,
+            startTime: 5000,
+            endTime: 20000,
+        },
+        {
+            id: 2,
+            name: "Stage Two: Usurper's Reprisal",
+            isIntermission: false,
+            startTime: 20000,
+            endTime: 35000,
+        },
+        {
+            id: 3,
+            name: 'Intermission: The Claimed Vessel',
+            isIntermission: true,
+            startTime: 35000,
+            endTime: 50000,
+        },
+        {
+            id: 4,
+            name: 'Stage Three: Coiled Union',
+            isIntermission: false,
+            startTime: 50000,
+            endTime: 65000,
+        },
+    ]);
+});
+
+test('The Coiled Altar rejects kills without the complete ordered transition sequence', () => {
+    const value = fight(3429);
+    value.enemyNPCs = [{ id: 80, gameID: 257911 }];
+    const death = { fight: 10, timestamp: 10000, type: 'death', abilityGameID: 1, sourceID: 90, targetID: 80 };
+    const applied = { fight: 10, timestamp: 20000, type: 'applybuff', abilityGameID: 1304033, sourceID: 80 };
+    assert.equal(decide(3429, value, [death, applied]), null);
+    assert.equal(decide(3429, value, [
+        death,
+        { ...applied, type: 'removebuff', timestamp: 15000 },
+        applied,
+    ]), null);
+});
+
 test('shared validation rejects gaps and out-of-fight boundaries', () => {
     const value = fight(9001);
     assert.throws(() => decidePhases({

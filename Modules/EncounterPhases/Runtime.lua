@@ -143,8 +143,14 @@ function EncounterPhases:BeginAttempt(encounterID, difficultyID, callbacks)
     for _, phase in ipairs(phases) do
         attempt.phaseIDs[phase.id] = true
     end
-    for index, event in ipairs(definition.events) do
-        attempt.events[index] = event
+    for index, declaration in ipairs(definition.events) do
+        local event = declaration
+        if type(declaration) == "table" then
+            event = declaration.event
+            attempt.events[index] = { event = declaration.event, unit = declaration.unit }
+        else
+            attempt.events[index] = declaration
+        end
         attempt.eventSet[event] = true
     end
 
@@ -185,8 +191,12 @@ function EncounterPhases:GetAttemptEvents(attempt)
         return {}
     end
     local events = {}
-    for index, event in ipairs(attempt.events) do
-        events[index] = event
+    for index, declaration in ipairs(attempt.events) do
+        if type(declaration) == "table" then
+            events[index] = { event = declaration.event, unit = declaration.unit }
+        else
+            events[index] = declaration
+        end
     end
     return events
 end

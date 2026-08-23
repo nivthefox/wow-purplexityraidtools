@@ -65,7 +65,9 @@ const CANDIDATE_DIFFICULTY_FIELDS = new Map([
 export const TIMELINE_FIGHTS_QUERY = `query TimelineFights(
   $reportCode: String!
   $fightIDs: [Int!]!
-  $eventStartTime: Float!
+  $castStartTime: Float!
+  $buffStartTime: Float!
+  $deathStartTime: Float!
 ) {
   reportData {
     report(code: $reportCode) {
@@ -81,11 +83,33 @@ export const TIMELINE_FIGHTS_QUERY = `query TimelineFights(
           gameID
         }
       }
-      events(
+      casts: events(
         fightIDs: $fightIDs
         dataType: Casts
         hostilityType: Enemies
-        startTime: $eventStartTime
+        startTime: $castStartTime
+        translate: false
+        limit: 10000
+      ) {
+        data
+        nextPageTimestamp
+      }
+      buffs: events(
+        fightIDs: $fightIDs
+        dataType: Buffs
+        hostilityType: Enemies
+        startTime: $buffStartTime
+        translate: false
+        limit: 10000
+      ) {
+        data
+        nextPageTimestamp
+      }
+      deaths: events(
+        fightIDs: $fightIDs
+        dataType: Deaths
+        hostilityType: Enemies
+        startTime: $deathStartTime
         translate: false
         limit: 10000
       ) {
@@ -107,6 +131,10 @@ function isRecord(value) {
 
 function isPositiveInteger(value) {
     return Number.isInteger(value) && value > 0;
+}
+
+function isNonNegativeInteger(value) {
+    return Number.isInteger(value) && value >= 0;
 }
 
 function isFiniteNumber(value) {
@@ -210,15 +238,21 @@ function validateEvents(events) {
     }
     return events.data.every((event) => isRecord(event)
         && isPositiveInteger(event.fight)
-        && isPositiveInteger(event.sourceID)
-        && isPositiveInteger(event.abilityGameID)
+        && Number.isInteger(event.sourceID)
+        && isNonNegativeInteger(event.abilityGameID)
+        && (event.targetID === undefined || Number.isInteger(event.targetID))
+        && (event.type !== 'death' || isPositiveInteger(event.targetID))
         && isFiniteNumber(event.timestamp)
         && typeof event.type === 'string');
 }
 
 export function validateTimelineResponse(response) {
     const report = response?.data?.reportData?.report;
-    if (!isRecord(report) || !validateFights(report.fights) || !validateEvents(report.events)) {
+    if (!isRecord(report) || !validateFights(report.fights)
+        || !validateEvents(report.casts)
+        || !validateEvents(report.buffs)
+        || !validateEvents(report.deaths)
+    ) {
         contractError('fight timeline');
     }
     return {
@@ -243,6 +277,11 @@ function timelineMetadataSignature(fights) {
             .sort((left, right) => left.id - right.id || left.gameID - right.gameID),
     })).sort((left, right) => left.id - right.id);
     return JSON.stringify({ fights: normalizedFights });
+}
+
+function timelineEventIdentity(event) {
+    return `${event.fight}\u0000${event.sourceID}\u0000${event.targetID ?? ''}`
+        + `\u0000${event.timestamp}\u0000${event.type}\u0000${event.abilityGameID}`;
 }
 
 export class SerializedRequestGate {
@@ -368,12 +407,19 @@ export class WarcraftLogsClient {
     }
 
     async timelineFights(reportCode, fightIDs) {
-        const events = [];
-        let eventStartTime = 0;
+        const events = new Map();
+        const startTimes = { casts: 0, buffs: 0, deaths: 0 };
+        const completed = { casts: false, buffs: false, deaths: false };
         let fights = null;
         let metadataSignature = null;
         while (true) {
-            const variables = { reportCode, fightIDs, eventStartTime };
+            const variables = {
+                reportCode,
+                fightIDs,
+                castStartTime: startTimes.casts,
+                buffStartTime: startTimes.buffs,
+                deathStartTime: startTimes.deaths,
+            };
             const report = validateTimelineResponse(await this.graphql(TIMELINE_FIGHTS_QUERY, variables));
             if (fights === null) {
                 fights = report.fights;
@@ -381,14 +427,27 @@ export class WarcraftLogsClient {
             } else if (metadataSignature !== timelineMetadataSignature(report.fights)) {
                 contractError('fight timeline');
             }
-            events.push(...report.events.data);
-            if (report.events.nextPageTimestamp === null || report.events.nextPageTimestamp === undefined) {
-                return { fights, events };
+            for (const streamName of Object.keys(startTimes)) {
+                const stream = report[streamName];
+                for (const event of stream.data) {
+                    events.set(timelineEventIdentity(event), event);
+                }
+                if (completed[streamName]) {
+                    continue;
+                }
+                const nextPageTimestamp = stream.nextPageTimestamp;
+                if (nextPageTimestamp === null || nextPageTimestamp === undefined) {
+                    completed[streamName] = true;
+                    continue;
+                }
+                if (nextPageTimestamp <= startTimes[streamName]) {
+                    contractError('fight timeline');
+                }
+                startTimes[streamName] = nextPageTimestamp;
             }
-            if (report.events.nextPageTimestamp <= eventStartTime) {
-                contractError('fight timeline');
+            if (Object.values(completed).every(Boolean)) {
+                return { fights, events: [...events.values()] };
             }
-            eventStartTime = report.events.nextPageTimestamp;
         }
     }
 }

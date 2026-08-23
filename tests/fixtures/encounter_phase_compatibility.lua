@@ -27,6 +27,32 @@ return {
             { id = 1, name = "The Twin Fangs" },
         },
     },
+    [3429] = {
+        [17] = {
+            { id = 1, name = "Stage One: Serpent's Bargain" },
+            { id = 2, name = "Stage Two: Usurper's Reprisal" },
+            { id = 3, name = "Intermission: The Claimed Vessel" },
+            { id = 4, name = "Stage Three: Coiled Union" },
+        },
+        [14] = {
+            { id = 1, name = "Stage One: Serpent's Bargain" },
+            { id = 2, name = "Stage Two: Usurper's Reprisal" },
+            { id = 3, name = "Intermission: The Claimed Vessel" },
+            { id = 4, name = "Stage Three: Coiled Union" },
+        },
+        [15] = {
+            { id = 1, name = "Stage One: Serpent's Bargain" },
+            { id = 2, name = "Stage Two: Usurper's Reprisal" },
+            { id = 3, name = "Intermission: The Claimed Vessel" },
+            { id = 4, name = "Stage Three: Coiled Union" },
+        },
+        [16] = {
+            { id = 1, name = "Stage One: Serpent's Bargain" },
+            { id = 2, name = "Stage Two: Usurper's Reprisal" },
+            { id = 3, name = "Intermission: The Claimed Vessel" },
+            { id = 4, name = "Stage Three: Coiled Union" },
+        },
+    },
     [3445] = {
         [17] = {
             { id = 1, name = "Entombed Sentinels" },

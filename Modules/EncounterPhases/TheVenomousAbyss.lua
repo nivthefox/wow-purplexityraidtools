@@ -30,7 +30,94 @@ end
 local function IdentifyTwinFangsPhase()
 end
 
-local function IdentifyCoiledAltarPhase()
+local COILED_ALTAR_PHASES = {
+    { id = 1, name = "Stage One: Serpent's Bargain" },
+    { id = 2, name = "Stage Two: Usurper's Reprisal" },
+    { id = 3, name = "Intermission: The Claimed Vessel" },
+    { id = 4, name = "Stage Three: Coiled Union" },
+}
+
+local function GetCoiledAltarPhases()
+    return COILED_ALTAR_PHASES
+end
+
+local function BeginCoiledAltarPhase()
+    return {
+        phase = 1,
+        axegrinderCount = 1,
+        coiledAltarCount = 1,
+        timelineEvents = {},
+    }
+end
+
+local function RoundTimelineDuration(duration)
+    return math.floor(duration + 0.5)
+end
+
+local function RememberCoiledAltarTimelineEvent(state, eventInfo)
+    if type(eventInfo) ~= "table"
+        or eventInfo.source ~= 0
+        or type(eventInfo.id) ~= "number"
+        or type(eventInfo.duration) ~= "number"
+    then
+        return
+    end
+
+    local duration = RoundTimelineDuration(eventInfo.duration)
+    if state.phase == 1 then
+        if duration == 12 then
+            state.axegrinderCount = state.axegrinderCount + 1
+        elseif duration == 85 then
+            state.coiledAltarCount = state.coiledAltarCount + 1
+            state.timelineEvents[eventInfo.id] = {
+                nextPhase = 2,
+                cycle = state.coiledAltarCount,
+            }
+        end
+    elseif state.phase == 2 and duration == 70 then
+        state.timelineEvents[eventInfo.id] = { nextPhase = 3 }
+    end
+end
+
+local function CanceledCoiledAltarTimelineEvent(state, eventID)
+    if not C_EncounterTimeline or type(C_EncounterTimeline.GetEventState) ~= "function" then
+        return
+    end
+    if C_EncounterTimeline.GetEventState(eventID) ~= 3 then
+        return
+    end
+
+    local timelineEvent = state.timelineEvents[eventID]
+    state.timelineEvents[eventID] = nil
+    if not timelineEvent or timelineEvent.nextPhase <= state.phase then
+        return
+    end
+    if timelineEvent.nextPhase == 2 and state.axegrinderCount > timelineEvent.cycle then
+        return
+    end
+
+    state.phase = timelineEvent.nextPhase
+    return timelineEvent.nextPhase
+end
+
+local function IdentifyCoiledAltarPhase(state, event, value)
+    if event == "ENCOUNTER_TIMELINE_EVENT_ADDED" then
+        RememberCoiledAltarTimelineEvent(state, value)
+        return
+    end
+    if event == "ENCOUNTER_TIMELINE_EVENT_REMOVED" then
+        state.timelineEvents[value] = nil
+        return
+    end
+    if event == "ENCOUNTER_TIMELINE_EVENT_STATE_CHANGED" then
+        return CanceledCoiledAltarTimelineEvent(state, value)
+    end
+    if event ~= "UNIT_SPELLCAST_CHANNEL_STOP" or value ~= "boss2" or state.phase ~= 3 then
+        return
+    end
+
+    state.phase = 4
+    return 4
 end
 
 local ENTOMBED_SENTINELS_PHASES = {
@@ -158,7 +245,17 @@ EncounterPhases:Register(3421, {
     Begin = BeginTwinFangsPhase,
     Observe = IdentifyTwinFangsPhase,
 })
-EncounterPhases:RegisterDraft(3429, IdentifyCoiledAltarPhase)
+EncounterPhases:Register(3429, {
+    events = {
+        "ENCOUNTER_TIMELINE_EVENT_ADDED",
+        "ENCOUNTER_TIMELINE_EVENT_REMOVED",
+        "ENCOUNTER_TIMELINE_EVENT_STATE_CHANGED",
+        { event = "UNIT_SPELLCAST_CHANNEL_STOP", unit = "boss2" },
+    },
+    GetPhases = GetCoiledAltarPhases,
+    Begin = BeginCoiledAltarPhase,
+    Observe = IdentifyCoiledAltarPhase,
+})
 EncounterPhases:Register(3445, {
     events = {},
     GetPhases = GetEntombedSentinelsPhases,

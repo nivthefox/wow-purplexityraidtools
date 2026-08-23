@@ -875,6 +875,48 @@ tests["a boss unit observation is registered narrowly and drops secret trailing 
     PRT.BossTimelineDatabase = previousDatabase
 end
 
+tests["a declared boss2 observation is registered narrowly and drops secret trailing arguments"] = function()
+    local previousDatabase = PRT.BossTimelineDatabase
+    local secret = {}
+    PRT.BossTimelineDatabase = { encounters = { [3178] = {} } }
+    local ok, err = PRT.EncounterPhases:Register(3178, {
+        events = { { event = "UNIT_SPELLCAST_CHANNEL_STOP", unit = "boss2" } },
+        GetPhases = function()
+            return {
+                { id = 1, name = "Intermission" },
+                { id = 2, name = "Finale" },
+            }
+        end,
+        Begin = function()
+            return {}
+        end,
+        Observe = function(_, event, unit)
+            if event == "UNIT_SPELLCAST_CHANNEL_STOP" and unit == "boss2" then
+                return 2
+            end
+        end,
+    })
+    assertTrue(ok, err)
+
+    local _, timerSpy, globals = setupEncounterHarness("EncounterID:3178;Name:Boss2 Event", {
+        issecretvalue = function(value)
+            return value == secret
+        end,
+    })
+    withGlobals(globals, function()
+        PRT.IsContentTypeEnabled = function()
+            return true
+        end
+        local eventFrame = Notes.eventFrame
+        eventFrame.handler(nil, "ENCOUNTER_START", 3178, "Boss2 Event", 16, 20)
+        assertEquals(eventFrame.registeredUnits.UNIT_SPELLCAST_CHANNEL_STOP, "boss2")
+
+        eventFrame.handler(nil, "UNIT_SPELLCAST_CHANNEL_STOP", "boss2", secret)
+        assertTableEquals(timerSpy.phaseCalls, { { phase = 2, time = 100 } })
+    end)
+    PRT.BossTimelineDatabase = previousDatabase
+end
+
 tests["ActivateNote tracks source as 'self' by default"] = function()
     withGlobals(CTX_GLOBALS, function()
         resetNotes()

@@ -14,6 +14,7 @@ local DEFINITION_FIELDS = {
     Observe = true,
 }
 local PHASE_FIELDS = { id = true, name = true }
+local UNIT_EVENT_FIELDS = { event = true, unit = true }
 local RESERVED_EVENTS = {
     ADDON_LOADED = true,
     ENCOUNTER_END = true,
@@ -72,7 +73,18 @@ local function validateEvents(events)
     end
 
     local seen = {}
-    for _, event in ipairs(events) do
+    for _, declaration in ipairs(events) do
+        local event = declaration
+        if type(declaration) == "table" then
+            if not hasExactFields(declaration, UNIT_EVENT_FIELDS)
+                or type(declaration.event) ~= "string"
+                or type(declaration.unit) ~= "string"
+                or not declaration.unit:match("^boss[1-5]$")
+            then
+                return false
+            end
+            event = declaration.event
+        end
         if type(event) ~= "string" or event == "" or seen[event] or RESERVED_EVENTS[event] then
             return false
         end

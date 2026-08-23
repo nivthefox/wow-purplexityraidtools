@@ -189,6 +189,7 @@ local testRunning = false
 local encounterPhaseAttempt = nil
 local useCanonicalPhases = false
 local registeredObservationEvents = {}
+local registeredUnitObservationEvents = {}
 
 -- difficultyID -> capitalized note-vocabulary difficulty string. The lowercase
 -- content-type strings from GetCurrentContentType must NEVER be used here.
@@ -381,6 +382,7 @@ local function StopEncounterPhaseAttempt()
         end
     end
     registeredObservationEvents = {}
+    registeredUnitObservationEvents = {}
 end
 
 local function StartEncounterPhaseAttempt(encounterID, difficultyID)
@@ -409,9 +411,18 @@ local function StartEncounterPhaseAttempt(encounterID, difficultyID)
         return
     end
 
-    for _, event in ipairs(PRT.EncounterPhases:GetAttemptEvents(encounterPhaseAttempt)) do
+    for _, declaration in ipairs(PRT.EncounterPhases:GetAttemptEvents(encounterPhaseAttempt)) do
+        local event = declaration
+        local unit
+        if type(declaration) == "table" then
+            event = declaration.event
+            unit = declaration.unit
+        end
         if not BASE_EVENTS[event] then
-            if BOSS1_OBSERVATION_EVENTS[event] then
+            if unit then
+                Notes.eventFrame:RegisterUnitEvent(event, unit)
+                registeredUnitObservationEvents[event] = true
+            elseif BOSS1_OBSERVATION_EVENTS[event] then
                 Notes.eventFrame:RegisterUnitEvent(event, "boss1")
             else
                 Notes.eventFrame:RegisterEvent(event)
@@ -661,7 +672,7 @@ local function OnEvent(_, event, ...)
     elseif event == "ADDON_LOADED" then
         HookBossMods()
     elseif encounterPhaseAttempt and PRT.EncounterPhases then
-        if BOSS1_OBSERVATION_EVENTS[event] then
+        if BOSS1_OBSERVATION_EVENTS[event] or registeredUnitObservationEvents[event] then
             PRT.EncounterPhases:ObserveAttempt(encounterPhaseAttempt, event, (...))
         else
             PRT.EncounterPhases:ObserveAttempt(encounterPhaseAttempt, event, ...)

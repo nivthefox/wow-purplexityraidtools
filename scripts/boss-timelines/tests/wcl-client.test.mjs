@@ -44,6 +44,15 @@ function candidateResponse(rankingsByDifficulty = new Map()) {
     };
 }
 
+function eventStreams(overrides = {}) {
+    return {
+        casts: { data: [], nextPageTimestamp: null },
+        buffs: { data: [], nextPageTimestamp: null },
+        deaths: { data: [], nextPageTimestamp: null },
+        ...overrides,
+    };
+}
+
 test('request gate separates starts by one second and never overlaps requests', async () => {
     let clock = 0;
     let active = 0;
@@ -116,7 +125,7 @@ test('timeline validation ignores WCL phase metadata and normalizes nullable ene
                         phaseTransitions: 'malformed and irrelevant',
                         enemyNPCs: null,
                     }],
-                    events: { data: [], nextPageTimestamp: null },
+                    ...eventStreams(),
                 },
             },
         },
@@ -138,18 +147,69 @@ test('timeline validation requires cast source identity used by encounter decide
                         endTime: 10000,
                         enemyNPCs: [{ id: 71, gameID: 259927 }],
                     }],
-                    events: {
-                        data: [{ fight: 101, abilityGameID: 20, timestamp: 5000, type: 'cast' }],
-                        nextPageTimestamp: null,
-                    },
+                    ...eventStreams({
+                        casts: {
+                            data: [{ fight: 101, abilityGameID: 20, timestamp: 5000, type: 'cast' }],
+                            nextPageTimestamp: null,
+                        },
+                    }),
                 },
             },
         },
     }), /contract/);
 });
 
+test('timeline validation accepts WCL actor sentinels without weakening death target identity', () => {
+    const report = validateTimelineResponse({
+        data: {
+            reportData: {
+                report: {
+                    fights: [{
+                        id: 101,
+                        encounterID: 10,
+                        difficulty: 5,
+                        kill: true,
+                        startTime: 0,
+                        endTime: 10000,
+                        enemyNPCs: [{ id: 71, gameID: 257911 }],
+                    }],
+                    ...eventStreams({
+                        casts: {
+                            data: [{
+                                fight: 101,
+                                sourceID: -1,
+                                targetID: -1,
+                                abilityGameID: 20,
+                                timestamp: 1000,
+                                type: 'cast',
+                            }],
+                            nextPageTimestamp: null,
+                        },
+                        deaths: {
+                            data: [{
+                                fight: 101,
+                                sourceID: -1,
+                                targetID: 71,
+                                abilityGameID: 0,
+                                timestamp: 5000,
+                                type: 'death',
+                            }],
+                            nextPageTimestamp: null,
+                        },
+                    }),
+                },
+            },
+        },
+    });
+    assert.equal(report.casts.data[0].sourceID, -1);
+    assert.equal(report.deaths.data[0].abilityGameID, 0);
+});
+
 test('timeline query requests actor identity without requesting WCL phase metadata', () => {
     assert.match(TIMELINE_FIGHTS_QUERY, /enemyNPCs\s*\{\s*id\s+gameID\s*\}/);
+    assert.match(TIMELINE_FIGHTS_QUERY, /casts:\s*events\([\s\S]*dataType:\s*Casts/);
+    assert.match(TIMELINE_FIGHTS_QUERY, /buffs:\s*events\([\s\S]*dataType:\s*Buffs/);
+    assert.match(TIMELINE_FIGHTS_QUERY, /deaths:\s*events\([\s\S]*dataType:\s*Deaths/);
     assert.doesNotMatch(TIMELINE_FIGHTS_QUERY, /\bphases\b|phaseTransitions/);
 });
 
@@ -182,9 +242,9 @@ test('client sends one page-one candidate request per encounter for every diffic
     assert.deepEqual(result.get(1), []);
 });
 
-test('timeline requests group fights, tolerates metadata reordering, and paginates events from zero', async () => {
+test('timeline requests group fights and independently paginates and deduplicates event streams', async () => {
     const starts = [];
-    const reportBody = (nextPageTimestamp, eventStartTime, reverse = false) => ({
+    const reportBody = (streams, reverse = false) => ({
         data: {
             reportData: {
                 report: {
@@ -199,21 +259,46 @@ test('timeline requests group fights, tolerates metadata reordering, and paginat
                             ? [{ id: 72, gameID: 9002 }, { id: 71, gameID: 9001 }]
                             : [{ id: 71, gameID: 9001 }, { id: 72, gameID: 9002 }],
                     })),
-                    events: {
-                        data: [{
-                            fight: 101,
-                            sourceID: 71,
-                            abilityGameID: 20,
-                            timestamp: eventStartTime,
-                            type: 'cast',
-                        }],
-                        nextPageTimestamp,
-                    },
+                    ...eventStreams(streams),
                 },
             },
         },
     });
-    const bodies = [{ access_token: 'ephemeral' }, reportBody(5000, 0), reportBody(null, 5000, true)];
+    const cast = {
+        fight: 101,
+        sourceID: 71,
+        abilityGameID: 20,
+        timestamp: 1000,
+        type: 'cast',
+    };
+    const applied = {
+        fight: 101,
+        sourceID: 71,
+        abilityGameID: 30,
+        timestamp: 2000,
+        type: 'applybuff',
+    };
+    const death = {
+        fight: 101,
+        sourceID: 72,
+        targetID: 71,
+        abilityGameID: 1,
+        timestamp: 3000,
+        type: 'death',
+    };
+    const bodies = [
+        { access_token: 'ephemeral' },
+        reportBody({
+            casts: { data: [cast], nextPageTimestamp: 5000 },
+            buffs: { data: [applied], nextPageTimestamp: null },
+            deaths: { data: [death], nextPageTimestamp: null },
+        }),
+        reportBody({
+            casts: { data: [{ ...cast, timestamp: 6000 }], nextPageTimestamp: null },
+            buffs: { data: [applied], nextPageTimestamp: null },
+            deaths: { data: [death], nextPageTimestamp: null },
+        }, true),
+    ];
     const client = new WarcraftLogsClient({
         clientID: 'client',
         clientSecret: 'secret',
@@ -222,14 +307,29 @@ test('timeline requests group fights, tolerates metadata reordering, and paginat
             if (url.includes('/api/')) {
                 const requestBody = JSON.parse(options.body);
                 assert.equal(requestBody.query, TIMELINE_FIGHTS_QUERY);
-                starts.push(requestBody.variables.eventStartTime);
+                starts.push(requestBody.variables);
             }
             return response(bodies.shift());
         },
     });
     const result = await client.timelineFights(runtimeCode(), [101, 102]);
-    assert.deepEqual(starts, [0, 5000]);
-    assert.equal(result.events.length, 2);
+    assert.deepEqual(starts, [
+        {
+            reportCode: runtimeCode(),
+            fightIDs: [101, 102],
+            castStartTime: 0,
+            buffStartTime: 0,
+            deathStartTime: 0,
+        },
+        {
+            reportCode: runtimeCode(),
+            fightIDs: [101, 102],
+            castStartTime: 5000,
+            buffStartTime: 0,
+            deathStartTime: 0,
+        },
+    ]);
+    assert.deepEqual(result.events, [cast, applied, death, { ...cast, timestamp: 6000 }]);
 });
 
 test('credentials, token, and malformed-response canaries never appear in errors', async () => {

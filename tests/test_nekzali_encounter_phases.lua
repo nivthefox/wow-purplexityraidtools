@@ -1,8 +1,43 @@
 local tests = {}
 local PRT = PurplexityRaidTools
 
-dofile("BossTimelineData.lua")
-dofile("Modules/BossTimelineDatabase.lua")
+PRT.BossTimelineDatabase = {
+    encounters = {
+        [3445] = { difficulties = {} },
+        [3470] = {
+            difficulties = {
+                [16] = {
+                    phases = {
+                        {
+                            phaseID = 1,
+                            name = "Stage One: Soulcoiler Initiation",
+                            isIntermission = false,
+                            occurrences = {
+                                { spellID = 1295124, time = 20, observations = 3 },
+                            },
+                        },
+                        {
+                            phaseID = 2,
+                            name = "Intermission: Ritual of Awakening",
+                            isIntermission = true,
+                            occurrences = {
+                                { spellID = 1292315, time = 8, observations = 3 },
+                            },
+                        },
+                        {
+                            phaseID = 3,
+                            name = "Stage Two: Uncoiling",
+                            isIntermission = false,
+                            occurrences = {
+                                { spellID = 1289696, time = 12, observations = 3 },
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    },
+}
 dofile("Modules/EncounterPhases/Registry.lua")
 dofile("Modules/EncounterPhases/Runtime.lua")
 dofile("Modules/EncounterPhases/Planning.lua")

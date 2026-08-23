@@ -1,8 +1,35 @@
 local tests = {}
 local PRT = PurplexityRaidTools
 
-dofile("BossTimelineData.lua")
-dofile("Modules/BossTimelineDatabase.lua")
+local function canonicalDifficulty(occurrences)
+    return {
+        phases = {
+            {
+                phaseID = 1,
+                name = "Entombed Sentinels",
+                isIntermission = false,
+                occurrences = occurrences,
+            },
+        },
+    }
+end
+
+PRT.BossTimelineDatabase = {
+    encounters = {
+        [3445] = {
+            difficulties = {
+                [14] = canonicalDifficulty({
+                    { spellID = 1284588, time = 12, observations = 3 },
+                    { spellID = 1284589, time = 40, observations = 4 },
+                }),
+                [15] = canonicalDifficulty({
+                    { spellID = 1284588, time = 13, observations = 3 },
+                }),
+            },
+        },
+        [3470] = { difficulties = {} },
+    },
+}
 dofile("Modules/EncounterPhases/Registry.lua")
 dofile("Modules/EncounterPhases/Runtime.lua")
 dofile("Modules/EncounterPhases/Planning.lua")
@@ -14,7 +41,6 @@ local difficulties = { 17, 14, 15, 16 }
 local expectedPhases = {
     { id = 1, name = "Entombed Sentinels" },
 }
-local phaseOffsets = { 0, 46, 74, 165, 193, 284, 312, 403, 431, 522, 550 }
 
 local function harness(difficultyID)
     local activations = {}
@@ -37,11 +63,11 @@ end
 
 local function expectedOccurrences(difficulty)
     local occurrences = {}
-    for phaseIndex, phase in ipairs(difficulty.phases) do
+    for _, phase in ipairs(difficulty.phases) do
         for _, occurrence in ipairs(phase.occurrences) do
             occurrences[#occurrences + 1] = {
-                phase = 1,
-                time = phaseOffsets[phaseIndex] + occurrence.time,
+                phase = phase.phaseID,
+                time = occurrence.time,
                 spellID = occurrence.spellID,
             }
         end
@@ -71,7 +97,7 @@ tests["Entombed Sentinels declares no runtime transition observations"] = functi
     assertEquals(#activations, 0)
 end
 
-tests["Entombed Sentinels flattens every stored section into pull-relative time"] = function()
+tests["Entombed Sentinels planning preserves canonical stored occurrences"] = function()
     local encounter = PRT.BossTimelineDatabase.encounters[encounterID]
 
     for _, difficultyID in ipairs({ 14, 15 }) do
@@ -85,17 +111,14 @@ tests["Entombed Sentinels flattens every stored section into pull-relative time"
 end
 
 tests["Entombed Sentinels rejects an unexpected stored phase sequence"] = function()
-    local definition = EncounterPhases:GetDefinition(encounterID)
-    assertNil(definition.ProjectWCL(14, 2, {
-        phaseID = 1,
-        name = "Unexpected Active Section",
-        isIntermission = false,
-        occurrences = {},
-    }, {
-        spellID = 1284588,
-        time = 0,
-        observations = 3,
-    }))
+    local difficulty = PRT.BossTimelineDatabase.encounters[encounterID].difficulties[14]
+    local previousName = difficulty.phases[1].name
+    difficulty.phases[1].name = "Unexpected Active Section"
+    local model, err = EncounterPhases:GetPlanningModel(encounterID, 14)
+    difficulty.phases[1].name = previousName
+
+    assertNil(model)
+    assertNotNil(err)
 end
 
 tests["Entombed Sentinels returns empty planning occurrences without stored difficulty data"] = function()

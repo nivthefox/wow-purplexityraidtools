@@ -1,39 +1,40 @@
 local PRT = PurplexityRaidTools
 local EncounterPhases = PRT.EncounterPhases
 
-local MAPPING_FIELDS = { phase = true, time = true }
-
-local function projectOccurrence(definition, difficultyID, phaseIndex, phase, occurrence, phaseIDs, sourceOrder)
+local function normalizeOccurrence(phaseID, occurrence, sourceOrder)
     if type(occurrence) ~= "table"
         or not EncounterPhases.IsInteger(occurrence.spellID)
         or occurrence.spellID < 1
+        or not EncounterPhases.IsInteger(occurrence.time)
+        or occurrence.time < 0
     then
         return nil, "Stored occurrence is invalid."
     end
 
-    local ok, mapping = pcall(
-        definition.ProjectWCL,
-        difficultyID,
-        phaseIndex,
-        phase,
-        occurrence
-    )
-    if not ok
-        or not EncounterPhases.HasExactFields(mapping, MAPPING_FIELDS)
-        or not EncounterPhases.IsInteger(mapping.phase)
-        or not phaseIDs[mapping.phase]
-        or type(mapping.time) ~= "number"
-        or mapping.time < 0
-    then
-        return nil, "Stored occurrence could not be projected."
-    end
-
     return {
-        phase = mapping.phase,
-        time = mapping.time,
+        phase = phaseID,
+        time = occurrence.time,
         spellID = occurrence.spellID,
         sourceOrder = sourceOrder,
     }
+end
+
+local function storedPhasesMatch(phases, storedPhases)
+    if not EncounterPhases.IsArray(storedPhases, false) or #storedPhases ~= #phases then
+        return false
+    end
+    for index, storedPhase in ipairs(storedPhases) do
+        local phase = phases[index]
+        if type(storedPhase) ~= "table"
+            or storedPhase.phaseID ~= phase.id
+            or storedPhase.name ~= phase.name
+            or type(storedPhase.isIntermission) ~= "boolean"
+            or not EncounterPhases.IsArray(storedPhase.occurrences, true)
+        then
+            return false
+        end
+    end
+    return true
 end
 
 local function occurrenceSort(left, right)
@@ -60,11 +61,6 @@ function EncounterPhases:GetPlanningModel(encounterID, difficultyID)
         return nil, "Encounter phase model is invalid."
     end
 
-    local phaseIDs = {}
-    for _, phase in ipairs(phases) do
-        phaseIDs[phase.id] = true
-    end
-
     local occurrences = {}
     local sourceOrder = 0
     local database = PRT.BossTimelineDatabase
@@ -73,22 +69,21 @@ function EncounterPhases:GetPlanningModel(encounterID, difficultyID)
         and encounter.difficulties
         and encounter.difficulties[difficultyID]
     if difficulty then
-        for phaseIndex, phase in ipairs(difficulty.phases) do
+        if type(difficulty) ~= "table" or not storedPhasesMatch(phases, difficulty.phases) then
+            return nil, "Stored phases do not match the encounter phase model."
+        end
+        for _, phase in ipairs(difficulty.phases) do
             for _, occurrence in ipairs(phase.occurrences) do
                 sourceOrder = sourceOrder + 1
-                local projected, err = projectOccurrence(
-                    definition,
-                    difficultyID,
-                    phaseIndex,
-                    phase,
+                local normalized, err = normalizeOccurrence(
+                    phase.phaseID,
                     occurrence,
-                    phaseIDs,
                     sourceOrder
                 )
-                if not projected then
+                if not normalized then
                     return nil, err
                 end
-                occurrences[#occurrences + 1] = projected
+                occurrences[#occurrences + 1] = normalized
             end
         end
     end

@@ -69,14 +69,6 @@ export const TIMELINE_FIGHTS_QUERY = `query TimelineFights(
 ) {
   reportData {
     report(code: $reportCode) {
-      phases {
-        encounterID
-        phases {
-          id
-          name
-          isIntermission
-        }
-      }
       fights(fightIDs: $fightIDs, killType: Kills) {
         id
         encounterID
@@ -84,9 +76,9 @@ export const TIMELINE_FIGHTS_QUERY = `query TimelineFights(
         kill
         startTime
         endTime
-        phaseTransitions {
+        enemyNPCs {
           id
-          startTime
+          gameID
         }
       }
       events(
@@ -190,20 +182,6 @@ export function validateCandidateResponse(response) {
     return byDifficulty;
 }
 
-function validatePhaseDefinitions(phases) {
-    if (!Array.isArray(phases)) {
-        return false;
-    }
-    return phases.every((encounterPhases) => isRecord(encounterPhases)
-        && isPositiveInteger(encounterPhases.encounterID)
-        && Array.isArray(encounterPhases.phases)
-        && encounterPhases.phases.every((phase) => isRecord(phase)
-            && isPositiveInteger(phase.id)
-            && typeof phase.name === 'string'
-            && phase.name.length > 0
-            && typeof phase.isIntermission === 'boolean'));
-}
-
 function validateFights(fights) {
     if (!Array.isArray(fights)) {
         return false;
@@ -216,10 +194,10 @@ function validateFights(fights) {
         && isFiniteNumber(fight.startTime)
         && isFiniteNumber(fight.endTime)
         && fight.endTime > fight.startTime
-        && (fight.phaseTransitions === null || Array.isArray(fight.phaseTransitions))
-        && (fight.phaseTransitions ?? []).every((transition) => isRecord(transition)
-            && isPositiveInteger(transition.id)
-            && isFiniteNumber(transition.startTime)));
+        && (fight.enemyNPCs === null || Array.isArray(fight.enemyNPCs))
+        && (fight.enemyNPCs ?? []).every((actor) => isRecord(actor)
+            && isPositiveInteger(actor.id)
+            && isPositiveInteger(actor.gameID)));
 }
 
 function validateEvents(events) {
@@ -232,6 +210,7 @@ function validateEvents(events) {
     }
     return events.data.every((event) => isRecord(event)
         && isPositiveInteger(event.fight)
+        && isPositiveInteger(event.sourceID)
         && isPositiveInteger(event.abilityGameID)
         && isFiniteNumber(event.timestamp)
         && typeof event.type === 'string');
@@ -239,26 +218,19 @@ function validateEvents(events) {
 
 export function validateTimelineResponse(response) {
     const report = response?.data?.reportData?.report;
-    if (!isRecord(report) || !validatePhaseDefinitions(report.phases)
-        || !validateFights(report.fights) || !validateEvents(report.events)) {
+    if (!isRecord(report) || !validateFights(report.fights) || !validateEvents(report.events)) {
         contractError('fight timeline');
     }
     return {
         ...report,
         fights: report.fights.map((fight) => ({
             ...fight,
-            phaseTransitions: fight.phaseTransitions ?? [],
+            enemyNPCs: fight.enemyNPCs ?? [],
         })),
     };
 }
 
-function timelineMetadataSignature(phases, fights) {
-    const normalizedPhases = phases.map((encounterPhases) => ({
-        encounterID: encounterPhases.encounterID,
-        phases: encounterPhases.phases
-            .map((phase) => ({ id: phase.id, name: phase.name, isIntermission: phase.isIntermission }))
-            .sort((left, right) => left.id - right.id),
-    })).sort((left, right) => left.encounterID - right.encounterID);
+function timelineMetadataSignature(fights) {
     const normalizedFights = fights.map((fight) => ({
         id: fight.id,
         encounterID: fight.encounterID,
@@ -266,11 +238,11 @@ function timelineMetadataSignature(phases, fights) {
         kill: fight.kill,
         startTime: fight.startTime,
         endTime: fight.endTime,
-        phaseTransitions: fight.phaseTransitions
-            .map((transition) => ({ id: transition.id, startTime: transition.startTime }))
-            .sort((left, right) => left.startTime - right.startTime || left.id - right.id),
+        enemyNPCs: fight.enemyNPCs
+            .map((actor) => ({ id: actor.id, gameID: actor.gameID }))
+            .sort((left, right) => left.id - right.id || left.gameID - right.gameID),
     })).sort((left, right) => left.id - right.id);
-    return JSON.stringify({ phases: normalizedPhases, fights: normalizedFights });
+    return JSON.stringify({ fights: normalizedFights });
 }
 
 export class SerializedRequestGate {
@@ -398,22 +370,20 @@ export class WarcraftLogsClient {
     async timelineFights(reportCode, fightIDs) {
         const events = [];
         let eventStartTime = 0;
-        let phaseDefinitions = null;
         let fights = null;
         let metadataSignature = null;
         while (true) {
             const variables = { reportCode, fightIDs, eventStartTime };
             const report = validateTimelineResponse(await this.graphql(TIMELINE_FIGHTS_QUERY, variables));
-            if (phaseDefinitions === null) {
-                phaseDefinitions = report.phases;
+            if (fights === null) {
                 fights = report.fights;
-                metadataSignature = timelineMetadataSignature(report.phases, report.fights);
-            } else if (metadataSignature !== timelineMetadataSignature(report.phases, report.fights)) {
+                metadataSignature = timelineMetadataSignature(report.fights);
+            } else if (metadataSignature !== timelineMetadataSignature(report.fights)) {
                 contractError('fight timeline');
             }
             events.push(...report.events.data);
             if (report.events.nextPageTimestamp === null || report.events.nextPageTimestamp === undefined) {
-                return { phaseDefinitions, fights, events };
+                return { fights, events };
             }
             if (report.events.nextPageTimestamp <= eventStartTime) {
                 contractError('fight timeline');

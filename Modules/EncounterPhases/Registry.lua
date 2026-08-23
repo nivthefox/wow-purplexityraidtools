@@ -12,7 +12,6 @@ local DEFINITION_FIELDS = {
     GetPhases = true,
     Begin = true,
     Observe = true,
-    ProjectWCL = true,
 }
 local PHASE_FIELDS = { id = true, name = true }
 local RESERVED_EVENTS = {
@@ -173,7 +172,6 @@ function EncounterPhases:Register(encounterID, definition)
     if type(definition.GetPhases) ~= "function"
         or type(definition.Begin) ~= "function"
         or type(definition.Observe) ~= "function"
-        or type(definition.ProjectWCL) ~= "function"
     then
         return false, "Encounter definition methods must be functions."
     end

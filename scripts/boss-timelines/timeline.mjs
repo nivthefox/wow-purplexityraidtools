@@ -1,61 +1,12 @@
 import { MAXIMUM_SAMPLES, MINIMUM_SAMPLES } from './constants.mjs';
-
-function phaseMetadataForEncounter(phaseDefinitions, encounterID) {
-    const matches = phaseDefinitions.filter((entry) => entry.encounterID === encounterID);
-    const byID = new Map();
-    for (const match of matches) {
-        for (const phase of match.phases) {
-            const existing = byID.get(phase.id);
-            if (!existing || phase.name.localeCompare(existing.name) < 0
-                || (phase.name === existing.name && existing.isIntermission && !phase.isIntermission)) {
-                byID.set(phase.id, phase);
-            }
-        }
-    }
-    return byID;
-}
-
-function fallbackPhase(phaseID) {
-    return { id: phaseID, name: `Phase ${phaseID}`, isIntermission: false };
-}
-
-function createPhaseInstances(fight, phaseByID) {
-    if (fight.phaseTransitions.length === 0) {
-        const phase = phaseByID.size === 1
-            ? phaseByID.values().next().value
-            : fallbackPhase(1);
-        return [{ ...phase, startTime: fight.startTime, endTime: fight.endTime }];
-    }
-
-    const transitions = [...fight.phaseTransitions].sort((left, right) => left.startTime - right.startTime);
-    if (transitions.length === 0 || transitions[0].startTime !== fight.startTime) {
-        return null;
-    }
-    const phases = [];
-    for (let index = 0; index < transitions.length; index += 1) {
-        const transition = transitions[index];
-        const metadata = phaseByID.get(transition.id) ?? fallbackPhase(transition.id);
-        if (index > 0 && transition.startTime <= transitions[index - 1].startTime) {
-            return null;
-        }
-        phases.push({
-            ...metadata,
-            startTime: transition.startTime,
-            endTime: transitions[index + 1]?.startTime ?? fight.endTime,
-        });
-    }
-    if (phases.at(-1).endTime > fight.endTime) {
-        return null;
-    }
-    return phases;
-}
+import { decidePhases } from './phase-deciders.mjs';
 
 function phaseSignature(phases) {
     return JSON.stringify(phases.map((phase) => phase.id));
 }
 
 function eventIdentity(event) {
-    return `${event.fight}\u0000${event.timestamp}\u0000${event.type}\u0000${event.abilityGameID}`;
+    return `${event.fight}\u0000${event.sourceID}\u0000${event.timestamp}\u0000${event.type}\u0000${event.abilityGameID}`;
 }
 
 function canonicalSpellID(eventSpellID, modules, aliases) {
@@ -129,7 +80,7 @@ function clusterEvents(events) {
     return clustered.sort((left, right) => left.offset - right.offset || left.spellID - right.spellID);
 }
 
-export function evaluateFight({ fight, phaseDefinitions, events, encounterID, difficulty, modules, aliases }) {
+export function evaluateFight({ fight, events, encounterID, difficulty, modules, aliases, phaseDecider }) {
     if (!fight.kill) {
         return { rejectionReason: 'not-a-kill' };
     }
@@ -139,10 +90,14 @@ export function evaluateFight({ fight, phaseDefinitions, events, encounterID, di
     if (fight.difficulty !== difficulty) {
         return { rejectionReason: 'difficulty-mismatch' };
     }
-    const phaseByID = phaseMetadataForEncounter(phaseDefinitions, encounterID);
-    const phases = createPhaseInstances(fight, phaseByID);
+    const phases = decidePhases({
+        encounterID,
+        decider: phaseDecider,
+        fight,
+        events,
+    });
     if (!phases) {
-        return { rejectionReason: 'invalid-phase-transitions' };
+        return { rejectionReason: 'missing-canonical-phase-boundaries' };
     }
     const phaseEvents = attachEvents(fight, phases, events, modules, aliases).map(clusterEvents);
     return {

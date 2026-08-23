@@ -18,9 +18,6 @@ local function installDefinition(encounterID, observe)
             return { schedule = schedule, observations = 0 }
         end,
         Observe = observe,
-        ProjectWCL = function(_, phaseIndex, _, occurrence)
-            return { phase = phaseIndex, time = occurrence.time }
-        end,
     }
     assertTrue(EncounterPhases:Register(encounterID, candidate))
 end

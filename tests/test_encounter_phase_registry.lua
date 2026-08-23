@@ -21,9 +21,6 @@ local function definition(getPhases)
         end,
         Observe = function()
         end,
-        ProjectWCL = function(_, phaseIndex, _, occurrence)
-            return { phase = phaseIndex, time = occurrence.time }
-        end,
     }
 end
 
@@ -69,6 +66,14 @@ tests["registration accepts a complete definition for all raid difficulties"] = 
     assertNil(err)
     assertEquals(EncounterPhases:GetDefinition(9102), candidate)
     assertTableEquals(EncounterPhases:GetPhases(9102, 16), fixture.phases)
+end
+
+tests["registration rejects the obsolete WCL projection field"] = function()
+    PRT.BossTimelineDatabase = { encounters = { [9106] = {} } }
+    local candidate = definition()
+    candidate.ProjectWCL = function()
+    end
+    assertFalse(EncounterPhases:Register(9106, candidate))
 end
 
 tests["registration rejects a missing or non-contiguous difficulty phase model"] = function()

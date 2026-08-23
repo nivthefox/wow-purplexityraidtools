@@ -100,12 +100,12 @@ test('zone validation accepts integer metadata outside the selected raid difficu
     assert.equal(zones[0].encounters[0].journalID, 0);
 });
 
-test('timeline validation normalizes nullable single-phase transitions to an empty array', () => {
+test('timeline validation ignores WCL phase metadata and normalizes nullable enemy lists', () => {
     const report = validateTimelineResponse({
         data: {
             reportData: {
                 report: {
-                    phases: [{ encounterID: 10, phases: [{ id: 1, name: 'One', isIntermission: false }] }],
+                    phases: 'malformed and irrelevant',
                     fights: [{
                         id: 101,
                         encounterID: 10,
@@ -113,14 +113,44 @@ test('timeline validation normalizes nullable single-phase transitions to an emp
                         kill: true,
                         startTime: 0,
                         endTime: 10000,
-                        phaseTransitions: null,
+                        phaseTransitions: 'malformed and irrelevant',
+                        enemyNPCs: null,
                     }],
                     events: { data: [], nextPageTimestamp: null },
                 },
             },
         },
     });
-    assert.deepEqual(report.fights[0].phaseTransitions, []);
+    assert.deepEqual(report.fights[0].enemyNPCs, []);
+});
+
+test('timeline validation requires cast source identity used by encounter deciders', () => {
+    assert.throws(() => validateTimelineResponse({
+        data: {
+            reportData: {
+                report: {
+                    fights: [{
+                        id: 101,
+                        encounterID: 10,
+                        difficulty: 5,
+                        kill: true,
+                        startTime: 0,
+                        endTime: 10000,
+                        enemyNPCs: [{ id: 71, gameID: 259927 }],
+                    }],
+                    events: {
+                        data: [{ fight: 101, abilityGameID: 20, timestamp: 5000, type: 'cast' }],
+                        nextPageTimestamp: null,
+                    },
+                },
+            },
+        },
+    }), /contract/);
+});
+
+test('timeline query requests actor identity without requesting WCL phase metadata', () => {
+    assert.match(TIMELINE_FIGHTS_QUERY, /enemyNPCs\s*\{\s*id\s+gameID\s*\}/);
+    assert.doesNotMatch(TIMELINE_FIGHTS_QUERY, /\bphases\b|phaseTransitions/);
 });
 
 test('client sends one page-one candidate request per encounter for every difficulty', async () => {
@@ -158,13 +188,6 @@ test('timeline requests group fights, tolerates metadata reordering, and paginat
         data: {
             reportData: {
                 report: {
-                    phases: (reverse ? [
-                        { encounterID: 11, phases: [{ id: 1, name: 'Other', isIntermission: false }] },
-                        { encounterID: 10, phases: [{ id: 1, name: 'One', isIntermission: false }] },
-                    ] : [
-                        { encounterID: 10, phases: [{ id: 1, name: 'One', isIntermission: false }] },
-                        { encounterID: 11, phases: [{ id: 1, name: 'Other', isIntermission: false }] },
-                    ]),
                     fights: (reverse ? [102, 101] : [101, 102]).map((id) => ({
                         id,
                         encounterID: id === 101 ? 10 : 11,
@@ -172,10 +195,18 @@ test('timeline requests group fights, tolerates metadata reordering, and paginat
                         kill: true,
                         startTime: 0,
                         endTime: 10000,
-                        phaseTransitions: [],
+                        enemyNPCs: reverse
+                            ? [{ id: 72, gameID: 9002 }, { id: 71, gameID: 9001 }]
+                            : [{ id: 71, gameID: 9001 }, { id: 72, gameID: 9002 }],
                     })),
                     events: {
-                        data: [{ fight: 101, abilityGameID: 20, timestamp: eventStartTime, type: 'cast' }],
+                        data: [{
+                            fight: 101,
+                            sourceID: 71,
+                            abilityGameID: 20,
+                            timestamp: eventStartTime,
+                            type: 'cast',
+                        }],
                         nextPageTimestamp,
                     },
                 },

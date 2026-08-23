@@ -1,6 +1,7 @@
 import { BOSS_TIMELINE_ALIASES } from './aliases.mjs';
 import { MAXIMUM_SAMPLES, MINIMUM_SAMPLES, SCHEMA_VERSION, WCL_DIFFICULTY_TO_WOW } from './constants.mjs';
 import { discoverCurrentTier } from './discovery.mjs';
+import { getPhaseDecider } from './phase-deciders.mjs';
 import { validateDatabase } from './schema.mjs';
 import { buildDifficulty, evaluateFight } from './timeline.mjs';
 
@@ -17,8 +18,7 @@ const REJECTION_LABELS = new Map([
     ['not-a-kill', 'not marked as a kill'],
     ['encounter-mismatch', 'encounter mismatch'],
     ['difficulty-mismatch', 'difficulty mismatch'],
-    ['invalid-phase-transitions', 'invalid phase transitions'],
-    ['inconsistent-phase-sequence', 'inconsistent phase sequence'],
+    ['missing-canonical-phase-boundaries', 'missing canonical phase boundaries'],
 ]);
 
 function candidateIdentity(candidate) {
@@ -39,7 +39,15 @@ function countRejection(rejectionCounts, reason) {
     rejectionCounts[reason] = (rejectionCounts[reason] ?? 0) + 1;
 }
 
-async function selectEligibleKills(client, candidates, encounterID, difficulty, modules, aliases) {
+async function selectEligibleKills(
+    client,
+    candidates,
+    encounterID,
+    difficulty,
+    modules,
+    aliases,
+    phaseDecider,
+) {
     const groups = groupCandidatesByReport(candidates);
     const loadedReports = new Map();
     const selected = [];
@@ -65,12 +73,12 @@ async function selectEligibleKills(client, candidates, encounterID, difficulty, 
                 }
                 const evaluation = evaluateFight({
                     fight,
-                    phaseDefinitions: report.phaseDefinitions,
                     events: report.events,
                     encounterID,
                     difficulty,
                     modules,
                     aliases,
+                    phaseDecider,
                 });
                 normalizedByIdentity.set(candidateIdentity(reportCandidate), evaluation);
             }
@@ -85,8 +93,7 @@ async function selectEligibleKills(client, candidates, encounterID, difficulty, 
         const normalized = evaluation.normalizedFight;
         selectedSignature ??= normalized.signature;
         if (normalized.signature !== selectedSignature) {
-            countRejection(rejectionCounts, 'inconsistent-phase-sequence');
-            continue;
+            throw generationFailure('Encounter phase decider returned inconsistent canonical phase sequences');
         }
         selected.push(normalized);
         if (selected.length === MAXIMUM_SAMPLES) {
@@ -142,14 +149,17 @@ function occurrencesAreCovered(existingOccurrences, generatedOccurrences) {
 }
 
 function generatedDifficultyIsCovered(existing, generated) {
-    if (generated.phases.length > existing.phases.length) {
+    if (generated.phases.length !== existing.phases.length) {
         return false;
     }
 
     for (let index = 0; index < generated.phases.length; index += 1) {
         const existingPhase = existing.phases[index];
         const generatedPhase = generated.phases[index];
-        if (existingPhase.phaseID !== generatedPhase.phaseID) {
+        if (existingPhase.phaseID !== generatedPhase.phaseID
+            || existingPhase.name !== generatedPhase.name
+            || existingPhase.isIntermission !== generatedPhase.isIntermission
+        ) {
             return false;
         }
         if (!occurrencesAreCovered(existingPhase.occurrences, generatedPhase.occurrences)) {
@@ -247,6 +257,7 @@ async function generateEncounter({
     aliases,
     existingDatabase,
     onOmission,
+    phaseDecider,
 }) {
     if (!modules || !modules.encounterID) {
         onOmission({
@@ -258,6 +269,9 @@ async function generateEncounter({
     }
 
     const encounterID = modules.encounterID;
+    if (typeof phaseDecider !== 'function') {
+        throw generationFailure(`Encounter ${encounterID} has no canonical phase decider`);
+    }
     const difficulties = {};
     const byDifficulty = combinations.get(encounter.id);
     for (const [wclDifficulty, wowDifficulty] of WCL_DIFFICULTY_TO_WOW) {
@@ -284,6 +298,7 @@ async function generateEncounter({
             wclDifficulty,
             modules,
             aliases,
+            phaseDecider,
         );
         const { kills, rejectionCounts } = selection;
         if (kills.length < MINIMUM_SAMPLES) {
@@ -341,11 +356,15 @@ export async function generateDatabase({
     buildTime,
     aliases = BOSS_TIMELINE_ALIASES,
     onOmission = () => {},
+    phaseDeciderFor = getPhaseDecider,
 }) {
     validateDatabase(existingDatabase);
     validateAliases(aliases);
     if (typeof onOmission !== 'function') {
         throw generationFailure('Boss timeline omission reporter is malformed');
+    }
+    if (typeof phaseDeciderFor !== 'function') {
+        throw generationFailure('Boss timeline phase decider lookup is malformed');
     }
     const activeZones = await discoverCurrentTier(client, buildTime);
     const modulesByEncounterID = indexBossModulesByEncounterID(bossModules);
@@ -363,6 +382,9 @@ export async function generateDatabase({
                 aliases,
                 existingDatabase,
                 onOmission,
+                phaseDecider: modules?.encounterID
+                    ? phaseDeciderFor(modules.encounterID)
+                    : null,
             });
             if (!generated) {
                 continue;

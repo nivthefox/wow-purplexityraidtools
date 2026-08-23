@@ -810,9 +810,6 @@ tests["a completed encounter definition drives Notes through declared observatio
                 return 2
             end
         end,
-        ProjectWCL = function(_, phaseIndex, _, occurrence)
-            return { phase = phaseIndex, time = occurrence.time }
-        end,
     })
     assertTrue(ok, err)
 
@@ -856,9 +853,6 @@ tests["a boss unit observation is registered narrowly and drops secret trailing 
             if event == "UNIT_SPELLCAST_START" and unit == "boss1" then
                 return 2
             end
-        end,
-        ProjectWCL = function(_, phaseIndex, _, occurrence)
-            return { phase = phaseIndex, time = occurrence.time }
         end,
     })
     assertTrue(ok, err)

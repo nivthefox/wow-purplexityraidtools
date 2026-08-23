@@ -11,8 +11,8 @@ local function sourceDifficulty()
     return {
         phases = {
             {
-                phaseID = 7,
-                name = "Raw One",
+                phaseID = 1,
+                name = "Opening",
                 isIntermission = false,
                 occurrences = {
                     { spellID = 30, time = 5, observations = 3 },
@@ -20,18 +20,24 @@ local function sourceDifficulty()
                 },
             },
             {
-                phaseID = 7,
-                name = "Raw One Again",
-                isIntermission = false,
+                phaseID = 2,
+                name = "Intermission",
+                isIntermission = true,
                 occurrences = {
                     { spellID = 10, time = 1, observations = 5 },
                 },
+            },
+            {
+                phaseID = 3,
+                name = "Finale",
+                isIntermission = false,
+                occurrences = {},
             },
         },
     }
 end
 
-local function installDefinition(encounterID, project)
+local function installDefinition(encounterID)
     PRT.BossTimelineDatabase = {
         encounters = {
             [encounterID] = {
@@ -49,18 +55,12 @@ local function installDefinition(encounterID, project)
         end,
         Observe = function()
         end,
-        ProjectWCL = project,
     }
     assertTrue(EncounterPhases:Register(encounterID, candidate))
 end
 
-tests["planning projection closes and canonically sorts the consumer contract"] = function()
-    installDefinition(9301, function(_, phaseIndex, _, occurrence)
-        if phaseIndex == 1 then
-            return { phase = 2, time = occurrence.time + 10 }
-        end
-        return { phase = 1, time = occurrence.time + 2 }
-    end)
+tests["planning copies canonical stored occurrences into the closed sorted contract"] = function()
+    installDefinition(9301)
     local before = CopyTable(PRT.BossTimelineDatabase)
 
     local model = EncounterPhases:GetPlanningModel(9301, 16)
@@ -69,9 +69,9 @@ tests["planning projection closes and canonically sorts the consumer contract"] 
         difficultyID = 16,
         phases = fixture.phases,
         occurrences = {
-            { phase = 1, time = 3, spellID = 10 },
-            { phase = 2, time = 15, spellID = 20 },
-            { phase = 2, time = 15, spellID = 30 },
+            { phase = 1, time = 5, spellID = 20 },
+            { phase = 1, time = 5, spellID = 30 },
+            { phase = 2, time = 1, spellID = 10 },
         },
     })
     assertTableEquals(PRT.BossTimelineDatabase, before)
@@ -79,9 +79,7 @@ tests["planning projection closes and canonically sorts the consumer contract"] 
 end
 
 tests["a known definition with no stored difficulty returns empty occurrences"] = function()
-    installDefinition(9302, function(_, phaseIndex, _, occurrence)
-        return { phase = phaseIndex, time = occurrence.time }
-    end)
+    installDefinition(9302)
     local model = EncounterPhases:GetPlanningModel(9302, 14)
     assertTableEquals(model.phases, fixture.phases)
     assertEquals(#model.occurrences, 0)
@@ -94,13 +92,22 @@ tests["an encounter without a completed definition has no planning model"] = fun
     assertNil(EncounterPhases:GetPlanningModel(9303, 16))
 end
 
-tests["invalid projection output fails instead of inventing a phase"] = function()
-    installDefinition(9304, function()
-        return { phase = 99, time = -1 }
-    end)
+tests["stored phases must exactly match the canonical phase sequence"] = function()
+    installDefinition(9304)
+    PRT.BossTimelineDatabase.encounters[9304].difficulties[16].phases[2].name = "Raw WCL Section"
+
     local model, err = EncounterPhases:GetPlanningModel(9304, 16)
     assertNil(model)
-    assertNotNil(err)
+    assertEquals(err, "Stored phases do not match the encounter phase model.")
+end
+
+tests["invalid stored occurrences fail without leaking database fields"] = function()
+    installDefinition(9305)
+    PRT.BossTimelineDatabase.encounters[9305].difficulties[16].phases[1].occurrences[1].time = -1
+
+    local model, err = EncounterPhases:GetPlanningModel(9305, 16)
+    assertNil(model)
+    assertEquals(err, "Stored occurrence is invalid.")
 end
 
 return tests

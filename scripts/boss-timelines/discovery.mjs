@@ -1,4 +1,4 @@
-import { RAID_DIFFICULTIES } from './constants.mjs';
+import { CURRENT_TIER_WINDOW_MS, RAID_DIFFICULTIES } from './constants.mjs';
 
 function candidateIdentity(candidate) {
     return `${candidate.report.code}\u0000${candidate.report.fightID}`;
@@ -32,7 +32,7 @@ export function raidZones(zones) {
 }
 
 export async function discoverCurrentTier(client, buildTime) {
-    const startTime = buildTime - (24 * 60 * 60 * 1000);
+    const startTime = buildTime - CURRENT_TIER_WINDOW_MS;
     const discovered = [];
     for (const zone of raidZones(await client.discoverZones())) {
         const combinations = new Map();
@@ -59,8 +59,7 @@ export async function discoverCurrentTier(client, buildTime) {
         }
     }
     if (discovered.length === 0) {
-        throw new Error('No current raid tier was discoverable in the rolling 24-hour window');
+        throw new Error('No current raid tier was discoverable in the rolling seven-day window');
     }
     return discovered;
 }
-

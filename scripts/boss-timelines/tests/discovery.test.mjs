@@ -39,7 +39,7 @@ test('raid discovery excludes frozen and non-raid zones', () => {
     assert.deepEqual(raidZones(zones), [zones[0]]);
 });
 
-test('current tier includes every encounter from every recently active raid zone', async () => {
+test('current tier includes every encounter from every raid zone active within seven days', async () => {
     const zones = [
         {
             id: 1,
@@ -55,29 +55,31 @@ test('current tier includes every encounter from every recently active raid zone
         },
     ];
     const calls = [];
+    const buildTime = 200000000;
+    const twoDaysAgo = buildTime - (2 * 24 * 60 * 60 * 1000);
     const client = {
         discoverZones: async () => zones,
         candidateKills: async (encounterID, difficulty, startTime, endTime) => {
             calls.push({ encounterID, difficulty, startTime, endTime });
             if (encounterID === 10 || encounterID === 12) {
-                return [candidate(encounterID, 1000)];
+                return [candidate(encounterID, 1000, twoDaysAgo)];
             }
             return [];
         },
     };
-    const buildTime = 200000000;
     const result = await discoverCurrentTier(client, buildTime);
     assert.equal(result.length, 2);
     assert.deepEqual(result[0].encounters, zones[0].encounters);
+    assert.equal(result[0].combinations.get(10).get(4)[0].startTime, twoDaysAgo);
     assert.deepEqual(calls[0], {
         encounterID: 10,
         difficulty: 4,
-        startTime: buildTime - 86400000,
+        startTime: buildTime - 604800000,
         endTime: buildTime,
     });
 });
 
-test('empty activity fails instead of erasing the current database', async () => {
+test('no activity within seven days fails instead of erasing the current database', async () => {
     const client = {
         discoverZones: async () => [{
             id: 1,
@@ -89,4 +91,3 @@ test('empty activity fails instead of erasing the current database', async () =>
     };
     await assert.rejects(() => discoverCurrentTier(client, 100000000), /No current raid tier/);
 });
-

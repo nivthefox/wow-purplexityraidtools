@@ -37,6 +37,7 @@ PRT.BossTimelineDatabase = {
                 },
             },
         },
+        [3497] = { difficulties = {} },
     },
 }
 dofile("Modules/EncounterPhases/Registry.lua")

@@ -49,4 +49,18 @@ return {
             { id = 3, name = "Stage Two: Uncoiling" },
         },
     },
+    [3497] = {
+        [17] = {
+            { id = 1, name = "The Lost Explorers" },
+        },
+        [14] = {
+            { id = 1, name = "The Lost Explorers" },
+        },
+        [15] = {
+            { id = 1, name = "The Lost Explorers" },
+        },
+        [16] = {
+            { id = 1, name = "The Lost Explorers" },
+        },
+    },
 }

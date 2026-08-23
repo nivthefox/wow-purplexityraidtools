@@ -104,6 +104,18 @@ end
 local function IdentifyUlatekPhase()
 end
 
+local LOST_EXPLORERS_PHASES = {
+    { id = 1, name = "The Lost Explorers" },
+}
+
+local function GetLostExplorersPhases()
+    return LOST_EXPLORERS_PHASES
+end
+
+local function BeginLostExplorersPhase()
+    return {}
+end
+
 local function IdentifyLostExplorersPhase()
 end
 
@@ -132,4 +144,9 @@ EncounterPhases:Register(3470, {
     Observe = IdentifyNekzaliPhase,
 })
 EncounterPhases:RegisterDraft(3492, IdentifyUlatekPhase)
-EncounterPhases:RegisterDraft(3497, IdentifyLostExplorersPhase)
+EncounterPhases:Register(3497, {
+    events = {},
+    GetPhases = GetLostExplorersPhases,
+    Begin = BeginLostExplorersPhase,
+    Observe = IdentifyLostExplorersPhase,
+})

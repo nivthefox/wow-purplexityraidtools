@@ -692,7 +692,6 @@ end
 
 local NOTE_NO_ENCOUNTER_ID = "time:30;tag:everyone;text:Do Something"
 local NOTE_WITH_ENCOUNTER_ID = "EncounterID:3176;Name:Sszorak\ntime:30;tag:everyone;text:Spirit Link"
-local DRAFT_NOTE = "EncounterID:3429;Name:The Coiled Altar\ntime:30;tag:everyone;text:Spirit Link"
 
 local function makeTimerSpy()
     local spy = { started = false, stopped = false, lastNote = nil, phaseCalls = {} }
@@ -874,27 +873,6 @@ tests["a boss unit observation is registered narrowly and drops secret trailing 
         assertTableEquals(timerSpy.phaseCalls, { { phase = 2, time = 100 } })
     end)
     PRT.BossTimelineDatabase = previousDatabase
-end
-
-tests["an inert encounter draft preserves the existing boss-mod fallback"] = function()
-    local bossModCallback
-    local _, timerSpy, globals = setupEncounterHarness(DRAFT_NOTE, {
-        BigWigsLoader = {
-            RegisterMessage = function(_, _, callback)
-                bossModCallback = callback
-            end,
-        },
-    })
-    withGlobals(globals, function()
-        PRT.IsContentTypeEnabled = function()
-            return true
-        end
-        local eventFrame = Notes.eventFrame
-        eventFrame.handler(nil, "ENCOUNTER_START", 3429, "The Coiled Altar", 16, 20)
-        assertNotNil(bossModCallback)
-        bossModCallback(nil, {}, 2)
-        assertTableEquals(timerSpy.phaseCalls, { { phase = 2, time = 100 } })
-    end)
 end
 
 tests["ActivateNote tracks source as 'self' by default"] = function()

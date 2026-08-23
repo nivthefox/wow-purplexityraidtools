@@ -6,7 +6,59 @@ end
 local function IdentifyCoiledAltarPhase()
 end
 
-local function IdentifyGolemsOfUlatekPhase()
+local ENTOMBED_SENTINELS_PHASES = {
+    { id = 1, name = "Entombed Sentinels" },
+}
+local SENTINELS_FIRST_STASIS_TIME = 46
+local SENTINELS_STASIS_DURATION = 28
+local SENTINELS_REPEAT_ACTIVE_DURATION = 91
+local SENTINELS_CYCLE_DURATION = SENTINELS_STASIS_DURATION + SENTINELS_REPEAT_ACTIVE_DURATION
+
+local function GetEntombedSentinelsPhases()
+    return ENTOMBED_SENTINELS_PHASES
+end
+
+local function BeginEntombedSentinelsPhase()
+    return {}
+end
+
+local function IdentifyEntombedSentinelsPhase()
+end
+
+local function GetEntombedSentinelsPhaseOffset(phaseIndex, phase)
+    if phaseIndex == 1 then
+        if phase.phaseID == 1 and phase.isIntermission == false then
+            return 0
+        end
+        return
+    end
+
+    if phaseIndex % 2 == 0 then
+        if phase.phaseID ~= 2 or phase.isIntermission ~= true then
+            return
+        end
+        local completedCycles = phaseIndex / 2 - 1
+        return SENTINELS_FIRST_STASIS_TIME + completedCycles * SENTINELS_CYCLE_DURATION
+    end
+
+    if phase.phaseID ~= 1 or phase.isIntermission ~= false then
+        return
+    end
+    local completedCycles = (phaseIndex - 3) / 2
+    return SENTINELS_FIRST_STASIS_TIME
+        + SENTINELS_STASIS_DURATION
+        + completedCycles * SENTINELS_CYCLE_DURATION
+end
+
+local function ProjectEntombedSentinelsWCL(_, phaseIndex, phase, occurrence)
+    local offset = GetEntombedSentinelsPhaseOffset(phaseIndex, phase)
+    if not offset then
+        return
+    end
+    return {
+        phase = 1,
+        time = offset + occurrence.time,
+    }
 end
 
 local NEKZALI_PHASES = {
@@ -89,7 +141,13 @@ end
 
 EncounterPhases:RegisterDraft(3420, IdentifySszorakPhase)
 EncounterPhases:RegisterDraft(3429, IdentifyCoiledAltarPhase)
-EncounterPhases:RegisterDraft(3445, IdentifyGolemsOfUlatekPhase)
+EncounterPhases:Register(3445, {
+    events = {},
+    GetPhases = GetEntombedSentinelsPhases,
+    Begin = BeginEntombedSentinelsPhase,
+    Observe = IdentifyEntombedSentinelsPhase,
+    ProjectWCL = ProjectEntombedSentinelsWCL,
+})
 EncounterPhases:Register(3470, {
     events = {
         "UNIT_SPELLCAST_START",

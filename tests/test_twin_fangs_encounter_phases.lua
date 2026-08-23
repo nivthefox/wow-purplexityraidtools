@@ -4,24 +4,24 @@ local PRT = PurplexityRaidTools
 PRT.BossTimelineDatabase = {
     encounters = {
         [3420] = { difficulties = {} },
-        [3421] = { difficulties = {} },
-        [3445] = { difficulties = {} },
-        [3455] = {
+        [3421] = {
             difficulties = {
                 [16] = {
                     phases = {
                         {
                             phaseID = 1,
-                            name = "Vashnik the Malignant",
+                            name = "The Twin Fangs",
                             isIntermission = false,
                             occurrences = {
-                                { spellID = 1282516, time = 35, observations = 3 },
+                                { spellID = 1289192, time = 35, observations = 3 },
                             },
                         },
                     },
                 },
             },
         },
+        [3445] = { difficulties = {} },
+        [3455] = { difficulties = {} },
         [3470] = { difficulties = {} },
         [3497] = { difficulties = {} },
     },
@@ -32,9 +32,9 @@ dofile("Modules/EncounterPhases/Planning.lua")
 dofile("Modules/EncounterPhases/TheVenomousAbyss.lua")
 
 local EncounterPhases = PRT.EncounterPhases
-local encounterID = 3455
+local encounterID = 3421
 local expectedPhases = {
-    { id = 1, name = "Vashnik the Malignant" },
+    { id = 1, name = "The Twin Fangs" },
 }
 
 local function harness()
@@ -56,7 +56,7 @@ local function harness()
     return attempt, activations
 end
 
-tests["Vashnik exposes one stable phase for every raid difficulty"] = function()
+tests["The Twin Fangs exposes one stable phase for every raid difficulty"] = function()
     for _, difficultyID in ipairs({ 17, 14, 15, 16 }) do
         assertTableEquals(EncounterPhases:GetPhases(encounterID, difficultyID), expectedPhases)
     end
@@ -64,7 +64,7 @@ tests["Vashnik exposes one stable phase for every raid difficulty"] = function()
     assertTrue(EncounterPhases:ValidateCompatibility(compatibility, {}))
 end
 
-tests["Vashnik declares no runtime transition observations"] = function()
+tests["The Twin Fangs declares no runtime transition observations"] = function()
     local attempt, activations = harness()
     assertTableEquals(EncounterPhases:GetAttemptEvents(attempt), {})
     assertFalse(EncounterPhases:ObserveAttempt(attempt, "UNIT_POWER_UPDATE", "boss1"))
@@ -72,19 +72,19 @@ tests["Vashnik declares no runtime transition observations"] = function()
     assertEquals(#activations, 0)
 end
 
-tests["Vashnik planning preserves canonical stored occurrences"] = function()
+tests["The Twin Fangs planning preserves canonical stored occurrences"] = function()
     local model = EncounterPhases:GetPlanningModel(encounterID, 16)
     assertTableEquals(model, {
         encounterID = encounterID,
         difficultyID = 16,
         phases = expectedPhases,
         occurrences = {
-            { phase = 1, time = 35, spellID = 1282516 },
+            { phase = 1, time = 35, spellID = 1289192 },
         },
     })
 end
 
-tests["Vashnik returns empty planning occurrences without stored difficulty data"] = function()
+tests["The Twin Fangs returns empty planning occurrences without stored difficulty data"] = function()
     for _, difficultyID in ipairs({ 17, 14, 15 }) do
         local model = EncounterPhases:GetPlanningModel(encounterID, difficultyID)
         assertTableEquals(model.phases, expectedPhases)

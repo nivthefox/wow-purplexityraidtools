@@ -13,6 +13,20 @@ return {
             { id = 1, name = "Sszorak" },
         },
     },
+    [3421] = {
+        [17] = {
+            { id = 1, name = "The Twin Fangs" },
+        },
+        [14] = {
+            { id = 1, name = "The Twin Fangs" },
+        },
+        [15] = {
+            { id = 1, name = "The Twin Fangs" },
+        },
+        [16] = {
+            { id = 1, name = "The Twin Fangs" },
+        },
+    },
     [3445] = {
         [17] = {
             { id = 1, name = "Entombed Sentinels" },

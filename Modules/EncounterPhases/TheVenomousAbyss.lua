@@ -15,6 +15,21 @@ end
 local function IdentifySszorakPhase()
 end
 
+local TWIN_FANGS_PHASES = {
+    { id = 1, name = "The Twin Fangs" },
+}
+
+local function GetTwinFangsPhases()
+    return TWIN_FANGS_PHASES
+end
+
+local function BeginTwinFangsPhase()
+    return {}
+end
+
+local function IdentifyTwinFangsPhase()
+end
+
 local function IdentifyCoiledAltarPhase()
 end
 
@@ -136,6 +151,12 @@ EncounterPhases:Register(3420, {
     GetPhases = GetSszorakPhases,
     Begin = BeginSszorakPhase,
     Observe = IdentifySszorakPhase,
+})
+EncounterPhases:Register(3421, {
+    events = {},
+    GetPhases = GetTwinFangsPhases,
+    Begin = BeginTwinFangsPhase,
+    Observe = IdentifyTwinFangsPhase,
 })
 EncounterPhases:RegisterDraft(3429, IdentifyCoiledAltarPhase)
 EncounterPhases:Register(3445, {

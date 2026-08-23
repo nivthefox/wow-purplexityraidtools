@@ -10,6 +10,7 @@ const WOW_DIFFICULTY_NAMES = new Map([
     [15, 'Heroic'],
     [16, 'Mythic'],
 ]);
+const EQUIVALENT_OCCURRENCE_TIME_TOLERANCE = 1;
 
 const REJECTION_LABELS = new Map([
     ['missing-timeline-fight', 'missing from timeline response'],
@@ -101,6 +102,69 @@ function hasOccurrences(difficulty) {
 
 function existingDifficulty(database, encounterID, difficultyID) {
     return database.encounters[encounterID]?.difficulties[difficultyID] ?? null;
+}
+
+function occurrenceTimesBySpell(occurrences) {
+    const timesBySpell = new Map();
+    for (const occurrence of occurrences) {
+        const times = timesBySpell.get(occurrence.spellID) ?? [];
+        times.push(occurrence.time);
+        timesBySpell.set(occurrence.spellID, times);
+    }
+    return timesBySpell;
+}
+
+function occurrencesAreCovered(existingOccurrences, generatedOccurrences) {
+    const existingTimesBySpell = occurrenceTimesBySpell(existingOccurrences);
+    const nextIndexBySpell = new Map();
+
+    for (const occurrence of generatedOccurrences) {
+        const times = existingTimesBySpell.get(occurrence.spellID);
+        if (!times) {
+            return false;
+        }
+
+        let index = nextIndexBySpell.get(occurrence.spellID) ?? 0;
+        while (index < times.length
+            && times[index] < occurrence.time - EQUIVALENT_OCCURRENCE_TIME_TOLERANCE
+        ) {
+            index += 1;
+        }
+        if (index === times.length
+            || times[index] > occurrence.time + EQUIVALENT_OCCURRENCE_TIME_TOLERANCE
+        ) {
+            return false;
+        }
+        nextIndexBySpell.set(occurrence.spellID, index + 1);
+    }
+
+    return true;
+}
+
+function generatedDifficultyIsCovered(existing, generated) {
+    if (generated.phases.length > existing.phases.length) {
+        return false;
+    }
+
+    for (let index = 0; index < generated.phases.length; index += 1) {
+        const existingPhase = existing.phases[index];
+        const generatedPhase = generated.phases[index];
+        if (existingPhase.phaseID !== generatedPhase.phaseID) {
+            return false;
+        }
+        if (!occurrencesAreCovered(existingPhase.occurrences, generatedPhase.occurrences)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+function selectDifficulty(existing, generated) {
+    if (existing && generatedDifficultyIsCovered(existing, generated)) {
+        return existing;
+    }
+    return generated;
 }
 
 function generationFailure(message) {
@@ -258,7 +322,7 @@ async function generateEncounter({
             onOmission(omission);
             continue;
         }
-        difficulties[wowDifficulty] = difficulty;
+        difficulties[wowDifficulty] = selectDifficulty(previous, difficulty);
     }
 
     if (Object.keys(difficulties).length === 0) {

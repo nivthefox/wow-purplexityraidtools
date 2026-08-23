@@ -41,13 +41,14 @@ jobs:
 
       - run: npm test
 
-      - run: luajit tests/run_tests.lua
-
       - name: Generate boss timelines
         run: >-
           npm run generate:boss-timelines --
           --bigwigs "${{ runner.temp }}/BigWigs"
           --dbm "${{ runner.temp }}/DeadlyBossMods"
+
+      - name: Validate generated boss timelines
+        run: luajit tests/run_tests.lua
 
       - name: Verify secrets are absent
         run: |

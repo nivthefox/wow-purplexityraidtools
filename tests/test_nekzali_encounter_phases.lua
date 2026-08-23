@@ -162,15 +162,15 @@ end
 
 tests["Nekzali planning preserves stored phase-relative occurrences"] = function()
     local encounter = PRT.BossTimelineDatabase.encounters[encounterID]
-    for _, difficultyID in ipairs({ 14, 15 }) do
+    for _, difficultyID in ipairs(difficulties) do
         local model = EncounterPhases:GetPlanningModel(encounterID, difficultyID)
         assertTableEquals(model.phases, expectedPhases)
-        assertTableEquals(model.occurrences, expectedOccurrences(encounter.difficulties[difficultyID]))
-    end
-    for _, difficultyID in ipairs({ 17, 16 }) do
-        local model = EncounterPhases:GetPlanningModel(encounterID, difficultyID)
-        assertTableEquals(model.phases, expectedPhases)
-        assertEquals(#model.occurrences, 0)
+        local storedDifficulty = encounter.difficulties[difficultyID]
+        if storedDifficulty then
+            assertTableEquals(model.occurrences, expectedOccurrences(storedDifficulty))
+        else
+            assertEquals(#model.occurrences, 0)
+        end
     end
 end
 

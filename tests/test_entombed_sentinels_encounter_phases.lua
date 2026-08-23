@@ -73,15 +73,11 @@ end
 
 tests["Entombed Sentinels flattens every stored section into pull-relative time"] = function()
     local encounter = PRT.BossTimelineDatabase.encounters[encounterID]
-    local expectedCounts = { [14] = 87, [15] = 86 }
-    local expectedLastTimes = { [14] = 621, [15] = 613 }
 
     for _, difficultyID in ipairs({ 14, 15 }) do
         local model = EncounterPhases:GetPlanningModel(encounterID, difficultyID)
         assertTableEquals(model.phases, expectedPhases)
         assertTableEquals(model.occurrences, expectedOccurrences(encounter.difficulties[difficultyID]))
-        assertEquals(#model.occurrences, expectedCounts[difficultyID])
-        assertEquals(model.occurrences[#model.occurrences].time, expectedLastTimes[difficultyID])
         for index = 2, #model.occurrences do
             assertTrue(model.occurrences[index].time >= model.occurrences[index - 1].time)
         end

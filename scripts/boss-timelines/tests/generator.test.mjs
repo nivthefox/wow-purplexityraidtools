@@ -8,11 +8,14 @@ function runtimeCode(index) {
     return `generated-${String.fromCodePoint(65 + (index % 26))}-${Math.floor(index / 26)}`;
 }
 
-function candidate(index, duration = 100000 - index) {
+function candidate(index, duration = 100000 - index, difficulty = 5) {
+    const code = difficulty === 4
+        ? `difficulty-four-${runtimeCode(index)}`
+        : runtimeCode(index);
     return {
         duration,
         startTime: 1000 + index,
-        report: { code: runtimeCode(index), fightID: 1000 + index },
+        report: { code, fightID: 1000 + index },
     };
 }
 
@@ -67,7 +70,14 @@ function encounterBytes(source, encounterID) {
     throw new Error('Encounter block did not terminate');
 }
 
-function createClient({ rankingsByDifficulty, ineligible = new Set(), noEvents = false, failTimeline = false }) {
+function createClient({
+    rankingsByDifficulty,
+    ineligible = new Set(),
+    noEvents = false,
+    failTimeline = false,
+    abilityGameID = 7001,
+    eventTimestamp = 12500,
+}) {
     return {
         discoverZones: async () => [{
             id: 3001,
@@ -101,7 +111,7 @@ function createClient({ rankingsByDifficulty, ineligible = new Set(), noEvents =
                     endTime: 60000,
                     phaseTransitions: [],
                 }],
-                events: noEvents ? [] : [{ fight: id, timestamp: 12500, type: 'begincast', abilityGameID: 7001 }],
+                events: noEvents ? [] : [{ fight: id, timestamp: eventTimestamp, type: 'begincast', abilityGameID }],
             };
         },
     };
@@ -136,6 +146,82 @@ test('difficulties are generated independently and insufficient new combinations
         buildTime: 100000000,
     });
     assert.deepEqual(Object.keys(result.encounters[5001].difficulties), ['16']);
+});
+
+test('a compatible subset retains richer existing data while a newly observed difficulty is added', async () => {
+    const existing = emptyDatabase();
+    existing.encounters[5001] = {
+        difficulties: {
+            16: {
+                phases: [
+                    {
+                        phaseID: 1,
+                        name: 'Existing One',
+                        isIntermission: false,
+                        occurrences: [
+                            { spellID: 7001, time: 12, observations: 30 },
+                            { spellID: 7001, time: 40, observations: 10 },
+                        ],
+                    },
+                    {
+                        phaseID: 2,
+                        name: 'Existing Two',
+                        isIntermission: true,
+                        occurrences: [{ spellID: 7001, time: 5, observations: 8 }],
+                    },
+                ],
+            },
+        },
+    };
+    const previousMythic = structuredClone(existing.encounters[5001].difficulties[16]);
+    const mythic = [candidate(0), candidate(1), candidate(2)];
+    const heroic = [candidate(3, undefined, 4), candidate(4, undefined, 4), candidate(5, undefined, 4)];
+
+    const result = await generateDatabase({
+        client: createClient({ rankingsByDifficulty: new Map([[5, mythic], [4, heroic]]) }),
+        bossModules: modules(),
+        existingDatabase: existing,
+        buildTime: 100000000,
+    });
+
+    assert.deepEqual(result.encounters[5001].difficulties[16], previousMythic);
+    assert.deepEqual(result.encounters[5001].difficulties[15].phases[0].occurrences, [
+        { spellID: 7001, time: 13, observations: 3 },
+    ]);
+    assert.deepEqual(existing.encounters[5001].difficulties[16], previousMythic);
+});
+
+test('a completely different regenerated difficulty replaces existing data', async () => {
+    const existing = emptyDatabase();
+    existing.encounters[5001] = {
+        difficulties: {
+            16: {
+                phases: [{
+                    phaseID: 1,
+                    name: 'Old Encounter',
+                    isIntermission: false,
+                    occurrences: [{ spellID: 7001, time: 12, observations: 30 }],
+                }],
+            },
+        },
+    };
+    const rankings = [candidate(0), candidate(1), candidate(2)];
+
+    const result = await generateDatabase({
+        client: createClient({ rankingsByDifficulty: new Map([[5, rankings]]), abilityGameID: 7002 }),
+        bossModules: modules([7002]),
+        existingDatabase: existing,
+        buildTime: 100000000,
+    });
+
+    assert.deepEqual(result.encounters[5001].difficulties[16], {
+        phases: [{
+            phaseID: 1,
+            name: 'One',
+            isIntermission: false,
+            occurrences: [{ spellID: 7002, time: 13, observations: 3 }],
+        }],
+    });
 });
 
 test('an unsupported new encounter is omitted without failing other active encounters', async () => {

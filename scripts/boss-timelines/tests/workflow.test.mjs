@@ -17,6 +17,10 @@ test('workflow is Wednesday/manual, uses build environment, and creates only rev
     assert.doesNotMatch(source, /git add \./);
     assert.match(source, /if: steps\.diff\.outputs\.changed == 'true'/);
     assert.match(source, /luajit tests\/run_tests\.lua/);
+    const generation = source.indexOf('- name: Generate boss timelines');
+    const generatedValidation = source.indexOf('- name: Validate generated boss timelines');
+    assert.notEqual(generation, -1);
+    assert.ok(generatedValidation > generation);
 });
 
 test('workflow resolves immutable boss-mod revisions and publishes no artifacts or automatic merge', async () => {

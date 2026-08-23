@@ -149,6 +149,31 @@ test('client sends exact discovery and paginated candidate queries with the roll
     assert.equal(JSON.parse(requests[3].options.body).variables.page, 2);
 });
 
+test('candidate queries split long sampling periods into adjacent daily windows', async () => {
+    const requests = [];
+    const bodies = [
+        { access_token: 'ephemeral' },
+        { data: { worldData: { encounter: { fightRankings: { page: 1, hasMorePages: false, rankings: [] } } } } },
+        { data: { worldData: { encounter: { fightRankings: { page: 1, hasMorePages: false, rankings: [] } } } } },
+    ];
+    const client = new WarcraftLogsClient({
+        clientID: 'client',
+        clientSecret: 'secret',
+        gate: { run: (request) => request() },
+        fetchImpl: async (url, options) => {
+            if (url.includes('/api/')) {
+                requests.push(JSON.parse(options.body).variables);
+            }
+            return response(bodies.shift());
+        },
+    });
+    await client.candidateKills(10, 5, 100, 172800100);
+    assert.deepEqual(requests, [
+        { encounterID: 10, difficulty: 5, region: 'US', dateFilter: 'date.100.86400100', page: 1 },
+        { encounterID: 10, difficulty: 5, region: 'US', dateFilter: 'date.86400100.172800100', page: 1 },
+    ]);
+});
+
 test('timeline requests group fights, tolerates metadata reordering, and paginates events from zero', async () => {
     const starts = [];
     const reportBody = (nextPageTimestamp, eventStartTime, reverse = false) => ({

@@ -1,5 +1,7 @@
 import { REQUEST_INTERVAL_MS } from './constants.mjs';
 
+import { CANDIDATE_QUERY_WINDOW_MS } from './constants.mjs';
+
 export const DISCOVER_ZONES_QUERY = `query DiscoverZones {
   worldData {
     zones {
@@ -342,32 +344,38 @@ export class WarcraftLogsClient {
 
     async candidateKills(encounterID, difficulty, startTime, endTime) {
         const rankings = [];
-        let page = 1;
-        while (true) {
-            const variables = {
-                encounterID,
-                difficulty,
-                region: 'US',
-                dateFilter: `date.${startTime}.${endTime}`,
-                page,
-            };
-            let result;
-            try {
-                result = validateCandidateResponse(await this.graphql(CANDIDATE_KILLS_QUERY, variables));
-                if (result.page !== page) {
-                    contractError('candidate rankings', 'unexpected page number');
+        let windowStartTime = startTime;
+        while (windowStartTime < endTime) {
+            const windowEndTime = Math.min(windowStartTime + CANDIDATE_QUERY_WINDOW_MS, endTime);
+            let page = 1;
+            while (true) {
+                const variables = {
+                    encounterID,
+                    difficulty,
+                    region: 'US',
+                    dateFilter: `date.${windowStartTime}.${windowEndTime}`,
+                    page,
+                };
+                let result;
+                try {
+                    result = validateCandidateResponse(await this.graphql(CANDIDATE_KILLS_QUERY, variables));
+                    if (result.page !== page) {
+                        contractError('candidate rankings', 'unexpected page number');
+                    }
+                } catch (error) {
+                    throw new Error(
+                        `Warcraft Logs candidate rankings failed for encounter ${encounterID}, difficulty ${difficulty}, page ${page}: ${error.message}`,
+                    );
                 }
-            } catch (error) {
-                throw new Error(
-                    `Warcraft Logs candidate rankings failed for encounter ${encounterID}, difficulty ${difficulty}, page ${page}: ${error.message}`,
-                );
+                rankings.push(...result.rankings);
+                if (!result.hasMorePages) {
+                    break;
+                }
+                page += 1;
             }
-            rankings.push(...result.rankings);
-            if (!result.hasMorePages) {
-                return rankings;
-            }
-            page += 1;
+            windowStartTime = windowEndTime;
         }
+        return rankings;
     }
 
     async timelineFights(reportCode, fightIDs) {

@@ -63,19 +63,19 @@ test('Nymrissa is registered as a Lair rather than a Venomous Abyss encounter', 
     assert.equal(THE_VENOMOUS_ABYSS_PHASE_DECIDERS.has(3379), false);
 });
 
-test('Nekzali uses its own Ritual of Awakening and Uncoiling casts as actual boundaries', () => {
+test('Nekzali uses its own Ritual cast and Uncoiling buff as actual boundaries', () => {
     const value = fight(3470, 5000, 45000);
     value.enemyNPCs = [
         { id: 70, gameID: 263050 },
         { id: 71, gameID: 259927 },
     ];
     const events = [
-        { fight: 10, timestamp: 30000, type: 'cast', abilityGameID: 1292315, sourceID: 71 },
+        { fight: 10, timestamp: 30000, type: 'applybuff', abilityGameID: 1290003, sourceID: 71 },
         { fight: 10, timestamp: 15000, type: 'cast', abilityGameID: 1295124, sourceID: 70 },
         { fight: 11, timestamp: 14000, type: 'cast', abilityGameID: 1295124, sourceID: 71 },
         { fight: 10, timestamp: 12000, type: 'begincast', abilityGameID: 1295124, sourceID: 71 },
         { fight: 10, timestamp: 14000, type: 'cast', abilityGameID: 1295124, sourceID: 71 },
-        { fight: 10, timestamp: 31000, type: 'cast', abilityGameID: 1292315, sourceID: 71 },
+        { fight: 10, timestamp: 31000, type: 'applybuff', abilityGameID: 1290003, sourceID: 71 },
     ];
     assert.deepEqual(decide(3470, value, events), [
         {
@@ -102,14 +102,14 @@ test('Nekzali uses its own Ritual of Awakening and Uncoiling casts as actual bou
     ]);
 });
 
-test('Nekzali rejects kills without both ordered boss transition casts', () => {
+test('Nekzali rejects kills without both ordered boss transition events', () => {
     const value = fight(3470);
     value.enemyNPCs = [{ id: 71, gameID: 259927 }];
     const ritual = { fight: 10, timestamp: 14000, type: 'cast', abilityGameID: 1295124, sourceID: 71 };
     assert.equal(decide(3470, value, [ritual]), null);
     assert.equal(decide(3470, value, [
         ritual,
-        { fight: 10, timestamp: 12000, type: 'cast', abilityGameID: 1292315, sourceID: 71 },
+        { fight: 10, timestamp: 12000, type: 'applybuff', abilityGameID: 1290003, sourceID: 71 },
     ]), null);
 });
 

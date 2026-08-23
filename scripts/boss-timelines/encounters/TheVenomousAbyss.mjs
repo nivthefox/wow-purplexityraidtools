@@ -1,6 +1,6 @@
 const NEKZALI_NPC_ID = 259927;
 const RITUAL_OF_AWAKENING_ID = 1295124;
-const UNCOILING_ID = 1292315;
+const UNCOILING_ID = 1290003;
 const ZULJAN_NPC_ID = 257911;
 const GHASTLY_REGENERATION_ID = 1304033;
 const ULATEK_NPC_ID = 257758;
@@ -28,9 +28,9 @@ function enemyActorIDs(fight, gameID) {
     return actorIDs;
 }
 
-function firstCastTime(events, sourceIDs, abilityGameID) {
+function firstEventTime(events, sourceIDs, abilityGameID, type) {
     for (const event of events) {
-        if (event.type === 'cast'
+        if (event.type === type
             && event.abilityGameID === abilityGameID
             && sourceIDs.has(event.sourceID)
         ) {
@@ -42,8 +42,8 @@ function firstCastTime(events, sourceIDs, abilityGameID) {
 
 function decideNekzali({ fight, events }) {
     const sourceIDs = enemyActorIDs(fight, NEKZALI_NPC_ID);
-    const ritualStart = firstCastTime(events, sourceIDs, RITUAL_OF_AWAKENING_ID);
-    const uncoilingStart = firstCastTime(events, sourceIDs, UNCOILING_ID);
+    const ritualStart = firstEventTime(events, sourceIDs, RITUAL_OF_AWAKENING_ID, 'cast');
+    const uncoilingStart = firstEventTime(events, sourceIDs, UNCOILING_ID, 'applybuff');
     if (ritualStart === null || uncoilingStart === null
         || ritualStart <= fight.startTime
         || uncoilingStart <= ritualStart

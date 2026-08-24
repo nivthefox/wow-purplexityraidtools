@@ -13,6 +13,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 
 - Notes now use encounter-specific phases for supported fights.
+- Notes assignments now offer current group members while grouped and main-spec roster characters while solo, including their relevant abilities, class colors, and spell icons.
+- Raid-leader note editing now stays focused on assignment content, while personal annotations use searchable sounds, explicit TTS modes, and validated lead-time, cooldown, and countdown fields.
+
+### Fixed
+
+- Editing or deleting a personal annotation now updates the saved annotation instead of duplicating or losing it.
 
 ## [1.2.2] - 2026-08-18
 

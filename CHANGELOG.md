@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 
 - The Notes editor now shows boss ability timelines alongside assignments.
+- Roster Nicknames can now replace character names in Grid2.
 
 ### Changed
 

@@ -17,8 +17,16 @@ local featureLoaded, featureLoadError = pcall(function()
     dofile("Modules/RosterNicknames/DandersFrames.lua")
 end)
 
+local grid2AdapterLoaded, grid2AdapterLoadError = pcall(function()
+    dofile("Modules/RosterNicknames/Grid2.lua")
+end)
+
 local function requireFeature()
     assertTrue(featureLoaded, tostring(featureLoadError))
+end
+
+local function requireGrid2Adapter()
+    assertTrue(grid2AdapterLoaded, tostring(grid2AdapterLoadError))
 end
 
 local function withGlobals(overrides, body)
@@ -69,6 +77,8 @@ tests["roster nickname feature modules load without provider addons"] = function
     assertNotNil(PRT.RosterNicknameAdapters.ElvUI)
     assertNotNil(PRT.RosterNicknameAdapters.EllesmereUI)
     assertNotNil(PRT.RosterNicknameAdapters.DandersFrames)
+    requireGrid2Adapter()
+    assertNotNil(PRT.RosterNicknameAdapters.Grid2)
 end
 
 tests["a new profile defaults roster nicknames to disabled"] = function()
@@ -624,6 +634,126 @@ tests["Danders Frames adapter wraps its external name seam once and refreshes fr
 
     assertEquals(fallbackCalls, 2)
     assertEquals(refreshes, 1)
+end
+
+local function resetGrid2Adapter()
+    local adapter = PRT.RosterNicknameAdapters.Grid2
+    adapter.registered = false
+    adapter.status = nil
+    adapter.previousGetText = nil
+    adapter.previousUpdateDB = nil
+    adapter.getText = nil
+    adapter.updateDB = nil
+    return adapter
+end
+
+tests["Grid2 adapter transparently wraps the name status once and preserves fallback"] = function()
+    requireFeature()
+    requireGrid2Adapter()
+    local fallbackCalls = 0
+    local nameStatus = {
+        GetText = function(_, unit)
+            fallbackCalls = fallbackCalls + 1
+            return "Normal-" .. unit
+        end,
+        UpdateDB = function() end,
+        UpdateAllUnits = function() end,
+    }
+    local grid = {
+        GetStatusByName = function(_, name)
+            assertEquals(name, "name")
+            return nameStatus
+        end,
+    }
+    local adapter = resetGrid2Adapter()
+    PurplexityRaidToolsRosterDB = { rosterEntry("Starcaller", "Aster-MoonGuard") }
+
+    withGlobals({
+        Grid2 = grid,
+        UnitIsPlayer = function() return true end,
+        UnitFullName = function(unit)
+            if unit == "party1" then
+                return "Aster", "MoonGuard"
+            end
+            return "Nobody", "MoonGuard"
+        end,
+        issecretvalue = function() return false end,
+    }, function()
+        assertTrue(adapter:Initialize())
+        local resolver = nameStatus.GetText
+        assertTrue(adapter:Initialize())
+        assertEquals(nameStatus.GetText, resolver)
+        nameStatus:UpdateDB()
+        assertEquals(nameStatus.GetText, resolver)
+
+        withEnabledFeature(function()
+            assertEquals(nameStatus:GetText("party1"), "Starcaller")
+            assertEquals(nameStatus:GetText("party2"), "Normal-party2")
+        end)
+        assertEquals(nameStatus:GetText("party1"), "Normal-party1")
+    end)
+
+    assertEquals(fallbackCalls, 2)
+    resetGrid2Adapter()
+end
+
+tests["Grid2 adapter survives name configuration refreshes"] = function()
+    requireFeature()
+    requireGrid2Adapter()
+    local updateCalls = 0
+    local nameStatus = {
+        GetText = function(_, unit) return "Original-" .. unit end,
+        UpdateDB = function(self)
+            updateCalls = updateCalls + 1
+            self.GetText = function(_, unit) return "Configured-" .. unit end
+        end,
+        UpdateAllUnits = function() end,
+    }
+    local adapter = resetGrid2Adapter()
+    PurplexityRaidToolsRosterDB = { rosterEntry("Starcaller", "Aster-MoonGuard") }
+
+    withGlobals({
+        Grid2 = { GetStatusByName = function() return nameStatus end },
+        UnitIsPlayer = function() return true end,
+        UnitFullName = function() return "Aster", "MoonGuard" end,
+        issecretvalue = function() return false end,
+    }, function()
+        assertTrue(adapter:Initialize())
+        nameStatus:UpdateDB()
+
+        assertEquals(updateCalls, 1)
+        withEnabledFeature(function()
+            assertEquals(nameStatus:GetText("party1"), "Starcaller")
+        end)
+        assertEquals(nameStatus:GetText("party1"), "Configured-party1")
+    end)
+
+    resetGrid2Adapter()
+end
+
+tests["Grid2 adapter refreshes only the name status during combat"] = function()
+    requireFeature()
+    requireGrid2Adapter()
+    local refreshes = 0
+    local nameStatus = {
+        GetText = function() return "Aster" end,
+        UpdateDB = function() end,
+        UpdateAllUnits = function()
+            refreshes = refreshes + 1
+        end,
+    }
+    local adapter = resetGrid2Adapter()
+
+    withGlobals({
+        Grid2 = { GetStatusByName = function() return nameStatus end },
+        InCombatLockdown = function() return true end,
+    }, function()
+        assertTrue(adapter:Initialize())
+        adapter:Refresh()
+    end)
+
+    assertEquals(refreshes, 1)
+    resetGrid2Adapter()
 end
 
 return tests

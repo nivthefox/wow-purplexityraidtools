@@ -3,7 +3,7 @@
 ## Notes: Raid tools for Purplexity
 ## Author: Niv
 ## Version: 1.2.2
-## OptionalDeps: EllesmereUIRaidFrames, EllesmereUIUnitFrames, DandersFrames
+## OptionalDeps: EllesmereUIRaidFrames, EllesmereUIUnitFrames, DandersFrames, Grid2
 ## SavedVariables: PurplexityRaidToolsDB, PurplexityRaidToolsAttendanceDB, PurplexityRaidToolsRosterDB
 
 Libs/LibStub/LibStub.lua
@@ -58,6 +58,7 @@ Modules/RosterNicknames/NivUI.lua
 Modules/RosterNicknames/ElvUI.lua
 Modules/RosterNicknames/EllesmereUI.lua
 Modules/RosterNicknames/DandersFrames.lua
+Modules/RosterNicknames/Grid2.lua
 Modules/Attendance/RecordsUI.lua
 Modules/Attendance/AttendanceUI.lua
 Modules/Attendance/RosterUI.lua

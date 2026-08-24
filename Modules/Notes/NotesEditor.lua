@@ -37,8 +37,7 @@ local TTS_MODE_OPTIONS = {
 local ALERT_FIELD_LAYOUTS = {
     edit = {
         "phase", "time", "who", "ability", "displayText", "duration",
-        "displayType", "sound", "ttsMode", "ttsCustom", "audioLeadTime",
-        "countdown", "bossSpell", "colors",
+        "bossSpell", "colors",
     },
     annotation = {
         "originalInfo", "displayType", "sound", "ttsMode", "ttsCustom",
@@ -175,12 +174,7 @@ local function IsContextLocked()
     )
 end
 
-local function ResolveBossSpell(spellID)
-    local name = C_Spell and C_Spell.GetSpellName and C_Spell.GetSpellName(spellID)
-    local icon = C_Spell and C_Spell.GetSpellTexture and C_Spell.GetSpellTexture(spellID)
-    if name and icon then
-        return name, icon
-    end
+local function RequestSpellData(spellID)
     if not requestedSpellIDs[spellID]
         and C_Spell
         and C_Spell.RequestLoadSpellData
@@ -188,7 +182,37 @@ local function ResolveBossSpell(spellID)
         requestedSpellIDs[spellID] = true
         C_Spell.RequestLoadSpellData(spellID)
     end
+end
+
+local function ResolveSpellIcon(spellID)
+    local icon = C_Spell and C_Spell.GetSpellTexture and C_Spell.GetSpellTexture(spellID)
+    if not icon then
+        RequestSpellData(spellID)
+    end
+    return icon
+end
+
+local function ResolveBossSpell(spellID)
+    local name = C_Spell and C_Spell.GetSpellName and C_Spell.GetSpellName(spellID)
+    local icon = ResolveSpellIcon(spellID)
+    if not name then
+        RequestSpellData(spellID)
+    end
     return name, icon
+end
+
+function NotesEditor.FormatSpellLabel(name, spellID, size)
+    if not name or name == "" or not spellID then
+        return name or ""
+    end
+
+    local icon = ResolveSpellIcon(spellID)
+    if not icon then
+        return name
+    end
+
+    local iconSize = size or 14
+    return "|T" .. icon .. ":" .. iconSize .. ":" .. iconSize .. "|t " .. name
 end
 
 local function NonEmpty(text)
@@ -373,11 +397,16 @@ end
 -- GroupInspect stores a placeholder without a realm until both the unit name and
 -- the local realm resolve (Modules/GroupInspect.lua PlaceholderName); a
 -- placeholder identifies nobody, so it must never answer to a tag.
-local function ResolvedBareName(name)
+local function ResolvedShortName(name)
     if not name or not name:match("^[^%-]+%-.+$") then
         return nil
     end
-    return Ambiguate(name, "short"):lower()
+    return Ambiguate(name, "short")
+end
+
+local function ResolvedBareName(name)
+    local shortName = ResolvedShortName(name)
+    return shortName and shortName:lower()
 end
 
 -- Ordering by full name and then GUID is a total order, so a bare name shared by
@@ -409,7 +438,96 @@ function NotesEditor.FindMemberByTag(members, tag)
     return bestGuid, bestMember
 end
 
-local function ClassColorForTag(tag)
+local function AddTargetOption(optionsByTag, character, specId, classToken)
+    local shortName = ResolvedShortName(character)
+    if not shortName then
+        return
+    end
+
+    local key = shortName:lower()
+    local current = optionsByTag[key]
+    if current and current.character <= character then
+        return
+    end
+
+    optionsByTag[key] = {
+        name = shortName,
+        value = shortName,
+        character = character,
+        specId = specId,
+        class = classToken,
+    }
+end
+
+function NotesEditor.BuildTargetOptions(isGrouped, groupMembers, rosterEntries)
+    local optionsByTag = {}
+
+    if isGrouped then
+        for _, member in pairs(groupMembers or {}) do
+            AddTargetOption(optionsByTag, member.name, member.specId, member.class)
+        end
+    else
+        for _, entry in ipairs(rosterEntries or {}) do
+            for _, character in ipairs(entry.characters or {}) do
+                local characterData = entry.characterData and entry.characterData[character]
+                if characterData and characterData.mainSpec then
+                    AddTargetOption(
+                        optionsByTag,
+                        character,
+                        characterData.mainSpec,
+                        characterData.class
+                    )
+                end
+            end
+        end
+    end
+
+    local options = {}
+    for _, option in pairs(optionsByTag) do
+        options[#options + 1] = option
+    end
+    table.sort(options, function(a, b)
+        local aName = a.name:lower()
+        local bName = b.name:lower()
+        if aName ~= bName then
+            return aName < bName
+        end
+        return a.character < b.character
+    end)
+    return options
+end
+
+local function GetTargetOptions()
+    if IsInGroup() then
+        return NotesEditor.BuildTargetOptions(
+            true,
+            PRT.GroupInspect and PRT.GroupInspect.members,
+            nil
+        )
+    end
+
+    local entries
+    if PRT.Roster and PRT.Roster.GetEntries then
+        entries = PRT.Roster:GetEntries()
+    end
+    return NotesEditor.BuildTargetOptions(false, nil, entries)
+end
+
+local function FindTargetOption(tag)
+    if not tag or tag == "" then
+        return nil
+    end
+
+    local lowerTag = tag:lower()
+    for _, option in ipairs(GetTargetOptions()) do
+        if option.value:lower() == lowerTag then
+            return option
+        end
+    end
+    return nil
+end
+
+function NotesEditor.GetClassColorForTag(tag)
     if not tag then
         return 0.8, 0.8, 0.8
     end
@@ -428,10 +546,9 @@ local function ClassColorForTag(tag)
         return 0.77, 0.12, 0.23
     end
 
-    local _, member = NotesEditor.FindMemberByTag(
-        PRT.GroupInspect and PRT.GroupInspect.members, tag)
-    if member then
-        local color = RAID_CLASS_COLORS and RAID_CLASS_COLORS[member.class]
+    local target = FindTargetOption(tag)
+    if target then
+        local color = RAID_CLASS_COLORS and RAID_CLASS_COLORS[target.class]
         if color then
             return color.r, color.g, color.b
         end
@@ -464,12 +581,6 @@ local function IsClassTag(tag)
         end
     end
     return false
-end
-
-local function FindMemberByName(name)
-    local _, member = NotesEditor.FindMemberByTag(
-        PRT.GroupInspect and PRT.GroupInspect.members, name)
-    return member
 end
 
 local function CollectAbilitiesFromSpec(specData)
@@ -505,7 +616,7 @@ local function GetLocalPlayerAbilities()
     return result
 end
 
-local function GetAbilitiesForTag(tag)
+function NotesEditor.GetAbilitiesForTag(tag)
     if not tag or tag == "" then
         return {}
     end
@@ -530,9 +641,9 @@ local function GetAbilitiesForTag(tag)
         end
     end
 
-    local member = FindMemberByName(tag)
-    if member and member.specId then
-        local specData = PRT.SpellData[member.specId]
+    local target = FindTargetOption(tag)
+    if target and target.specId then
+        local specData = PRT.SpellData[target.specId]
         if specData and specData.abilities then
             local result = CollectAbilitiesFromSpec(specData)
             table.sort(result, ByName)
@@ -703,6 +814,16 @@ local function SplitAbilityAndText(text, knownAbilities)
         end
     end
     return text, ""
+end
+
+function NotesEditor.FindAbilitySpellID(text, knownAbilities)
+    local abilityName = SplitAbilityAndText(text, knownAbilities)
+    for _, ability in ipairs(knownAbilities or {}) do
+        if ability.name == abilityName then
+            return ability.spellId
+        end
+    end
+    return nil
 end
 
 local function SaveEditorPosition()
@@ -951,6 +1072,60 @@ local function CreateFieldInput(parent)
         self:ClearFocus()
     end)
     return box
+end
+
+local function CreateTargetPicker(parent, getItems, getTextColor, onTextChanged)
+    local picker = CreateFrame("Frame", nil, parent)
+    picker:SetHeight(22)
+
+    local input = CreateFieldInput(picker)
+    input:SetPoint("TOPLEFT")
+    input:SetPoint("BOTTOMRIGHT", -28, 0)
+    input:SetScript("OnTextChanged", function(self)
+        local r, g, b = getTextColor(self:GetText())
+        self:SetTextColor(r, g, b)
+        onTextChanged(self:GetText())
+    end)
+
+    local dropdown = CreateFrame("DropdownButton", nil, picker, "WowStyle1DropdownTemplate")
+    dropdown:SetWidth(24)
+    dropdown:SetPoint("TOPRIGHT")
+    dropdown:SetPoint("BOTTOMRIGHT")
+    dropdown:SetupMenu(function(_, rootDescription)
+        local currentValue = input:GetText():lower()
+        for _, item in ipairs(getItems()) do
+            local itemName = item.name
+            local color = RAID_CLASS_COLORS and RAID_CLASS_COLORS[item.class]
+            if color then
+                itemName = color:WrapTextInColorCode(itemName)
+            end
+            rootDescription:CreateRadio(
+                itemName,
+                function() return currentValue == item.value:lower() end,
+                function() input:SetText(item.value) end
+            )
+        end
+    end)
+
+    function picker:SetText(value)
+        input:SetText(value or "")
+    end
+
+    function picker:GetText()
+        return input:GetText()
+    end
+
+    function picker:Enable()
+        input:Enable()
+        dropdown:SetEnabled(true)
+    end
+
+    function picker:Disable()
+        input:Disable()
+        dropdown:SetEnabled(false)
+    end
+
+    return picker
 end
 
 local function CreateFieldDropdown(parent, getItems, onSelect)
@@ -1224,6 +1399,14 @@ local function BuildEditPanel()
         return dd
     end
 
+    local function AddTargetPicker(getItems, getTextColor, onTextChanged)
+        local picker = CreateTargetPicker(scrollChild, getItems, getTextColor, onTextChanged)
+        picker:SetPoint("TOPLEFT", 4, yOff)
+        picker:SetWidth(fieldWidth)
+        yOff = yOff - 28
+        return picker
+    end
+
     local function AddSoundPicker()
         local picker = CreateSoundPicker(scrollChild)
         picker:SetPoint("TOPLEFT", 4, yOff)
@@ -1250,10 +1433,8 @@ local function BuildEditPanel()
     editFields.time = AddInput()
 
     editFields.whoLabel = AddLabel("WHO")
-    editFields.who = AddInput()
-    editFields.who:SetScript("OnTextChanged", function(self)
-        local tag = self:GetText()
-        local abilities = GetAbilitiesForTag(tag)
+    editFields.who = AddTargetPicker(GetTargetOptions, NotesEditor.GetClassColorForTag, function(tag)
+        local abilities = NotesEditor.GetAbilitiesForTag(tag)
         currentAbilities = abilities
         editFields.ability:GenerateMenu()
     end)
@@ -1263,7 +1444,10 @@ local function BuildEditPanel()
         function()
             local items = { { name = "(free text)", value = "" } }
             for _, ab in ipairs(currentAbilities) do
-                items[#items + 1] = { name = ab.name, value = ab.name }
+                items[#items + 1] = {
+                    name = NotesEditor.FormatSpellLabel(ab.name, ab.spellId, 16),
+                    value = ab.name,
+                }
             end
             return items
         end,
@@ -2043,12 +2227,17 @@ function NotesEditor:RenderBlock(reminder, y, stackIdx, height, phases, playerCt
     block:SetHeight(height)
     block:SetFrameLevel(assignmentCanvas:GetFrameLevel() + 5)
 
-    local r, g, b = ClassColorForTag(reminder.tag)
+    local r, g, b = NotesEditor.GetClassColorForTag(reminder.tag)
     block.who:SetText(reminder.tag or "")
     block.who:SetTextColor(r, g, b)
 
     local abilityText = reminder.text or ""
-    block.ability:SetText(abilityText)
+    local abilitySpellID = reminder.spellID
+        or NotesEditor.FindAbilitySpellID(
+            abilityText,
+            NotesEditor.GetAbilitiesForTag(reminder.tag)
+        )
+    block.ability:SetText(NotesEditor.FormatSpellLabel(abilityText, abilitySpellID, 14))
 
     block.extra:SetText("")
     block.extra:Hide()
@@ -2501,7 +2690,7 @@ function NotesEditor:OpenEditPanel(reminder)
         currentAbilities = GetLocalPlayerAbilities()
     else
         editFields.who:Enable()
-        currentAbilities = GetAbilitiesForTag(reminder.tag)
+        currentAbilities = NotesEditor.GetAbilitiesForTag(reminder.tag)
     end
 
     local abilityName, displayText = SplitAbilityAndText(reminder.text, currentAbilities)

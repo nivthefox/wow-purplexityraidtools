@@ -121,9 +121,22 @@ tests["annotation reminder includes every presentation override"] = function()
 end
 
 tests["field layouts keep annotation content immutable and personal forms consistent"] = function()
+    local edit = NotesEditor.GetAlertFieldKeys("edit")
+    assertTrue(contains(edit, "duration"))
+    assertTrue(contains(edit, "bossSpell"))
+    assertFalse(contains(edit, "displayType"))
+    assertFalse(contains(edit, "sound"))
+    assertFalse(contains(edit, "ttsMode"))
+    assertFalse(contains(edit, "ttsCustom"))
+    assertFalse(contains(edit, "audioLeadTime"))
+    assertFalse(contains(edit, "countdown"))
+
     local annotation = NotesEditor.GetAlertFieldKeys("annotation")
     assertTrue(contains(annotation, "displayType"))
+    assertTrue(contains(annotation, "sound"))
+    assertTrue(contains(annotation, "ttsMode"))
     assertTrue(contains(annotation, "audioLeadTime"))
+    assertTrue(contains(annotation, "countdown"))
     assertFalse(contains(annotation, "duration"))
     assertFalse(contains(annotation, "time"))
     assertFalse(contains(annotation, "who"))
@@ -131,7 +144,10 @@ tests["field layouts keep annotation content immutable and personal forms consis
     local personal = NotesEditor.GetAlertFieldKeys("personal")
     assertTrue(contains(personal, "duration"))
     assertTrue(contains(personal, "displayType"))
+    assertTrue(contains(personal, "sound"))
+    assertTrue(contains(personal, "ttsMode"))
     assertTrue(contains(personal, "audioLeadTime"))
+    assertTrue(contains(personal, "countdown"))
     assertFalse(contains(personal, "who"))
 end
 

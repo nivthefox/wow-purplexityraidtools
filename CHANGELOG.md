@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-08-24
+
 ### Added
 
 - The Notes editor now shows boss ability timelines alongside assignments.
@@ -219,7 +221,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Initial alpha release with Don't Release and Ready Check modules.
 
-[Unreleased]: https://github.com/nivthefox/wow-purplexityraidtools/compare/v1.2.2...HEAD
+[Unreleased]: https://github.com/nivthefox/wow-purplexityraidtools/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/nivthefox/wow-purplexityraidtools/compare/v1.2.2...v1.3.0
 [1.2.2]: https://github.com/nivthefox/wow-purplexityraidtools/compare/v1.2.1...v1.2.2
 [1.2.1]: https://github.com/nivthefox/wow-purplexityraidtools/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/nivthefox/wow-purplexityraidtools/compare/v1.1.4...v1.2.0

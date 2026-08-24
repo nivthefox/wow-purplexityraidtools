@@ -21,13 +21,17 @@ jobs:
         id: meta
         working-directory: PurplexityRaidTools
         run: |
-          # Interface version from TOC (e.g. 120000 → 12.0.0)
-          INTERFACE=$(grep -oP '## Interface:\s*\K\d+' PurplexityRaidTools.toc)
-          MAJOR=$((INTERFACE / 10000))
-          MINOR=$(( (INTERFACE % 10000) / 100 ))
-          PATCH=$((INTERFACE % 100))
-          GAME_VERSION="${MAJOR}.${MINOR}.${PATCH}"
-          echo "game_version=$GAME_VERSION" >> "$GITHUB_OUTPUT"
+          # Interface versions from TOC (e.g. 120000, 120100 → ["12.0.0", "12.1.0"])
+          INTERFACES=$(grep -oP '## Interface:\s*\K.*' PurplexityRaidTools.toc | tr ',' ' ')
+          GAME_VERSIONS=$(
+            for INTERFACE in $INTERFACES; do
+              MAJOR=$((INTERFACE / 10000))
+              MINOR=$(( (INTERFACE % 10000) / 100 ))
+              PATCH=$((INTERFACE % 100))
+              echo "${MAJOR}.${MINOR}.${PATCH}"
+            done | jq -R -s -c 'split("\n") | map(select(length > 0))'
+          )
+          echo "game_versions=$GAME_VERSIONS" >> "$GITHUB_OUTPUT"
 
           # Release type from tag (alpha/beta → that, otherwise release)
           TAG="${{ github.event.release.tag_name }}"
@@ -54,14 +58,14 @@ jobs:
         run: |
           jq -n \
             --arg changelog "${RELEASE_BODY:-No release notes provided.}" \
-            --arg version "${{ steps.meta.outputs.game_version }}" \
+            --argjson versions '${{ steps.meta.outputs.game_versions }}' \
             --arg release_type "${{ steps.meta.outputs.cf_release_type }}" \
             --arg display_name "PurplexityRaidTools ${{ github.event.release.tag_name }}" \
             '{
               changelog: $changelog,
               changelogType: "markdown",
               displayName: $display_name,
-              gameVersionNames: [$version],
+              gameVersionNames: $versions,
               releaseType: $release_type
             }' > cf-metadata.json
 

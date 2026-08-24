@@ -28,6 +28,29 @@ local DISPLAY_TYPE_OPTIONS = {
     { name = "Circle (swipe)",       value = "Circle" },
 }
 
+local TTS_MODE_OPTIONS = {
+    { name = "Off",           value = "off" },
+    { name = "Reminder Text", value = "reminder" },
+    { name = "Custom Text",   value = "custom" },
+}
+
+local ALERT_FIELD_LAYOUTS = {
+    edit = {
+        "phase", "time", "who", "ability", "displayText", "duration",
+        "displayType", "sound", "ttsMode", "ttsCustom", "audioLeadTime",
+        "countdown", "bossSpell", "colors",
+    },
+    annotation = {
+        "originalInfo", "displayType", "sound", "ttsMode", "ttsCustom",
+        "audioLeadTime", "countdown",
+    },
+    personal = {
+        "phase", "time", "ability", "displayText", "duration",
+        "displayType", "sound", "ttsMode", "ttsCustom", "audioLeadTime",
+        "countdown",
+    },
+}
+
 local GENERIC_ABILITIES = {
     "Defensive", "Kick", "Soak", "Spread", "Stack",
     "Raid Cooldown", "External", "Dispel",
@@ -175,24 +198,135 @@ local function NonEmpty(text)
     return text
 end
 
-local function ParseTTSInput(raw)
-    if raw == "true" then
-        return true
+function NotesEditor.GetTTSFormState(tts)
+    if tts == nil or tts == false then
+        return "off", ""
     end
-    if raw == "false" then
-        return false
+    if tts == true then
+        return "reminder", ""
     end
-    return NonEmpty(raw)
+    return "custom", tostring(tts)
 end
 
-local function FormatTTSValue(tts)
-    if tts == true then
-        return "true"
+function NotesEditor.BuildTTSValue(mode, customText)
+    if mode == "off" then
+        return nil
     end
-    if tts == false then
-        return "false"
+    if mode == "reminder" then
+        return true
     end
-    return tts or ""
+    if mode ~= "custom" then
+        return nil, "Invalid TTS mode."
+    end
+    if not customText or customText == "" then
+        return nil, "Custom TTS text is required."
+    end
+    return customText
+end
+
+local function ParseWholeSeconds(raw, label, minimum, maximum)
+    if raw == nil or raw == "" then
+        return nil
+    end
+
+    local value = tonumber(raw)
+    if not value or value ~= math.floor(value) then
+        return nil, label .. " must be a whole number of seconds."
+    end
+    if minimum and value < minimum then
+        if minimum == 0 then
+            return nil, label .. " cannot be negative."
+        end
+        return nil, label .. " must be at least " .. minimum .. " second."
+    end
+    if maximum and value > maximum then
+        return nil, label .. " must be between " .. minimum .. " and " .. maximum .. " seconds."
+    end
+    return value
+end
+
+function NotesEditor.ParseAlertTiming(durationText, audioLeadTimeText, countdownText)
+    local duration, err = ParseWholeSeconds(durationText, "Duration", 1)
+    if err then
+        return nil, err
+    end
+
+    local audioLeadTime
+    audioLeadTime, err = ParseWholeSeconds(audioLeadTimeText, "Audio Lead Time", 0)
+    if err then
+        return nil, err
+    end
+
+    local countdown
+    countdown, err = ParseWholeSeconds(countdownText, "Countdown", 1, 10)
+    if err then
+        return nil, err
+    end
+
+    return {
+        duration = duration or 5,
+        audioLeadTime = audioLeadTime,
+        countdown = countdown,
+    }
+end
+
+function NotesEditor.BuildAnnotationReminder(source, values)
+    return {
+        time = source.time,
+        tag = source.tag,
+        text = source.text,
+        phase = source.phase,
+        phaseKey = source.phaseKey,
+        duration = source.duration or 5,
+        displayType = values.displayType,
+        sound = values.sound,
+        tts = values.tts,
+        ttsTimer = values.audioLeadTime,
+        countdown = values.countdown,
+    }
+end
+
+function NotesEditor.GetAlertFieldKeys(layout)
+    local keys = ALERT_FIELD_LAYOUTS[layout] or {}
+    local result = {}
+    for i, key in ipairs(keys) do
+        result[i] = key
+    end
+    return result
+end
+
+function NotesEditor.BuildSoundOptions(soundNames, currentValue)
+    local options = { { name = "None", value = "" } }
+    local seen = { none = true }
+
+    for _, name in ipairs(soundNames or {}) do
+        if type(name) == "string" and name ~= "" then
+            local key = name:lower()
+            if not seen[key] then
+                seen[key] = true
+                options[#options + 1] = { name = name, value = name }
+            end
+        end
+    end
+
+    table.sort(options, function(a, b)
+        if a.value == "" then
+            return true
+        end
+        if b.value == "" then
+            return false
+        end
+        return a.name:lower() < b.name:lower()
+    end)
+
+    if currentValue and currentValue ~= "" and not seen[currentValue:lower()] then
+        options[#options + 1] = {
+            name = currentValue .. " (current)",
+            value = currentValue,
+        }
+    end
+
+    return options
 end
 
 local function ByName(a, b)
@@ -854,6 +988,175 @@ local function CreateFieldDropdown(parent, getItems, onSelect)
     return dropdown
 end
 
+local function GetRegisteredSoundNames()
+    local lsm = LibStub and LibStub("LibSharedMedia-3.0", true)
+    if not lsm then
+        return {}
+    end
+    return lsm:List("sound") or {}
+end
+
+local function CreateSoundPicker(parent)
+    local picker = CreateFrame("Frame", nil, parent)
+    picker:SetHeight(22)
+    picker.currentValue = ""
+
+    local button = CreateFrame("Button", nil, picker, "UIPanelButtonTemplate")
+    button:SetPoint("TOPLEFT")
+    button:SetPoint("BOTTOMRIGHT", -26, 0)
+    button:SetText("None")
+
+    local selectedPreview = CreateFrame("Button", nil, picker)
+    selectedPreview:SetSize(22, 22)
+    selectedPreview:SetPoint("RIGHT")
+    selectedPreview:SetNormalAtlas("common-icon-sound")
+    selectedPreview:SetPushedAtlas("common-icon-sound-pressed")
+
+    local popup = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+    popup:SetSize(260, 220)
+    popup:SetPoint("TOPLEFT", picker, "BOTTOMLEFT", 0, -2)
+    popup:SetFrameStrata("FULLSCREEN_DIALOG")
+    popup:SetClampedToScreen(true)
+    popup:SetBackdrop(BACKDROP_INFO)
+    popup:SetBackdropColor(0.05, 0.05, 0.08, 0.98)
+    popup:SetBackdropBorderColor(0.35, 0.35, 0.4, 1)
+    popup:Hide()
+
+    local search = CreateFrame("EditBox", nil, popup, "SearchBoxTemplate")
+    search:SetHeight(22)
+    search:SetAutoFocus(false)
+    search:SetPoint("TOPLEFT", 8, -8)
+    search:SetPoint("TOPRIGHT", -8, -8)
+
+    local scroll = CreateFrame("ScrollFrame", nil, popup, "UIPanelScrollFrameTemplate")
+    scroll:SetPoint("TOPLEFT", 8, -36)
+    scroll:SetPoint("BOTTOMRIGHT", -26, 8)
+
+    local scrollChild = CreateFrame("Frame", nil, scroll)
+    scrollChild:SetWidth(218)
+    scrollChild:SetHeight(1)
+    scroll:SetScrollChild(scrollChild)
+
+    local rows = {}
+
+    local function Preview(value)
+        if value == "" then
+            return
+        end
+        if PRT.NotesPopups and PRT.NotesPopups.PreviewSound then
+            PRT.NotesPopups:PreviewSound(value)
+        end
+    end
+
+    local function AcquireRow(index)
+        if rows[index] then
+            return rows[index]
+        end
+
+        local row = CreateFrame("Button", nil, scrollChild)
+        row:SetHeight(22)
+        row:SetPoint("TOPLEFT", 0, -((index - 1) * 22))
+        row:SetPoint("TOPRIGHT")
+
+        row.highlight = row:CreateTexture(nil, "HIGHLIGHT")
+        row.highlight:SetAllPoints()
+        row.highlight:SetColorTexture(1, 1, 1, 0.08)
+
+        row.label = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        row.label:SetPoint("LEFT", 4, 0)
+        row.label:SetPoint("RIGHT", -26, 0)
+        row.label:SetJustifyH("LEFT")
+
+        row.preview = CreateFrame("Button", nil, row)
+        row.preview:SetSize(18, 18)
+        row.preview:SetPoint("RIGHT", -2, 0)
+        row.preview:SetNormalAtlas("common-icon-sound")
+        row.preview:SetPushedAtlas("common-icon-sound-pressed")
+
+        rows[index] = row
+        return row
+    end
+
+    local function RefreshRows()
+        local query = search:GetText():lower()
+        local options = NotesEditor.BuildSoundOptions(
+            GetRegisteredSoundNames(),
+            picker.currentValue
+        )
+        local shown = 0
+
+        for _, item in ipairs(options) do
+            if query == "" or item.name:lower():find(query, 1, true) then
+                shown = shown + 1
+                local row = AcquireRow(shown)
+                local itemValue = item.value
+                row.value = itemValue
+                row.label:SetText(item.name)
+                row:SetScript("OnClick", function()
+                    picker:SetValue(itemValue)
+                    popup:Hide()
+                end)
+                row.preview:SetShown(itemValue ~= "")
+                row.preview:SetScript("OnClick", function()
+                    Preview(itemValue)
+                end)
+                row:Show()
+            end
+        end
+
+        for i = shown + 1, #rows do
+            rows[i]:Hide()
+        end
+        scrollChild:SetHeight(math.max(1, shown * 22))
+    end
+
+    search:SetScript("OnTextChanged", RefreshRows)
+    search:SetScript("OnEscapePressed", function(self)
+        self:ClearFocus()
+        popup:Hide()
+    end)
+
+    button:SetScript("OnClick", function()
+        if popup:IsShown() then
+            popup:Hide()
+            return
+        end
+        search:SetText("")
+        RefreshRows()
+        popup:Show()
+        search:SetFocus()
+    end)
+
+    selectedPreview:SetScript("OnClick", function()
+        Preview(picker.currentValue)
+    end)
+
+    function picker:SetValue(value)
+        self.currentValue = value or ""
+        if self.currentValue == "" then
+            button:SetText("None")
+        else
+            button:SetText(self.currentValue)
+        end
+        selectedPreview:SetEnabled(self.currentValue ~= "")
+    end
+
+    function picker:GetValue()
+        return self.currentValue ~= "" and self.currentValue or nil
+    end
+
+    function picker:ClosePopup()
+        popup:Hide()
+    end
+
+    picker:SetScript("OnHide", function()
+        popup:Hide()
+    end)
+    picker:SetValue("")
+
+    return picker
+end
+
 local function BuildEditPanel()
     local panel = CreateFrame("Frame", "PRT_NotesEditPanel", UIParent, "ButtonFrameTemplate")
     panel:SetSize(EDIT_PANEL_WIDTH, 500)
@@ -876,6 +1179,9 @@ local function BuildEditPanel()
         self:SetUserPlaced(false)
     end)
     panel:SetScript("OnHide", function()
+        if editFields.sound and editFields.sound.ClosePopup then
+            editFields.sound:ClosePopup()
+        end
         state.editingReminder = nil
     end)
 
@@ -916,6 +1222,14 @@ local function BuildEditPanel()
         dd:SetWidth(fieldWidth)
         yOff = yOff - 28
         return dd
+    end
+
+    local function AddSoundPicker()
+        local picker = CreateSoundPicker(scrollChild)
+        picker:SetPoint("TOPLEFT", 4, yOff)
+        picker:SetWidth(fieldWidth)
+        yOff = yOff - 28
+        return picker
     end
 
     panel.originalInfo = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -973,9 +1287,9 @@ local function BuildEditPanel()
     editFields.displayTextLabel = AddLabel("DISPLAY TEXT (OPTIONAL)")
     editFields.displayText = AddInput()
 
-    editFields.durationLabel = AddLabel("DURATION")
+    editFields.durationLabel = AddLabel("DURATION (SECONDS)")
     editFields.duration = AddInput()
-    editFields.duration:SetNumeric(false)
+    editFields.duration:SetNumeric(true)
 
     editFields.displayTypeLabel = AddLabel("DISPLAY TYPE")
     editFields.displayType = AddDropdown(
@@ -984,51 +1298,66 @@ local function BuildEditPanel()
     )
 
     editFields.soundLabel = AddLabel("SOUND")
-    editFields.sound = AddInput()
+    editFields.sound = AddSoundPicker()
 
     editFields.ttsLabel = AddLabel("TTS")
-    editFields.tts = AddInput()
+    editFields.ttsMode = AddDropdown(
+        function() return TTS_MODE_OPTIONS end,
+        function()
+            if editPanel and editPanel.RefreshLayout then
+                editPanel:RefreshLayout()
+            end
+        end
+    )
 
-    editFields.ttsTimerLabel = AddLabel("TTS TIMER")
-    editFields.ttsTimer = AddInput()
-    editFields.ttsTimer:SetNumeric(false)
+    editFields.ttsCustomLabel = AddLabel("CUSTOM TTS TEXT")
+    editFields.ttsCustom = AddInput()
 
-    editFields.countdownLabel = AddLabel("COUNTDOWN")
+    editFields.audioLeadTimeLabel = AddLabel("AUDIO LEAD TIME (SECONDS)")
+    editFields.audioLeadTime = AddInput()
+    editFields.audioLeadTime:SetNumeric(true)
+
+    editFields.countdownLabel = AddLabel("COUNTDOWN (BLANK = OFF)")
     editFields.countdown = AddInput()
-    editFields.countdown:SetNumeric(false)
+    editFields.countdown:SetNumeric(true)
 
     editFields.bossSpellLabel = AddLabel("BOSS SPELL ID")
     editFields.bossSpell = AddInput()
+    editFields.bossSpell:SetNumeric(true)
 
     editFields.colorsLabel = AddLabel("COLORS")
     editFields.colors = AddInput()
 
     local allFields = {
-        { label = panel.originalInfoLabel, field = panel.originalInfo, fieldHeight = 32 },
-        { label = editFields.phaseLabel, field = editFields.phase },
-        { label = editFields.timeLabel, field = editFields.time },
-        { label = editFields.whoLabel, field = editFields.who },
-        { label = editFields.abilityLabel, field = editFields.ability },
-        { label = editFields.displayTextLabel, field = editFields.displayText },
-        { label = editFields.durationLabel, field = editFields.duration },
-        { label = editFields.displayTypeLabel, field = editFields.displayType },
-        { label = editFields.soundLabel, field = editFields.sound },
-        { label = editFields.ttsLabel, field = editFields.tts },
-        { label = editFields.ttsTimerLabel, field = editFields.ttsTimer },
-        { label = editFields.countdownLabel, field = editFields.countdown },
-        { label = editFields.bossSpellLabel, field = editFields.bossSpell },
-        { label = editFields.colorsLabel, field = editFields.colors },
+        { key = "originalInfo", label = panel.originalInfoLabel, field = panel.originalInfo, fieldHeight = 32 },
+        { key = "phase", label = editFields.phaseLabel, field = editFields.phase },
+        { key = "time", label = editFields.timeLabel, field = editFields.time },
+        { key = "who", label = editFields.whoLabel, field = editFields.who },
+        { key = "ability", label = editFields.abilityLabel, field = editFields.ability },
+        { key = "displayText", label = editFields.displayTextLabel, field = editFields.displayText },
+        { key = "duration", label = editFields.durationLabel, field = editFields.duration },
+        { key = "displayType", label = editFields.displayTypeLabel, field = editFields.displayType },
+        { key = "sound", label = editFields.soundLabel, field = editFields.sound },
+        { key = "ttsMode", label = editFields.ttsLabel, field = editFields.ttsMode },
+        { key = "ttsCustom", label = editFields.ttsCustomLabel, field = editFields.ttsCustom },
+        { key = "audioLeadTime", label = editFields.audioLeadTimeLabel, field = editFields.audioLeadTime },
+        { key = "countdown", label = editFields.countdownLabel, field = editFields.countdown },
+        { key = "bossSpell", label = editFields.bossSpellLabel, field = editFields.bossSpell },
+        { key = "colors", label = editFields.colorsLabel, field = editFields.colors },
     }
 
-    local function layoutFields(visibleSet)
+    local function layoutFields(layout)
         local lookup = {}
-        for _, entry in ipairs(visibleSet) do
-            lookup[entry] = true
+        for _, key in ipairs(NotesEditor.GetAlertFieldKeys(layout)) do
+            lookup[key] = true
+        end
+        if editFields.ttsMode:GetValue() ~= "custom" then
+            lookup.ttsCustom = nil
         end
 
         local y = 0
         for _, row in ipairs(allFields) do
-            if lookup[row.field] then
+            if lookup[row.key] then
                 row.label:ClearAllPoints()
                 row.label:SetPoint("TOPLEFT", 4, y)
                 row.label:Show()
@@ -1045,28 +1374,25 @@ local function BuildEditPanel()
         scrollChild:SetHeight(math.abs(y) + 20)
     end
 
+    function panel:RefreshLayout()
+        if self.currentLayout then
+            layoutFields(self.currentLayout)
+        end
+    end
+
     function panel:LayoutForEdit()
-        layoutFields({
-            editFields.phase, editFields.time, editFields.who,
-            editFields.ability, editFields.displayText, editFields.duration,
-            editFields.bossSpell,
-        })
+        self.currentLayout = "edit"
+        self:RefreshLayout()
     end
 
     function panel:LayoutForAnnotate()
-        layoutFields({
-            panel.originalInfo,
-            editFields.displayType, editFields.sound, editFields.tts,
-            editFields.ttsTimer, editFields.countdown,
-        })
+        self.currentLayout = "annotation"
+        self:RefreshLayout()
     end
 
-    function panel:LayoutForAddPersonal()
-        layoutFields({
-            editFields.phase, editFields.time, editFields.ability,
-            editFields.displayText, editFields.displayType, editFields.sound,
-            editFields.tts, editFields.ttsTimer, editFields.countdown,
-        })
+    function panel:LayoutForPersonal()
+        self.currentLayout = "personal"
+        self:RefreshLayout()
     end
 
     local footer = CreateFrame("Frame", nil, panel)
@@ -1998,6 +2324,95 @@ local function RemoveReminderFromNote(note, reminder)
     end
 end
 
+local function SameStoredReminder(a, b)
+    return a.phaseKey == b.phaseKey
+        and a.time == b.time
+        and a.tag == b.tag
+        and a.text == b.text
+end
+
+function NotesEditor.ReplaceAnnotationReminder(note, source, replacement)
+    if not note or not source then
+        return false
+    end
+
+    local bucket = note.reminders[source.phaseKey]
+    local stored
+    local storedIndex
+    for i, reminder in ipairs(bucket or {}) do
+        if SameStoredReminder(reminder, source) then
+            stored = reminder
+            storedIndex = i
+            break
+        end
+    end
+    if not stored then
+        return false
+    end
+
+    table.remove(bucket, storedIndex)
+    if #bucket == 0 then
+        note.reminders[source.phaseKey] = nil
+    end
+
+    if replacement then
+        local replacementBucket = note.reminders[replacement.phaseKey]
+        if not replacementBucket then
+            replacementBucket = {}
+            note.reminders[replacement.phaseKey] = replacementBucket
+        end
+        replacementBucket[#replacementBucket + 1] = replacement
+        SortRemindersByTime(replacementBucket)
+    end
+
+    for i, entry in ipairs(note.lines) do
+        if entry.type == "reminder" and entry.reminder == stored then
+            if replacement then
+                entry.reminder = replacement
+            else
+                table.remove(note.lines, i)
+            end
+            break
+        end
+    end
+    return true
+end
+
+local function SetTTSFields(tts)
+    local mode, customText = NotesEditor.GetTTSFormState(tts)
+    editFields.ttsMode:SetValue(mode)
+    editFields.ttsCustom:SetText(customText)
+end
+
+local function ReadAlertFields()
+    local timing, err = NotesEditor.ParseAlertTiming(
+        editFields.duration:GetText(),
+        editFields.audioLeadTime:GetText(),
+        editFields.countdown:GetText()
+    )
+    if not timing then
+        return nil, err
+    end
+
+    local tts
+    tts, err = NotesEditor.BuildTTSValue(
+        editFields.ttsMode:GetValue(),
+        editFields.ttsCustom:GetText()
+    )
+    if err then
+        return nil, err
+    end
+
+    return {
+        duration = timing.duration,
+        displayType = editFields.displayType:GetValue() or "Icon",
+        sound = editFields.sound:GetValue(),
+        tts = tts,
+        audioLeadTime = timing.audioLeadTime,
+        countdown = timing.countdown,
+    }
+end
+
 function NotesEditor:OpenAddPanel(time, phaseNum)
     editPanel:Show()
     editPanel.errorText:SetText("")
@@ -2014,9 +2429,9 @@ function NotesEditor:OpenAddPanel(time, phaseNum)
     editFields.displayText:SetText("")
     editFields.duration:SetText("5")
     editFields.displayType:SetValue("Icon")
-    editFields.sound:SetText("")
-    editFields.tts:SetText("")
-    editFields.ttsTimer:SetText("")
+    editFields.sound:SetValue("")
+    SetTTSFields(nil)
+    editFields.audioLeadTime:SetText("5")
     editFields.countdown:SetText("")
     editFields.bossSpell:SetText("")
     editFields.colors:SetText("")
@@ -2030,7 +2445,7 @@ function NotesEditor:OpenAddPanel(time, phaseNum)
         editFields.who:Disable()
         currentAbilities = GetLocalPlayerAbilities()
         editFields.ability:GenerateMenu()
-        editPanel:LayoutForAddPersonal()
+        editPanel:LayoutForPersonal()
     else
         editPanel:SetTitle("Add Reminder")
         editPanel.saveBtn:SetText("Add")
@@ -2055,10 +2470,11 @@ function NotesEditor:OpenEditPanel(reminder)
         editPanel.originalInfo:SetText(
             FormatTime(reminder.time) .. " - " .. (reminder.tag or "") .. " - " .. (reminder.text or "")
         )
+        editFields.duration:SetText(tostring(reminder.duration or 5))
         editFields.displayType:SetValue(reminder.displayType or "Icon")
-        editFields.sound:SetText(reminder.sound or "")
-        editFields.tts:SetText(FormatTTSValue(reminder.tts))
-        editFields.ttsTimer:SetText(reminder.ttsTimer and tostring(reminder.ttsTimer) or "")
+        editFields.sound:SetValue(reminder.sound)
+        SetTTSFields(reminder.tts)
+        editFields.audioLeadTime:SetText(reminder.ttsTimer and tostring(reminder.ttsTimer) or "")
         editFields.countdown:SetText(reminder.countdown and tostring(reminder.countdown) or "")
 
         editPanel:LayoutForAnnotate()
@@ -2080,8 +2496,13 @@ function NotesEditor:OpenEditPanel(reminder)
     editFields.phase:SetText(tostring(reminder.phase or 1))
     editFields.time:SetText(FormatTime(reminder.time))
     editFields.who:SetText(reminder.tag or "")
-    editFields.who:Enable()
-    currentAbilities = GetAbilitiesForTag(reminder.tag)
+    if state.mode == "annotate" and reminder.isPersonal then
+        editFields.who:Disable()
+        currentAbilities = GetLocalPlayerAbilities()
+    else
+        editFields.who:Enable()
+        currentAbilities = GetAbilitiesForTag(reminder.tag)
+    end
 
     local abilityName, displayText = SplitAbilityAndText(reminder.text, currentAbilities)
     editFields.ability:SetValue(abilityName)
@@ -2091,15 +2512,19 @@ function NotesEditor:OpenEditPanel(reminder)
 
     editFields.duration:SetText(tostring(reminder.duration or 5))
     editFields.displayType:SetValue(reminder.displayType or "Icon")
-    editFields.sound:SetText(reminder.sound or "")
-    editFields.tts:SetText(FormatTTSValue(reminder.tts))
-    editFields.ttsTimer:SetText(reminder.ttsTimer and tostring(reminder.ttsTimer) or "")
+    editFields.sound:SetValue(reminder.sound)
+    SetTTSFields(reminder.tts)
+    editFields.audioLeadTime:SetText(reminder.ttsTimer and tostring(reminder.ttsTimer) or "")
     editFields.countdown:SetText(reminder.countdown and tostring(reminder.countdown) or "")
     editFields.bossSpell:SetText(reminder.bossSpell and tostring(reminder.bossSpell) or "")
     editFields.colors:SetText(reminder.colors or "")
     editFields.abilitySpellId = reminder.spellID
 
-    editPanel:LayoutForEdit()
+    if state.mode == "annotate" and reminder.isPersonal then
+        editPanel:LayoutForPersonal()
+    else
+        editPanel:LayoutForEdit()
+    end
     editPanel.deleteBtn:SetScript("OnClick", function()
         NotesEditor:DeleteFromPanel()
     end)
@@ -2141,12 +2566,11 @@ function NotesEditor:SaveFromPanel()
         return
     end
 
-    local durVal = tonumber(editFields.duration:GetText())
-    local displayTypeVal = editFields.displayType:GetValue() or "Icon"
-    local soundVal = NonEmpty(editFields.sound:GetText())
-    local ttsVal = ParseTTSInput(editFields.tts:GetText())
-    local ttsTimerVal = tonumber(editFields.ttsTimer:GetText())
-    local countdownVal = tonumber(editFields.countdown:GetText())
+    local alertFields, alertErr = ReadAlertFields()
+    if not alertFields then
+        editPanel.errorText:SetText(alertErr)
+        return
+    end
     local bossSpellVal = tonumber(editFields.bossSpell:GetText())
     local colorsVal = NonEmpty(editFields.colors:GetText())
 
@@ -2167,29 +2591,39 @@ function NotesEditor:SaveFromPanel()
         spellID = abilitySpellId,
         phase = phaseVal,
         phaseKey = tostring(phaseVal),
-        duration = durVal or 5,
-        displayType = displayTypeVal,
-        tts = ttsVal,
-        ttsTimer = ttsTimerVal,
-        countdown = countdownVal,
-        sound = soundVal,
+        duration = alertFields.duration,
+        displayType = alertFields.displayType,
+        tts = alertFields.tts,
+        ttsTimer = alertFields.audioLeadTime,
+        countdown = alertFields.countdown,
+        sound = alertFields.sound,
         bossSpell = bossSpellVal,
         colors = colorsVal,
     }
 
-    local note = state.parsedNote
-
-    if state.editingReminder then
-        RemoveReminderFromNote(note, state.editingReminder)
-    end
-
-    AppendReminderToNote(note, newReminder)
-
     if state.mode == "annotate" then
-        newReminder.isPersonal = true
-        AppendReminderToNote(EnsureAnnotationNote(), newReminder)
+        local annotationNote = EnsureAnnotationNote()
+        if state.editingReminder then
+            local replaced = NotesEditor.ReplaceAnnotationReminder(
+                annotationNote,
+                state.editingReminder,
+                newReminder
+            )
+            if not replaced then
+                editPanel.errorText:SetText("Personal reminder could not be found.")
+                return
+            end
+        else
+            AppendReminderToNote(annotationNote, newReminder)
+        end
         self:SaveCurrentAnnotation()
+        self:ReloadNote()
     else
+        local note = state.parsedNote
+        if state.editingReminder then
+            RemoveReminderFromNote(note, state.editingReminder)
+        end
+        AppendReminderToNote(note, newReminder)
         self:SaveCurrentNote()
     end
 
@@ -2203,43 +2637,28 @@ function NotesEditor:SaveAnnotationFromPanel()
         return
     end
 
-    local displayTypeVal = editFields.displayType:GetValue() or "Icon"
-    local soundVal = NonEmpty(editFields.sound:GetText())
-    local ttsVal = ParseTTSInput(editFields.tts:GetText())
-    local countdownVal = tonumber(editFields.countdown:GetText())
+    local alertFields, alertErr = ReadAlertFields()
+    if not alertFields then
+        editPanel.errorText:SetText(alertErr)
+        return
+    end
 
-    local annReminder = {
-        time = state.editingReminder.time,
-        tag = state.editingReminder.tag,
-        text = state.editingReminder.text,
-        phase = state.editingReminder.phase,
-        phaseKey = state.editingReminder.phaseKey,
-        duration = state.editingReminder.duration or 5,
-        displayType = displayTypeVal,
-        sound = soundVal,
-        tts = ttsVal,
-        countdown = countdownVal,
-    }
+    local annReminder = NotesEditor.BuildAnnotationReminder(
+        state.editingReminder,
+        alertFields
+    )
 
     local annNote = EnsureAnnotationNote()
-    local bucket = annNote.reminders[annReminder.phaseKey]
-
-    local found = false
-    if bucket then
-        for i, existing in ipairs(bucket) do
-            if existing.time == annReminder.time and existing.text == annReminder.text then
-                bucket[i] = annReminder
-                found = true
-                break
-            end
-        end
-    end
-    if not found then
+    local replaced = NotesEditor.ReplaceAnnotationReminder(
+        annNote,
+        state.editingReminder,
+        annReminder
+    )
+    if not replaced then
         AppendReminderToNote(annNote, annReminder)
     end
 
-    local annText = PRT.NotesSerializer:Serialize(annNote)
-    PRT.Notes:SaveAnnotation(state.noteName, annText)
+    self:SaveCurrentAnnotation()
 
     editPanel:Hide()
     state.editingReminder = nil
@@ -2267,11 +2686,15 @@ function NotesEditor:DeleteFromPanel()
         return
     end
 
-    RemoveReminderFromNote(note, reminder)
-
     if state.mode == "annotate" and reminder.isPersonal then
+        local removed = NotesEditor.ReplaceAnnotationReminder(note, reminder, nil)
+        if not removed then
+            editPanel.errorText:SetText("Personal reminder could not be found.")
+            return
+        end
         self:SaveCurrentAnnotation()
     else
+        RemoveReminderFromNote(note, reminder)
         self:SaveCurrentNote()
     end
 

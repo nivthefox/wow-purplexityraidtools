@@ -554,6 +554,18 @@ local function ResolveLSMSound(name)
     return nil
 end
 
+function NotesPopups:PreviewSound(name)
+    if not name or name == "" then
+        return false
+    end
+
+    local path = ResolveLSMSound(name)
+    if path and PlaySoundFile(path, "Master") then
+        return true
+    end
+    return PlaySoundFile(name, "Master") == true
+end
+
 function NotesPopups:PlayAudio(reminder)
     if not reminder then return end
     local p = GetPopupSettings()
@@ -562,11 +574,7 @@ function NotesPopups:PlayAudio(reminder)
         if p and p.soundsEnabled == false then
             return
         end
-        local path = ResolveLSMSound(reminder.sound)
-        if path and PlaySoundFile(path, "Master") then
-            return
-        end
-        if PlaySoundFile(reminder.sound, "Master") then
+        if self:PreviewSound(reminder.sound) then
             return
         end
     end

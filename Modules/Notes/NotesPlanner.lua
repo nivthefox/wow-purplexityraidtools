@@ -110,7 +110,34 @@ function NotesPlanner:FormatPhaseTabLabel(index)
     return "Phase " .. index
 end
 
-function NotesPlanner:BuildEncounterChoices(database, currentEncounterID, resolveName)
+local function hasJournalOrder(choice)
+    return type(choice.instanceName) == "string"
+        and choice.instanceName ~= ""
+        and type(choice.instanceOrder) == "number"
+        and type(choice.encounterOrder) == "number"
+end
+
+local function sortEncounterChoices(left, right)
+    local leftHasJournalOrder = hasJournalOrder(left)
+    local rightHasJournalOrder = hasJournalOrder(right)
+    if leftHasJournalOrder ~= rightHasJournalOrder then
+        return leftHasJournalOrder
+    end
+    if leftHasJournalOrder then
+        if left.instanceOrder ~= right.instanceOrder then
+            return left.instanceOrder < right.instanceOrder
+        end
+        if left.encounterOrder ~= right.encounterOrder then
+            return left.encounterOrder < right.encounterOrder
+        end
+    end
+    if left.encounterName ~= right.encounterName then
+        return left.encounterName < right.encounterName
+    end
+    return left.value < right.value
+end
+
+function NotesPlanner:BuildEncounterChoices(database, currentEncounterID, resolveEncounter)
     local encounters = type(database) == "table" and database.encounters
     local choices = {}
     local nameCounts = {}
@@ -118,40 +145,67 @@ function NotesPlanner:BuildEncounterChoices(database, currentEncounterID, resolv
     if type(encounters) == "table" then
         for encounterID in pairs(encounters) do
             if type(encounterID) == "number" then
-                local encounterName = resolveName and resolveName(encounterID)
+                local metadata = resolveEncounter and resolveEncounter(encounterID)
+                local encounterName = type(metadata) == "table" and metadata.name
                 if type(encounterName) ~= "string" or encounterName == "" then
                     encounterName = "Unknown Encounter (" .. encounterID .. ")"
                 end
                 choices[#choices + 1] = {
                     value = encounterID,
                     encounterName = encounterName,
+                    instanceName = type(metadata) == "table" and metadata.instanceName,
+                    instanceOrder = type(metadata) == "table" and metadata.instanceOrder,
+                    encounterOrder = type(metadata) == "table" and metadata.encounterOrder,
                 }
                 nameCounts[encounterName] = (nameCounts[encounterName] or 0) + 1
             end
         end
     end
 
-    table.sort(choices, function(left, right)
-        if left.encounterName ~= right.encounterName then
-            return left.encounterName < right.encounterName
-        end
-        return left.value < right.value
-    end)
+    table.sort(choices, sortEncounterChoices)
 
+    local result = {}
     local currentFound = false
+    local currentInstanceOrder
+    local hasFallbackHeader = false
     for _, choice in ipairs(choices) do
-        choice.name = choice.encounterName
-        if nameCounts[choice.encounterName] > 1 then
-            choice.name = choice.encounterName .. " (" .. choice.value .. ")"
+        if hasJournalOrder(choice) and choice.instanceOrder ~= currentInstanceOrder then
+            result[#result + 1] = {
+                name = choice.instanceName,
+                header = true,
+            }
+            currentInstanceOrder = choice.instanceOrder
+        elseif not hasJournalOrder(choice) and not hasFallbackHeader then
+            result[#result + 1] = {
+                name = "Other Encounters",
+                header = true,
+            }
+            hasFallbackHeader = true
         end
+
+        local name = choice.encounterName
+        if nameCounts[choice.encounterName] > 1 then
+            name = choice.encounterName .. " (" .. choice.value .. ")"
+        end
+        result[#result + 1] = {
+            name = name,
+            value = choice.value,
+            encounterName = choice.encounterName,
+        }
         if choice.value == currentEncounterID then
             currentFound = true
         end
     end
 
     if currentEncounterID and not currentFound then
+        if not hasFallbackHeader then
+            result[#result + 1] = {
+                name = "Other Encounters",
+                header = true,
+            }
+        end
         local name = "Unknown Encounter (" .. currentEncounterID .. ")"
-        choices[#choices + 1] = {
+        result[#result + 1] = {
             name = name,
             value = currentEncounterID,
             encounterName = name,
@@ -159,7 +213,7 @@ function NotesPlanner:BuildEncounterChoices(database, currentEncounterID, resolv
         }
     end
 
-    return choices
+    return result
 end
 
 function NotesPlanner:HasReminders(note)

@@ -16,28 +16,81 @@ local function makeNote(reminders)
     }
 end
 
-tests["encounter choices are database-backed localized and deterministic"] = function()
+tests["encounter choices are grouped by raid in journal order"] = function()
     local database = {
         encounters = {
             [9003] = {},
             [9001] = {},
             [9002] = {},
+            [9004] = {},
         },
     }
-    local names = {
-        [9001] = "Alpha",
-        [9002] = "Shared",
-        [9003] = "Shared",
+    local metadata = {
+        [9001] = {
+            name = "Third Boss",
+            instanceName = "First Raid",
+            instanceOrder = 1,
+            encounterOrder = 3,
+        },
+        [9002] = {
+            name = "First Boss",
+            instanceName = "First Raid",
+            instanceOrder = 1,
+            encounterOrder = 1,
+        },
+        [9003] = {
+            name = "Only Boss",
+            instanceName = "Second Raid",
+            instanceOrder = 2,
+            encounterOrder = 1,
+        },
     }
 
     local choices = Planner:BuildEncounterChoices(database, nil, function(encounterID)
-        return names[encounterID]
+        return metadata[encounterID]
     end)
 
     assertTableEquals(choices, {
-        { name = "Alpha", value = 9001, encounterName = "Alpha" },
+        { name = "First Raid", header = true },
+        { name = "First Boss", value = 9002, encounterName = "First Boss" },
+        { name = "Third Boss", value = 9001, encounterName = "Third Boss" },
+        { name = "Second Raid", header = true },
+        { name = "Only Boss", value = 9003, encounterName = "Only Boss" },
+        { name = "Other Encounters", header = true },
+        {
+            name = "Unknown Encounter (9004)",
+            value = 9004,
+            encounterName = "Unknown Encounter (9004)",
+        },
+    })
+end
+
+tests["duplicate encounter names remain distinguishable across raid groups"] = function()
+    local database = { encounters = { [9001] = {}, [9002] = {} } }
+    local metadata = {
+        [9001] = {
+            name = "Shared",
+            instanceName = "First Raid",
+            instanceOrder = 1,
+            encounterOrder = 1,
+        },
+        [9002] = {
+            name = "Shared",
+            instanceName = "Second Raid",
+            instanceOrder = 2,
+            encounterOrder = 1,
+        },
+    }
+
+    local choices = Planner:BuildEncounterChoices(database, nil, function(encounterID)
+        return metadata[encounterID]
+    end)
+
+    assertTableEquals(choices, {
+        { name = "First Raid", header = true },
+        { name = "Shared (9001)", value = 9001, encounterName = "Shared" },
+        { name = "Second Raid", header = true },
         { name = "Shared (9002)", value = 9002, encounterName = "Shared" },
-        { name = "Shared (9003)", value = 9003, encounterName = "Shared" },
     })
 end
 
@@ -45,12 +98,19 @@ tests["an unknown current encounter is preserved beside database choices"] = fun
     local database = { encounters = { [9001] = {} } }
     local choices = Planner:BuildEncounterChoices(database, 9999, function(encounterID)
         if encounterID == 9001 then
-            return "Known"
+            return {
+                name = "Known",
+                instanceName = "Known Raid",
+                instanceOrder = 1,
+                encounterOrder = 1,
+            }
         end
     end)
 
     assertTableEquals(choices, {
+        { name = "Known Raid", header = true },
         { name = "Known", value = 9001, encounterName = "Known" },
+        { name = "Other Encounters", header = true },
         {
             name = "Unknown Encounter (9999)",
             value = 9999,

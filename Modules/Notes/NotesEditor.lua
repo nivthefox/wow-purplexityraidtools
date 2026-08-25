@@ -65,7 +65,7 @@ local BACKDROP_INFO = {
 
 local frame
 local state = {}
-local encounterNameCache
+local encounterMetadataCache
 local requestedSpellIDs = {}
 
 local function GetSettings()
@@ -80,12 +80,12 @@ local function CountKeys(values)
     return count
 end
 
-local function LoadEncounterNames()
-    if encounterNameCache then
-        return encounterNameCache
+local function LoadEncounterMetadata()
+    if encounterMetadataCache then
+        return encounterMetadataCache
     end
 
-    encounterNameCache = {}
+    encounterMetadataCache = {}
     local bossData = PRT.BossData
     local encounters = bossData and bossData.encounters
     if type(encounters) ~= "table"
@@ -94,7 +94,7 @@ local function LoadEncounterNames()
         or type(EJ_GetInstanceByIndex) ~= "function"
         or type(EJ_GetEncounterInfoByIndex) ~= "function"
     then
-        return encounterNameCache
+        return encounterMetadataCache
     end
 
     local targets = {}
@@ -103,16 +103,18 @@ local function LoadEncounterNames()
     end
     local remaining = CountKeys(targets)
     local selectedTier = type(EJ_GetCurrentTier) == "function" and EJ_GetCurrentTier()
+    local instanceOrder = 0
 
     local ok = pcall(function()
         for tier = EJ_GetNumTiers(), 1, -1 do
             EJ_SelectTier(tier)
             local instanceIndex = 1
             while remaining > 0 do
-                local journalInstanceID = EJ_GetInstanceByIndex(instanceIndex, true)
+                local journalInstanceID, instanceName = EJ_GetInstanceByIndex(instanceIndex, true)
                 if not journalInstanceID then
                     break
                 end
+                instanceOrder = instanceOrder + 1
                 if type(EJ_SelectInstance) == "function" then
                     EJ_SelectInstance(journalInstanceID)
                 end
@@ -123,8 +125,13 @@ local function LoadEncounterNames()
                     if not name then
                         break
                     end
-                    if targets[dungeonEncounterID] and not encounterNameCache[dungeonEncounterID] then
-                        encounterNameCache[dungeonEncounterID] = name
+                    if targets[dungeonEncounterID] and not encounterMetadataCache[dungeonEncounterID] then
+                        encounterMetadataCache[dungeonEncounterID] = {
+                            name = name,
+                            instanceName = instanceName,
+                            instanceOrder = instanceOrder,
+                            encounterOrder = encounterIndex,
+                        }
                         remaining = remaining - 1
                     end
                     encounterIndex = encounterIndex + 1
@@ -141,19 +148,19 @@ local function LoadEncounterNames()
         pcall(EJ_SelectTier, selectedTier)
     end
     if not ok then
-        encounterNameCache = {}
+        encounterMetadataCache = {}
     end
-    return encounterNameCache
+    return encounterMetadataCache
 end
 
 local function GetEncounterChoices()
-    local names = LoadEncounterNames()
+    local metadata = LoadEncounterMetadata()
     local currentEncounterID = state.parsedNote and state.parsedNote.encounterID
     return NotesPlanner:BuildEncounterChoices(
         PRT.BossData,
         currentEncounterID,
         function(encounterID)
-            return names[encounterID]
+            return metadata[encounterID]
         end
     )
 end
@@ -1138,16 +1145,20 @@ local function CreateFieldDropdown(parent, getItems, onSelect)
     dropdown:SetupMenu(function(_, rootDescription)
         local items = dropdown.getItems()
         for _, item in ipairs(items) do
-            rootDescription:CreateRadio(
-                item.name,
-                function() return dropdown.currentValue == item.value end,
-                function()
-                    dropdown.currentValue = item.value
-                    if dropdown.onSelect then
-                        dropdown.onSelect(item.value)
+            if item.header then
+                rootDescription:CreateTitle(item.name)
+            else
+                rootDescription:CreateRadio(
+                    item.name,
+                    function() return dropdown.currentValue == item.value end,
+                    function()
+                        dropdown.currentValue = item.value
+                        if dropdown.onSelect then
+                            dropdown.onSelect(item.value)
+                        end
                     end
-                end
-            )
+                )
+            end
         end
     end)
 

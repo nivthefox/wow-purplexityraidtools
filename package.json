@@ -3,8 +3,6 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "generate": "node scripts/generate-spelldata.mjs",
-    "generate:boss-timelines": "node scripts/generate-boss-timelines.mjs",
-    "test": "node --test \"scripts/boss-timelines/tests/*.test.mjs\""
+    "generate": "node scripts/generate-spelldata.mjs"
   }
 }

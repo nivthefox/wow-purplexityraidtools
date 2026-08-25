@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Notes boss ability timelines now include additional mechanics for Vashnik the Malignant and The Coiled Altar, plus Apex Predator for Sszorak.
+
+### Changed
+
+- The Notes boss picker now groups encounters by raid and orders them to match the Encounter Journal.
+
 ## [1.3.0] - 2026-08-24
 
 ### Added

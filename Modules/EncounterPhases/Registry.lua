@@ -128,10 +128,10 @@ local function getPhases(definition, difficultyID)
 end
 
 local function encounterExists(encounterID)
-    local database = PRT.BossTimelineDatabase
-    return database
-        and type(database.encounters) == "table"
-        and database.encounters[encounterID] ~= nil
+    local bossData = PRT.BossData
+    return bossData
+        and type(bossData.encounters) == "table"
+        and bossData.encounters[encounterID] ~= nil
 end
 
 local function hasMigration(migrations, encounterID, difficultyID)
@@ -173,7 +173,7 @@ function EncounterPhases:Register(encounterID, definition)
         return false, "Encounter ID must be a positive integer."
     end
     if not encounterExists(encounterID) then
-        return false, "Encounter is absent from the boss timeline database."
+        return false, "Encounter is absent from boss data."
     end
     if not hasExactFields(definition, DEFINITION_FIELDS) then
         return false, "Encounter definition has an invalid contract."

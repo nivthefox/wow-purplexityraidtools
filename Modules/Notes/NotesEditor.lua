@@ -86,8 +86,8 @@ local function LoadEncounterNames()
     end
 
     encounterNameCache = {}
-    local database = PRT.BossTimelineDatabase
-    local encounters = database and database.encounters
+    local bossData = PRT.BossData
+    local encounters = bossData and bossData.encounters
     if type(encounters) ~= "table"
         or type(EJ_GetNumTiers) ~= "function"
         or type(EJ_SelectTier) ~= "function"
@@ -150,7 +150,7 @@ local function GetEncounterChoices()
     local names = LoadEncounterNames()
     local currentEncounterID = state.parsedNote and state.parsedNote.encounterID
     return NotesPlanner:BuildEncounterChoices(
-        PRT.BossTimelineDatabase,
+        PRT.BossData,
         currentEncounterID,
         function(encounterID)
             return names[encounterID]

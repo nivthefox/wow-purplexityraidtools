@@ -19,24 +19,6 @@ local function normalizeOccurrence(phaseID, occurrence, sourceOrder)
     }
 end
 
-local function storedPhasesMatch(phases, storedPhases)
-    if not EncounterPhases.IsArray(storedPhases, false) or #storedPhases ~= #phases then
-        return false
-    end
-    for index, storedPhase in ipairs(storedPhases) do
-        local phase = phases[index]
-        if type(storedPhase) ~= "table"
-            or storedPhase.phaseID ~= phase.id
-            or storedPhase.name ~= phase.name
-            or type(storedPhase.isIntermission) ~= "boolean"
-            or not EncounterPhases.IsArray(storedPhase.occurrences, true)
-        then
-            return false
-        end
-    end
-    return true
-end
-
 local function occurrenceSort(left, right)
     if left.phase ~= right.phase then
         return left.phase < right.phase
@@ -63,20 +45,21 @@ function EncounterPhases:GetPlanningModel(encounterID, difficultyID)
 
     local occurrences = {}
     local sourceOrder = 0
-    local database = PRT.BossTimelineDatabase
-    local encounter = database and database.encounters and database.encounters[encounterID]
-    local difficulty = encounter
-        and encounter.difficulties
-        and encounter.difficulties[difficultyID]
+    local bossData = PRT.BossData
+    local encounter = bossData and bossData.encounters and bossData.encounters[encounterID]
+    local difficulty = encounter and encounter.timings and encounter.timings[difficultyID]
     if difficulty then
-        if type(difficulty) ~= "table" or not storedPhasesMatch(phases, difficulty.phases) then
-            return nil, "Stored phases do not match the encounter phase model."
+        if not EncounterPhases.IsArray(difficulty, false) or #difficulty ~= #phases then
+            return nil, "Stored ability timings do not match the encounter phase model."
         end
-        for _, phase in ipairs(difficulty.phases) do
-            for _, occurrence in ipairs(phase.occurrences) do
+        for phaseID, phaseOccurrences in ipairs(difficulty) do
+            if not EncounterPhases.IsArray(phaseOccurrences, true) then
+                return nil, "Stored ability timings are invalid."
+            end
+            for _, occurrence in ipairs(phaseOccurrences) do
                 sourceOrder = sourceOrder + 1
                 local normalized, err = normalizeOccurrence(
-                    phase.phaseID,
+                    phaseID,
                     occurrence,
                     sourceOrder
                 )

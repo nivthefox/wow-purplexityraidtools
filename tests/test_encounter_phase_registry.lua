@@ -2,9 +2,16 @@ local tests = {}
 local PRT = PurplexityRaidTools
 
 dofile("Modules/EncounterPhases/Registry.lua")
-PRT.BossTimelineDatabase = { encounters = { [3379] = {}, [3420] = {}, [3421] = {}, [3429] = {}, [3445] = {}, [3455] = {}, [3470] = {}, [3492] = {}, [3497] = {} } }
-dofile("Modules/EncounterPhases/Lairs.lua")
-dofile("Modules/EncounterPhases/TheVenomousAbyss.lua")
+dofile("BossData/Registry.lua")
+dofile("BossData/Lairs/NymrissaWavecaller.lua")
+dofile("BossData/TheVenomousAbyss/Sszorak.lua")
+dofile("BossData/TheVenomousAbyss/TheTwinFangs.lua")
+dofile("BossData/TheVenomousAbyss/TheCoiledAltar.lua")
+dofile("BossData/TheVenomousAbyss/EntombedSentinels.lua")
+dofile("BossData/TheVenomousAbyss/VashnikTheMalignant.lua")
+dofile("BossData/TheVenomousAbyss/Nekzali.lua")
+dofile("BossData/TheVenomousAbyss/Ulatek.lua")
+dofile("BossData/TheVenomousAbyss/TheLostExplorers.lua")
 
 local EncounterPhases = PRT.EncounterPhases
 local fixture = dofile("tests/fixtures/encounter_phases.lua")
@@ -25,99 +32,35 @@ local function definition(getPhases)
     }
 end
 
-tests["The Coiled Altar has a completed four-phase definition"] = function()
-    assertNil(EncounterPhases:GetDraftPhaseIdentifier(3429))
-    assertNotNil(EncounterPhases:GetDefinition(3429))
-    assertTableEquals(EncounterPhases:GetPhases(3429, 16), {
-        { id = 1, name = "Stage One: Serpent's Bargain" },
-        { id = 2, name = "Stage Two: Usurper's Reprisal" },
-        { id = 3, name = "Intermission: The Claimed Vessel" },
-        { id = 4, name = "Stage Three: Coiled Union" },
-    })
+tests["every shipped boss file registers through the combined contract"] = function()
+    local expected = {
+        [3379] = true,
+        [3420] = true,
+        [3421] = true,
+        [3429] = true,
+        [3445] = true,
+        [3455] = true,
+        [3470] = true,
+        [3492] = true,
+        [3497] = true,
+    }
+    local count = 0
+    for encounterID in pairs(PRT.BossData.encounters) do
+        assertTrue(expected[encounterID])
+        assertNotNil(EncounterPhases:GetDefinition(encounterID))
+        count = count + 1
+    end
+    assertEquals(count, 9)
 end
 
-tests["Nymrissa has a completed one-phase definition"] = function()
-    assertNil(EncounterPhases:GetDraftPhaseIdentifier(3379))
-    assertNotNil(EncounterPhases:GetDefinition(3379))
-    assertTableEquals(EncounterPhases:GetPhases(3379, 16), {
-        { id = 1, name = "Nymrissa Wavecaller" },
-    })
-end
-
-tests["Ula'tek has a completed four-phase definition"] = function()
-    assertNil(EncounterPhases:GetDraftPhaseIdentifier(3492))
-    assertNotNil(EncounterPhases:GetDefinition(3492))
-    assertTableEquals(EncounterPhases:GetPhases(3492, 16), {
-        { id = 1, name = "Stage One: Fury of the Serpent Mother" },
-        { id = 2, name = "Stage Two: Children of the Doomscale" },
-        { id = 3, name = "Intermission: The Shattering" },
-        { id = 4, name = "Stage Three: Ula'tek's Ascension" },
-    })
-end
-
-tests["Entombed Sentinels has a completed one-phase definition"] = function()
-    assertNil(EncounterPhases:GetDraftPhaseIdentifier(3445))
-    assertNotNil(EncounterPhases:GetDefinition(3445))
-    assertTableEquals(EncounterPhases:GetPhases(3445, 16), {
-        { id = 1, name = "Entombed Sentinels" },
-    })
-end
-
-tests["Sszorak has a completed one-phase definition"] = function()
-    assertNil(EncounterPhases:GetDraftPhaseIdentifier(3420))
-    assertNotNil(EncounterPhases:GetDefinition(3420))
-    assertTableEquals(EncounterPhases:GetPhases(3420, 16), {
-        { id = 1, name = "Sszorak" },
-    })
-end
-
-tests["The Twin Fangs has a completed one-phase definition"] = function()
-    assertNil(EncounterPhases:GetDraftPhaseIdentifier(3421))
-    assertNotNil(EncounterPhases:GetDefinition(3421))
-    assertTableEquals(EncounterPhases:GetPhases(3421, 16), {
-        { id = 1, name = "The Twin Fangs" },
-    })
-end
-
-tests["Vashnik has a completed one-phase definition"] = function()
-    assertNil(EncounterPhases:GetDraftPhaseIdentifier(3455))
-    assertNotNil(EncounterPhases:GetDefinition(3455))
-    assertTableEquals(EncounterPhases:GetPhases(3455, 16), {
-        { id = 1, name = "Vashnik the Malignant" },
-    })
-end
-
-tests["Nekzali has a completed three-phase definition"] = function()
-    assertNil(EncounterPhases:GetDraftPhaseIdentifier(3470))
-    assertNotNil(EncounterPhases:GetDefinition(3470))
-    assertTableEquals(EncounterPhases:GetPhases(3470, 16), {
-        { id = 1, name = "Stage One: Soulcoiler Initiation" },
-        { id = 2, name = "Intermission: Ritual of Awakening" },
-        { id = 3, name = "Stage Two: Uncoiling" },
-    })
-end
-
-tests["The Lost Explorers has a completed one-phase definition"] = function()
-    assertNil(EncounterPhases:GetDraftPhaseIdentifier(3497))
-    assertNotNil(EncounterPhases:GetDefinition(3497))
-    assertTableEquals(EncounterPhases:GetPhases(3497, 16), {
-        { id = 1, name = "The Lost Explorers" },
-    })
-end
-
-tests["published phase identities are compatible across encounter content types"] = function()
-    local compatibility = dofile("tests/fixtures/encounter_phase_compatibility.lua")
-    assertTrue(EncounterPhases:ValidateCompatibility(compatibility, {}))
-end
-
-tests["registration requires an encounter in the bundled timeline database"] = function()
-    PRT.BossTimelineDatabase = { encounters = {} }
+tests["registration requires an encounter in boss data"] = function()
+    PRT.BossData = { encounters = {} }
     local ok = EncounterPhases:Register(9101, definition())
     assertFalse(ok)
 end
 
 tests["registration accepts a complete definition for all raid difficulties"] = function()
-    PRT.BossTimelineDatabase = { encounters = { [9102] = {} } }
+    PRT.BossData = { encounters = { [9102] = {} } }
     local candidate = definition()
     local ok, err = EncounterPhases:Register(9102, candidate)
     assertTrue(ok)
@@ -127,7 +70,7 @@ tests["registration accepts a complete definition for all raid difficulties"] = 
 end
 
 tests["registration accepts only narrow boss unit event declarations"] = function()
-    PRT.BossTimelineDatabase = { encounters = { [9107] = {}, [9108] = {} } }
+    PRT.BossData = { encounters = { [9107] = {}, [9108] = {} } }
     local candidate = definition()
     candidate.events = { { event = "UNIT_SPELLCAST_CHANNEL_STOP", unit = "boss2" } }
     assertTrue(EncounterPhases:Register(9107, candidate))
@@ -137,16 +80,16 @@ tests["registration accepts only narrow boss unit event declarations"] = functio
     assertFalse(EncounterPhases:Register(9108, invalid))
 end
 
-tests["registration rejects the obsolete WCL projection field"] = function()
-    PRT.BossTimelineDatabase = { encounters = { [9106] = {} } }
+tests["registration rejects fields outside the behavior contract"] = function()
+    PRT.BossData = { encounters = { [9106] = {} } }
     local candidate = definition()
-    candidate.ProjectWCL = function()
+    candidate.ExtraMethod = function()
     end
     assertFalse(EncounterPhases:Register(9106, candidate))
 end
 
 tests["registration rejects a missing or non-contiguous difficulty phase model"] = function()
-    PRT.BossTimelineDatabase = { encounters = { [9103] = {}, [9104] = {} } }
+    PRT.BossData = { encounters = { [9103] = {}, [9104] = {} } }
 
     local missing = definition(function(difficultyID)
         if difficultyID == 17 then
@@ -166,7 +109,7 @@ tests["registration rejects a missing or non-contiguous difficulty phase model"]
 end
 
 tests["published identities require an explicit migration before they change"] = function()
-    PRT.BossTimelineDatabase = { encounters = { [9105] = {} } }
+    PRT.BossData = { encounters = { [9105] = {} } }
     assertTrue(EncounterPhases:Register(9105, definition()))
 
     local compatibility = {

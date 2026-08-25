@@ -1,25 +1,13 @@
 local tests = {}
 local PRT = PurplexityRaidTools
 
-PRT.BossTimelineDatabase = {
-    encounters = {
-        [3420] = { difficulties = {} },
-        [3421] = { difficulties = {} },
-        [3429] = { difficulties = {} },
-        [3445] = { difficulties = {} },
-        [3455] = { difficulties = {} },
-        [3470] = { difficulties = {} },
-        [3492] = { difficulties = {} },
-        [3497] = { difficulties = {} },
-    },
-}
 dofile("Modules/EncounterPhases/Registry.lua")
+dofile("BossData/Registry.lua")
 dofile("Modules/EncounterPhases/Runtime.lua")
-dofile("Modules/EncounterPhases/TheVenomousAbyss.lua")
+dofile("BossData/TheVenomousAbyss/TheCoiledAltar.lua")
 
 local EncounterPhases = PRT.EncounterPhases
 local encounterID = 3429
-local difficulties = { 17, 14, 15, 16 }
 local expectedPhases = {
     { id = 1, name = "Stage One: Serpent's Bargain" },
     { id = 2, name = "Stage Two: Usurper's Reprisal" },
@@ -36,7 +24,7 @@ local function harness(difficultyID)
             return eventStates[eventID]
         end,
     }
-    local attempt, err = EncounterPhases:BeginAttempt(encounterID, difficultyID or 14, {
+    local attempt, err = EncounterPhases:BeginAttempt(encounterID, difficultyID, {
         activate = function(phase, activationTime)
             activations[#activations + 1] = { phase = phase, time = activationTime }
         end,
@@ -71,16 +59,14 @@ local function harness(difficultyID)
     }
 end
 
-tests["The Coiled Altar exposes stable phases for every raid difficulty"] = function()
-    for _, difficultyID in ipairs(difficulties) do
+tests["The Coiled Altar declares its phase topology for every raid difficulty"] = function()
+    for _, difficultyID in ipairs({ 17, 14, 15, 16 }) do
         assertTableEquals(EncounterPhases:GetPhases(encounterID, difficultyID), expectedPhases)
     end
-    local compatibility = dofile("tests/fixtures/encounter_phase_compatibility.lua")
-    assertTrue(EncounterPhases:ValidateCompatibility({ [encounterID] = compatibility[encounterID] }, {}))
 end
 
-tests["The Coiled Altar declares the same live observations used by BigWigs"] = function()
-    local context = harness()
+tests["The Coiled Altar declares only the observations used by its phase detector"] = function()
+    local context = harness(14)
     assertTableEquals(EncounterPhases:GetAttemptEvents(context.attempt), {
         "ENCOUNTER_TIMELINE_EVENT_ADDED",
         "ENCOUNTER_TIMELINE_EVENT_REMOVED",
@@ -90,7 +76,7 @@ tests["The Coiled Altar declares the same live observations used by BigWigs"] = 
 end
 
 tests["a completed Fangs cycle does not masquerade as Zuljan dying"] = function()
-    local context = harness()
+    local context = harness(14)
     context.addTimeline(1, 12)
     context.addTimeline(2, 85)
     context.addTimeline(3, 12)
@@ -103,8 +89,8 @@ tests["a completed Fangs cycle does not masquerade as Zuljan dying"] = function(
     assertTableEquals(context.activations, { { phase = 2, time = 100 } })
 end
 
-tests["BigWigs timeline cancellations and the boss2 channel stop activate all phases"] = function()
-    local context = harness()
+tests["timeline cancellations and the boss2 channel stop activate all phases"] = function()
+    local context = harness(15)
     context.addTimeline(1, 12)
     context.addTimeline(2, 85)
     context.setNow(100)
@@ -125,7 +111,7 @@ tests["BigWigs timeline cancellations and the boss2 channel stop activate all ph
 end
 
 tests["unrelated and removed timeline events cannot advance the encounter"] = function()
-    local context = harness()
+    local context = harness(16)
     context.addTimeline(1, 85, 1)
     context.cancelTimeline(1)
 

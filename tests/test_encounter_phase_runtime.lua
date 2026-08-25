@@ -8,7 +8,7 @@ local EncounterPhases = PRT.EncounterPhases
 local fixture = dofile("tests/fixtures/encounter_phases.lua")
 
 local function installDefinition(encounterID, observe)
-    PRT.BossTimelineDatabase = { encounters = { [encounterID] = {} } }
+    PRT.BossData = { encounters = { [encounterID] = {} } }
     local candidate = {
         events = { "NOISE", "PHASE_ONE", "PHASE_TWO", "PHASE_THREE", "SCHEDULE" },
         GetPhases = function()

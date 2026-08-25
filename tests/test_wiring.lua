@@ -791,8 +791,8 @@ tests["NoteApplies: note with no encounterID applies to any encounter"] = functi
 end
 
 tests["a completed encounter definition drives Notes through declared observations"] = function()
-    local previousDatabase = PRT.BossTimelineDatabase
-    PRT.BossTimelineDatabase = { encounters = { [3176] = {} } }
+    local previousBossData = PRT.BossData
+    PRT.BossData = { encounters = { [3176] = {} } }
     local ok, err = PRT.EncounterPhases:Register(3176, {
         events = { "FAKE_PHASE_EVENT" },
         GetPhases = function()
@@ -830,13 +830,13 @@ tests["a completed encounter definition drives Notes through declared observatio
         eventFrame.handler(nil, "FAKE_PHASE_EVENT", "advance")
         assertEquals(#timerSpy.phaseCalls, 1)
     end)
-    PRT.BossTimelineDatabase = previousDatabase
+    PRT.BossData = previousBossData
 end
 
 tests["a boss unit observation is registered narrowly and drops secret trailing arguments"] = function()
-    local previousDatabase = PRT.BossTimelineDatabase
+    local previousBossData = PRT.BossData
     local secret = {}
-    PRT.BossTimelineDatabase = { encounters = { [3177] = {} } }
+    PRT.BossData = { encounters = { [3177] = {} } }
     local ok, err = PRT.EncounterPhases:Register(3177, {
         events = { "UNIT_SPELLCAST_START" },
         GetPhases = function()
@@ -872,13 +872,13 @@ tests["a boss unit observation is registered narrowly and drops secret trailing 
         eventFrame.handler(nil, "UNIT_SPELLCAST_START", "boss1", secret)
         assertTableEquals(timerSpy.phaseCalls, { { phase = 2, time = 100 } })
     end)
-    PRT.BossTimelineDatabase = previousDatabase
+    PRT.BossData = previousBossData
 end
 
 tests["a declared boss2 observation is registered narrowly and drops secret trailing arguments"] = function()
-    local previousDatabase = PRT.BossTimelineDatabase
+    local previousBossData = PRT.BossData
     local secret = {}
-    PRT.BossTimelineDatabase = { encounters = { [3178] = {} } }
+    PRT.BossData = { encounters = { [3178] = {} } }
     local ok, err = PRT.EncounterPhases:Register(3178, {
         events = { { event = "UNIT_SPELLCAST_CHANNEL_STOP", unit = "boss2" } },
         GetPhases = function()
@@ -914,7 +914,7 @@ tests["a declared boss2 observation is registered narrowly and drops secret trai
         eventFrame.handler(nil, "UNIT_SPELLCAST_CHANNEL_STOP", "boss2", secret)
         assertTableEquals(timerSpy.phaseCalls, { { phase = 2, time = 100 } })
     end)
-    PRT.BossTimelineDatabase = previousDatabase
+    PRT.BossData = previousBossData
 end
 
 tests["ActivateNote tracks source as 'self' by default"] = function()

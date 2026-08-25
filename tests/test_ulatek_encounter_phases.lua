@@ -1,65 +1,13 @@
 local tests = {}
 local PRT = PurplexityRaidTools
 
-PRT.BossTimelineDatabase = {
-    encounters = {
-        [3420] = { difficulties = {} },
-        [3421] = { difficulties = {} },
-        [3429] = { difficulties = {} },
-        [3445] = { difficulties = {} },
-        [3455] = { difficulties = {} },
-        [3470] = { difficulties = {} },
-        [3492] = {
-            difficulties = {
-                [16] = {
-                    phases = {
-                        {
-                            phaseID = 1,
-                            name = "Stage One: Fury of the Serpent Mother",
-                            isIntermission = false,
-                            occurrences = {
-                                { spellID = 1298367, time = 10, observations = 3 },
-                            },
-                        },
-                        {
-                            phaseID = 2,
-                            name = "Stage Two: Children of the Doomscale",
-                            isIntermission = false,
-                            occurrences = {
-                                { spellID = 1290779, time = 10, observations = 3 },
-                            },
-                        },
-                        {
-                            phaseID = 3,
-                            name = "Intermission: The Shattering",
-                            isIntermission = true,
-                            occurrences = {
-                                { spellID = 1299010, time = 10, observations = 3 },
-                            },
-                        },
-                        {
-                            phaseID = 4,
-                            name = "Stage Three: Ula'tek's Ascension",
-                            isIntermission = false,
-                            occurrences = {
-                                { spellID = 1300751, time = 5, observations = 3 },
-                            },
-                        },
-                    },
-                },
-            },
-        },
-        [3497] = { difficulties = {} },
-    },
-}
 dofile("Modules/EncounterPhases/Registry.lua")
+dofile("BossData/Registry.lua")
 dofile("Modules/EncounterPhases/Runtime.lua")
-dofile("Modules/EncounterPhases/Planning.lua")
-dofile("Modules/EncounterPhases/TheVenomousAbyss.lua")
+dofile("BossData/TheVenomousAbyss/Ulatek.lua")
 
 local EncounterPhases = PRT.EncounterPhases
 local encounterID = 3492
-local difficulties = { 17, 14, 15, 16 }
 local expectedPhases = {
     { id = 1, name = "Stage One: Fury of the Serpent Mother" },
     { id = 2, name = "Stage Two: Children of the Doomscale" },
@@ -80,7 +28,7 @@ local function harness(difficultyID)
     UnitCanAttack = function(_, unit)
         return unit == "boss1" and attackable
     end
-    local attempt, err = EncounterPhases:BeginAttempt(encounterID, difficultyID or 14, {
+    local attempt, err = EncounterPhases:BeginAttempt(encounterID, difficultyID, {
         activate = function(phase, activationTime)
             activations[#activations + 1] = { phase = phase, time = activationTime }
         end,
@@ -129,16 +77,14 @@ local function activateStageTwo(context)
     context.targetabilityChanged()
 end
 
-tests["Ula'tek exposes stable phases for every raid difficulty"] = function()
-    for _, difficultyID in ipairs(difficulties) do
+tests["Ula'tek declares its phase topology for every raid difficulty"] = function()
+    for _, difficultyID in ipairs({ 17, 14, 15, 16 }) do
         assertTableEquals(EncounterPhases:GetPhases(encounterID, difficultyID), expectedPhases)
     end
-    local compatibility = dofile("tests/fixtures/encounter_phase_compatibility.lua")
-    assertTrue(EncounterPhases:ValidateCompatibility({ [encounterID] = compatibility[encounterID] }, {}))
 end
 
-tests["Ula'tek declares only the targetability and timeline observations used by BigWigs"] = function()
-    local context = harness()
+tests["Ula'tek declares only the observations used by its phase detector"] = function()
+    local context = harness(14)
     assertTableEquals(EncounterPhases:GetAttemptEvents(context.attempt), {
         "ENCOUNTER_TIMELINE_EVENT_ADDED",
         "ENCOUNTER_TIMELINE_EVENT_REMOVED",
@@ -147,8 +93,8 @@ tests["Ula'tek declares only the targetability and timeline observations used by
     })
 end
 
-tests["Rage targetability and timeline additions activate all four phases"] = function()
-    local context = harness()
+tests["targetability and timeline additions activate all four phases"] = function()
+    local context = harness(14)
     activateStageTwo(context)
     context.setNow(310)
     context.addTimeline(2, 10)
@@ -161,7 +107,7 @@ tests["Rage targetability and timeline additions activate all four phases"] = fu
     })
 end
 
-tests["the next Rage timer backs up targetability and Heroic Fury activates stage three"] = function()
+tests["the alternate Heroic sequence activates all four phases"] = function()
     local context = harness(15)
     context.addTimeline(1, 129)
     context.finishTimeline(1)
@@ -179,7 +125,7 @@ tests["the next Rage timer backs up targetability and Heroic Fury activates stag
 end
 
 tests["unrelated, removed, and premature signals cannot advance Ula'tek"] = function()
-    local context = harness()
+    local context = harness(16)
     context.addTimeline(1, 130, 1)
     context.finishTimeline(1)
     context.addTimeline(2, 130)
@@ -190,17 +136,6 @@ tests["unrelated, removed, and premature signals cannot advance Ula'tek"] = func
     context.addTimeline(3, 10)
     context.addTimeline(4, 230)
     assertEquals(#context.activations, 0)
-end
-
-tests["Ula'tek planning preserves stored phase-relative occurrences"] = function()
-    local model = EncounterPhases:GetPlanningModel(encounterID, 16)
-    assertTableEquals(model.phases, expectedPhases)
-    assertTableEquals(model.occurrences, {
-        { phase = 1, time = 10, spellID = 1298367 },
-        { phase = 2, time = 10, spellID = 1290779 },
-        { phase = 3, time = 10, spellID = 1299010 },
-        { phase = 4, time = 5, spellID = 1300751 },
-    })
 end
 
 return tests

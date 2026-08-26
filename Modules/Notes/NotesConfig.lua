@@ -289,7 +289,8 @@ PRT:RegisterTab("Notes", function(parent)
         local newButton = MakeButton("New", 60)
         local editButton = MakeButton("Edit", 60, newButton)
         local annotateButton = MakeButton("Annotate", 70, editButton)
-        local deleteButton = MakeButton("Delete", 60, annotateButton)
+        local duplicateButton = MakeButton("Duplicate", 75, annotateButton)
+        local deleteButton = MakeButton("Delete", 60, duplicateButton)
 
         local testButton = MakeButton("Test", 60, nil, true)
         local showHideButton = MakeButton("Show", 60, testButton, true)
@@ -329,6 +330,18 @@ PRT:RegisterTab("Notes", function(parent)
             local text = GetSettings().savedNotes[selectedNote]
             buttonError:SetText("")
             PRT.NotesEditor:Open(selectedNote, text or "", "annotate")
+        end)
+
+        duplicateButton:SetScript("OnClick", function()
+            if not selectedNote then
+                return
+            end
+            buttonError:SetText("")
+            local ok, duplicateName = PRT.Notes:DuplicateNote(selectedNote)
+            if not ok then
+                return
+            end
+            SelectNote(duplicateName)
         end)
 
         activateButton:SetScript("OnClick", function()
@@ -419,6 +432,7 @@ PRT:RegisterTab("Notes", function(parent)
         HookTooltip(clearButton)
         HookTooltip(editButton)
         HookTooltip(annotateButton)
+        HookTooltip(duplicateButton)
         HookTooltip(deleteButton)
         HookTooltip(activateButton)
 
@@ -457,6 +471,7 @@ PRT:RegisterTab("Notes", function(parent)
             ApplyGate(clearButton, clearReason)
             ApplyGate(editButton, not selectedNote and TOOLTIP_NO_SELECTION or nil)
             ApplyGate(annotateButton, not selectedNote and TOOLTIP_NO_SELECTION or nil)
+            ApplyGate(duplicateButton, not selectedNote and TOOLTIP_NO_SELECTION or nil)
             ApplyGate(deleteButton, not selectedNote and TOOLTIP_NO_SELECTION or nil)
 
             if IsNotesFrameShown() then

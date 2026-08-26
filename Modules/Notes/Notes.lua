@@ -174,6 +174,24 @@ function Notes:DeleteNote(name)
     return true
 end
 
+function Notes:DuplicateNote(name)
+    local store = GetNotesStore()
+    if not name or not store.savedNotes[name] then
+        return false
+    end
+
+    local duplicateName = name .. " Copy"
+    local copyNumber = 2
+    while store.savedNotes[duplicateName] do
+        duplicateName = name .. " Copy " .. copyNumber
+        copyNumber = copyNumber + 1
+    end
+
+    store.savedNotes[duplicateName] = store.savedNotes[name]
+    store.annotations[duplicateName] = store.annotations[name]
+    return true, duplicateName
+end
+
 function Notes:RenameNote(oldName, newName)
     if not oldName or not newName then return false end
     local store = GetNotesStore()

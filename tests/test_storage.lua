@@ -206,6 +206,54 @@ tests["rename of a nonexistent note fails"] = function()
     assertFalse(ok)
 end
 
+tests["duplicate copies the note and annotation under a new name"] = function()
+    local notes = resetNotes()
+    Notes:SaveNote("Alpha", "text one")
+    Notes:SaveAnnotation("Alpha", "my annotation")
+
+    local ok, duplicateName = Notes:DuplicateNote("Alpha")
+
+    assertTrue(ok)
+    assertEquals(duplicateName, "Alpha Copy")
+    assertEquals(notes.savedNotes["Alpha"], "text one")
+    assertEquals(notes.savedNotes[duplicateName], "text one")
+    assertEquals(notes.annotations["Alpha"], "my annotation")
+    assertEquals(notes.annotations[duplicateName], "my annotation")
+end
+
+tests["duplicate chooses the next available copy name"] = function()
+    local notes = resetNotes()
+    Notes:SaveNote("Alpha", "text one")
+    Notes:SaveNote("Alpha Copy", "existing copy")
+
+    local ok, duplicateName = Notes:DuplicateNote("Alpha")
+
+    assertTrue(ok)
+    assertEquals(duplicateName, "Alpha Copy 2")
+    assertEquals(notes.savedNotes[duplicateName], "text one")
+end
+
+tests["duplicate leaves the active note unchanged"] = function()
+    local notes = resetNotes()
+    Notes:SaveNote("Alpha", "text one")
+    Notes:ActivateNote("Alpha")
+
+    local ok = Notes:DuplicateNote("Alpha")
+
+    assertTrue(ok)
+    assertEquals(notes.activeNote, "Alpha")
+end
+
+tests["duplicate of a nonexistent note fails without creating a note"] = function()
+    local notes = resetNotes()
+
+    local ok, duplicateName = Notes:DuplicateNote("Ghost")
+
+    assertFalse(ok)
+    assertNil(duplicateName)
+    assertNil(next(notes.savedNotes))
+end
+
 tests["activate sets activeNote"] = function()
     local notes = resetNotes()
     Notes:SaveNote("Alpha", "text one")

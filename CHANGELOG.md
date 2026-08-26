@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Notes can now be duplicated from the Notes tab.
 - Boss-linked bar reminders for multi-hit mechanics now extend through the final hit and show a marker for each hit, including all three strikes of Ravenous Feast on the Twin Fangs.
 - Bar popups can now be configured with a custom width, height, and SharedMedia texture, with texture previews in the picker.
 

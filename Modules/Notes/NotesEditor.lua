@@ -745,6 +745,12 @@ local function TotalDuration(phases, activePhase)
     return NotesPlanner:TotalDuration(phases, activePhase)
 end
 
+function NotesEditor.GetReminderDropTarget(y, phases, activePhase)
+    local maxY = TotalDuration(phases, activePhase) * VPPS + TOP_PAD
+    local clampedY = math.max(TOP_PAD, math.min(y, maxY))
+    return YToTimeAndPhase(clampedY, phases, activePhase)
+end
+
 local function CollectReminders(parsedNote, activePhase)
     if not parsedNote or not parsedNote.reminders then
         return {}
@@ -2333,7 +2339,42 @@ function NotesEditor:RenderBlock(reminder, y, stackIdx, height, phases, playerCt
     end
     block:SetAlpha(isInteractive and 1 or 0.4)
 
-    block:SetScript("OnClick", function()
+    local canDrag = isInteractive and (state.mode == "edit" or reminder.isPersonal)
+    block:SetMovable(canDrag)
+    block:SetScript("OnMouseDown", function(blockFrame, button)
+        if button == "LeftButton" then
+            blockFrame.wasDragged = false
+        end
+    end)
+    if canDrag then
+        block:RegisterForDrag("LeftButton")
+        block:SetScript("OnDragStart", function(blockFrame)
+            blockFrame.wasDragged = true
+            blockFrame:StartMoving()
+        end)
+        block:SetScript("OnDragStop", function(blockFrame)
+            blockFrame:StopMovingOrSizing()
+            local _, cursorY = GetCursorPosition()
+            local scale = assignmentCanvas:GetEffectiveScale()
+            local dropY = assignmentCanvas:GetTop() - (cursorY / scale)
+            local dropTime, dropPhase = NotesEditor.GetReminderDropTarget(
+                dropY,
+                phases,
+                state.activePhase
+            )
+            NotesEditor:MoveReminderTo(reminder, dropTime, dropPhase)
+        end)
+    else
+        block:RegisterForDrag()
+        block:SetScript("OnDragStart", nil)
+        block:SetScript("OnDragStop", nil)
+    end
+
+    block:SetScript("OnClick", function(blockFrame)
+        if blockFrame.wasDragged then
+            blockFrame.wasDragged = false
+            return
+        end
         if not isInteractive then
             return
         end
@@ -2634,6 +2675,96 @@ function NotesEditor.ReplaceAnnotationReminder(note, source, replacement)
         end
     end
     return true
+end
+
+function NotesEditor.BuildMovedReminder(source, time, phaseNum)
+    local moved = {}
+    for key, value in pairs(source) do
+        if key ~= "isPersonal" and key ~= "isAnnotated" and key ~= "relevant" then
+            moved[key] = value
+        end
+    end
+    moved.time = time
+    moved.phase = phaseNum
+    moved.phaseKey = tostring(phaseNum)
+    return moved
+end
+
+function NotesEditor.MoveStoredReminder(note, reminder, time, phaseNum)
+    if not note or not reminder or not note.reminders then
+        return false
+    end
+
+    local sourceBucket = note.reminders[reminder.phaseKey]
+    local sourceIndex
+    for index, stored in ipairs(sourceBucket or {}) do
+        if stored == reminder then
+            sourceIndex = index
+            break
+        end
+    end
+    if not sourceIndex then
+        return false
+    end
+
+    table.remove(sourceBucket, sourceIndex)
+    if #sourceBucket == 0 then
+        note.reminders[reminder.phaseKey] = nil
+    end
+
+    reminder.time = time
+    reminder.phase = phaseNum
+    reminder.phaseKey = tostring(phaseNum)
+
+    local targetBucket = note.reminders[reminder.phaseKey]
+    if not targetBucket then
+        targetBucket = {}
+        note.reminders[reminder.phaseKey] = targetBucket
+    end
+    targetBucket[#targetBucket + 1] = reminder
+    SortRemindersByTime(targetBucket)
+    return true
+end
+
+function NotesEditor:MoveReminderTo(reminder, time, phaseNum)
+    if reminder.time == time and tonumber(reminder.phase) == phaseNum then
+        self:Render()
+        return true
+    end
+
+    local moved
+    if state.mode == "annotate" then
+        if not reminder.isPersonal then
+            self:Render()
+            return false
+        end
+        local annotationNote = EnsureAnnotationNote()
+        local replacement = NotesEditor.BuildMovedReminder(reminder, time, phaseNum)
+        moved = NotesEditor.ReplaceAnnotationReminder(
+            annotationNote,
+            reminder,
+            replacement
+        )
+        if moved then
+            self:SaveCurrentAnnotation()
+            self:ReloadNote()
+        end
+    else
+        moved = NotesEditor.MoveStoredReminder(
+            state.parsedNote,
+            reminder,
+            time,
+            phaseNum
+        )
+        if moved then
+            self:SaveCurrentNote()
+        end
+    end
+
+    editPanel:Hide()
+    state.editingReminder = nil
+    self:Render()
+    return moved
 end
 
 local function SetTTSFields(tts)

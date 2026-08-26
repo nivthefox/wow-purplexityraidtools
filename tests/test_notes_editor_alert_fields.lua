@@ -271,4 +271,105 @@ tests["deleting a personal reminder removes the stored annotation copy"] = funct
     assertEquals(note.lines[1].text, "Keep me")
 end
 
+tests["timeline drops clamp to the visible timeline and preserve phase context"] = function()
+    local phases = {
+        { num = 1, name = "One", start = 0, duration = 30 },
+        { num = 2, name = "Two", start = 30, duration = 40 },
+    }
+
+    local time, phase = NotesEditor.GetReminderDropTarget(-100, phases, "all")
+    assertEquals(time, 0)
+    assertEquals(phase, 1)
+
+    time, phase = NotesEditor.GetReminderDropTarget(300, phases, "all")
+    assertEquals(time, 5)
+    assertEquals(phase, 2)
+
+    time, phase = NotesEditor.GetReminderDropTarget(10000, phases, "all")
+    assertEquals(time, 40)
+    assertEquals(phase, 2)
+
+    time, phase = NotesEditor.GetReminderDropTarget(10000, phases, 1)
+    assertEquals(time, 30)
+    assertEquals(phase, 1)
+end
+
+tests["moving a canonical reminder preserves its line and sorts the target phase"] = function()
+    local moved = {
+        time = 30,
+        tag = "Niv",
+        text = "Move",
+        phase = 1,
+        phaseKey = "1",
+    }
+    local later = {
+        time = 20,
+        tag = "Niv",
+        text = "Later",
+        phase = 2,
+        phaseKey = "2",
+    }
+    local note = {
+        reminders = {
+            ["1"] = { moved },
+            ["2"] = { later },
+        },
+        lines = {
+            { type = "reminder", reminder = moved },
+            { type = "freeform", text = "Stay attached" },
+            { type = "reminder", reminder = later },
+        },
+    }
+
+    assertTrue(NotesEditor.MoveStoredReminder(note, moved, 10, 2))
+    assertNil(note.reminders["1"])
+    assertEquals(note.reminders["2"][1], moved)
+    assertEquals(note.reminders["2"][2], later)
+    assertEquals(moved.time, 10)
+    assertEquals(moved.phase, 2)
+    assertEquals(moved.phaseKey, "2")
+    assertEquals(note.lines[1].reminder, moved)
+    assertEquals(note.lines[2].text, "Stay attached")
+end
+
+tests["moving a personal reminder copies persisted fields without merge flags"] = function()
+    local source = {
+        time = 30,
+        tag = "Niv",
+        text = "Move",
+        spellID = 123,
+        phase = 1,
+        phaseKey = "1",
+        duration = 8,
+        displayType = "Bar",
+        sound = "Alarm",
+        tts = true,
+        ttsTimer = 3,
+        countdown = 5,
+        bossSpell = 456,
+        colors = "1 0 0 1",
+        isPersonal = true,
+        isAnnotated = true,
+        relevant = true,
+    }
+
+    local moved = NotesEditor.BuildMovedReminder(source, 45, 2)
+
+    assertEquals(moved.time, 45)
+    assertEquals(moved.phase, 2)
+    assertEquals(moved.phaseKey, "2")
+    assertEquals(moved.spellID, 123)
+    assertEquals(moved.duration, 8)
+    assertEquals(moved.displayType, "Bar")
+    assertEquals(moved.sound, "Alarm")
+    assertEquals(moved.tts, true)
+    assertEquals(moved.ttsTimer, 3)
+    assertEquals(moved.countdown, 5)
+    assertEquals(moved.bossSpell, 456)
+    assertEquals(moved.colors, "1 0 0 1")
+    assertNil(moved.isPersonal)
+    assertNil(moved.isAnnotated)
+    assertNil(moved.relevant)
+end
+
 return tests

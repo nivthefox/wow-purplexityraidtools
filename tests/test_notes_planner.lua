@@ -152,7 +152,7 @@ tests["encounter context is editable only for an empty note in Edit mode"] = fun
     assertFalse(Planner:IsContextLocked("edit", canonical, personal))
 end
 
-tests["locked imports reject context changes without mutating either note"] = function()
+tests["locked imports reject encounter changes but allow difficulty changes"] = function()
     local current = makeNote({ ["1"] = { { time = 5 } } })
     local imported = makeNote({ ["1"] = { { time = 8 } } })
     local currentBefore = CopyTable(current)
@@ -167,9 +167,8 @@ tests["locked imports reject context changes without mutating either note"] = fu
     assertEquals(imported.encounterID, 9002)
     imported.encounterID = 9001
     imported.difficulty = "Heroic"
-    assertFalse((Planner:ValidateImportedContext(current, nil, imported, "edit")))
-    imported.difficulty = "Mythic"
     assertTrue((Planner:ValidateImportedContext(current, nil, imported, "edit")))
+    assertFalse((Planner:ValidateImportedContext(current, nil, imported, "annotate")))
     imported.encounterID = importedBefore.encounterID
 end
 
@@ -305,6 +304,16 @@ tests["editor mode state keeps the boss channel passive and mode-independent"] =
         bossVisible = true,
         abilityInteractive = false,
         encounterEnabled = true,
+        difficultyEnabled = true,
+        annotateVisible = true,
+        importVisible = true,
+        showOnlyMineVisible = false,
+        bossAffectedByShowOnlyMine = false,
+    })
+    assertTableEquals(Planner:GetEditorModeState("edit", true), {
+        bossVisible = true,
+        abilityInteractive = false,
+        encounterEnabled = false,
         difficultyEnabled = true,
         annotateVisible = true,
         importVisible = true,

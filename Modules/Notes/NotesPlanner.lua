@@ -232,12 +232,13 @@ function NotesPlanner:ValidateImportedContext(currentNote, annotationNote, impor
         return true
     end
     if type(currentNote) ~= "table" or type(importedNote) ~= "table" then
-        return false, "Encounter and difficulty cannot change while reminders exist."
+        return false, "Encounter cannot change while reminders exist."
     end
-    if currentNote.encounterID ~= importedNote.encounterID
-        or currentNote.difficulty ~= importedNote.difficulty
-    then
-        return false, "Encounter and difficulty cannot change while reminders exist."
+    if currentNote.encounterID ~= importedNote.encounterID then
+        return false, "Encounter cannot change while reminders exist."
+    end
+    if mode == "annotate" and currentNote.difficulty ~= importedNote.difficulty then
+        return false, "Difficulty cannot change while annotating."
     end
     return true
 end
@@ -468,7 +469,7 @@ function NotesPlanner:GetEditorModeState(mode, contextLocked)
         bossVisible = true,
         abilityInteractive = false,
         encounterEnabled = not annotate and not contextLocked,
-        difficultyEnabled = not annotate and not contextLocked,
+        difficultyEnabled = not annotate,
         annotateVisible = not annotate,
         importVisible = not annotate,
         showOnlyMineVisible = annotate,

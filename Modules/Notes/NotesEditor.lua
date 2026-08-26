@@ -1793,7 +1793,7 @@ local function BuildFrame()
     titleBar.difficultyDropdown = CreateFieldDropdown(titleBar,
         function() return DIFFICULTY_OPTIONS end,
         function(value)
-            if IsContextLocked() then
+            if state.mode == "annotate" then
                 return
             end
             if state.parsedNote then

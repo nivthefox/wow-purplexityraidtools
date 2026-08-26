@@ -46,6 +46,45 @@ tests["registration rejects generator-only occurrence fields"] = function()
     assertNil(EncounterPhases:GetDefinition(5002))
 end
 
+tests["registration accepts compound occurrences with ordered tick offsets"] = function()
+    local candidate = definition()
+    candidate.timings[16][1][1] = {
+        spellID = 7001,
+        time = 12,
+        duration = 4.25,
+        ticks = {
+            { time = 1.25 },
+            { time = 2.25 },
+            { time = 3.25 },
+        },
+    }
+    assertTrue(BossData:Register(5007, candidate))
+end
+
+tests["registration rejects incomplete or unordered compound occurrences"] = function()
+    local missingTicks = definition()
+    missingTicks.timings[16][1][1].duration = 4.25
+    assertFalse(BossData:Register(5008, missingTicks))
+
+    local unordered = definition()
+    unordered.timings[16][1][1] = {
+        spellID = 7001,
+        time = 12,
+        duration = 4.25,
+        ticks = { { time = 2 }, { time = 1 } },
+    }
+    assertFalse(BossData:Register(5009, unordered))
+
+    local extraTickField = definition()
+    extraTickField.timings[16][1][1] = {
+        spellID = 7001,
+        time = 12,
+        duration = 4.25,
+        ticks = { { time = 1, label = "hit" } },
+    }
+    assertFalse(BossData:Register(5010, extraTickField))
+end
+
 tests["registration rejects unsorted ability timings"] = function()
     local candidate = definition()
     candidate.timings[16][1] = {

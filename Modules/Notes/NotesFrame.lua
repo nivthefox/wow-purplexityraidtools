@@ -411,7 +411,8 @@ end
 local function ApplyLockState()
     if not frame then return end
     local settings = GetSettings()
-    local locked = not settings or settings.locked ~= false
+    local display = settings and settings.display
+    local locked = not display or display.locked ~= false
     local unlocked = not locked
 
     frame:SetMovable(unlocked)

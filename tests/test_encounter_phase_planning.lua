@@ -14,7 +14,12 @@ local function installDefinition(encounterID)
         timings = {
             [16] = {
                 [1] = {
-                    { spellID = 20, time = 5 },
+                    {
+                        spellID = 20,
+                        time = 5,
+                        duration = 4.25,
+                        ticks = { { time = 1.25 }, { time = 3.25 } },
+                    },
                     { spellID = 30, time = 5 },
                 },
                 [2] = {
@@ -46,14 +51,25 @@ tests["planning copies stored abilities into the closed sorted contract"] = func
         difficultyID = 16,
         phases = fixture.phases,
         occurrences = {
-            { phase = 1, time = 5, spellID = 20 },
+            {
+                phase = 1,
+                time = 5,
+                spellID = 20,
+                duration = 4.25,
+                ticks = { { time = 1.25 }, { time = 3.25 } },
+            },
             { phase = 1, time = 5, spellID = 30 },
             { phase = 2, time = 1, spellID = 10 },
         },
     })
     assertTableEquals(stored, {
         [1] = {
-            { spellID = 20, time = 5 },
+            {
+                spellID = 20,
+                time = 5,
+                duration = 4.25,
+                ticks = { { time = 1.25 }, { time = 3.25 } },
+            },
             { spellID = 30, time = 5 },
         },
         [2] = {
@@ -92,6 +108,15 @@ tests["invalid stored occurrences fail without leaking data fields"] = function(
     BossData.encounters[9305].timings[16][1][1].time = -1
 
     local model, err = EncounterPhases:GetPlanningModel(9305, 16)
+    assertNil(model)
+    assertEquals(err, "Stored occurrence is invalid.")
+end
+
+tests["mutated compound tick data fails closed"] = function()
+    installDefinition(9306)
+    BossData.encounters[9306].timings[16][1][1].ticks[2].time = 1
+
+    local model, err = EncounterPhases:GetPlanningModel(9306, 16)
     assertNil(model)
     assertEquals(err, "Stored occurrence is invalid.")
 end

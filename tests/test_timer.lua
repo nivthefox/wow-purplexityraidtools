@@ -37,7 +37,8 @@
 --    announces all of them. Numbers are never announced twice, and nothing is
 --    announced once the event has passed (N >= 1 guard).
 --
--- 5. onPopupExpire fires ONCE when a shown popup's remaining reaches <= 0.
+-- 5. onPopupExpire fires ONCE when a shown popup reaches its endpoint. That is
+--    remaining <= 0 ordinarily, or the final boss tick for a compound Bar.
 --
 -- 6. SetPhase to a NEW phase fires onCancelPhase(reminders) with EVERY
 --    earlier-phase reminder that is either unfired (popup never shown) OR shown
@@ -63,6 +64,7 @@
 -- ============================================================================
 
 dofile("Modules/Notes/Notes.lua")
+dofile("Modules/Notes/NotesBossTimeline.lua")
 dofile("Modules/Notes/NotesTimer.lua")
 
 local PRT = PurplexityRaidTools
@@ -89,6 +91,8 @@ local function makeReminder(opts)
         sound       = opts.sound,
         bossSpell   = opts.bossSpell,
         colors      = opts.colors,
+        bossDuration = opts.bossDuration,
+        bossTicks   = opts.bossTicks,
         -- relevant defaults to true; pass relevant = false to opt out.
         relevant    = (opts.relevant == nil) and true or opts.relevant,
     }
@@ -225,6 +229,69 @@ tests["popup expire fires when a tick jumps from shown to past-event"] = functio
     NotesTimer:Tick(35)   -- remaining -5 -> expire
     assertEquals(#rec.popupShow, 1)
     assertEquals(#rec.popupExpire, 1)
+end
+
+tests["compound bar expires at its final boss tick"] = function()
+    local r = makeReminder({
+        time = 30,
+        duration = 5,
+        displayType = "Bar",
+        bossDuration = 4.25,
+        bossTicks = { { time = 1.25 }, { time = 2.25 }, { time = 3.25 } },
+    })
+    local rec = makeRecorder()
+    NotesTimer:Start(makeSection({ r }), rec.callbacks, 0)
+
+    NotesTimer:Tick(25)
+    NotesTimer:Tick(30)
+    NotesTimer:Tick(33)
+    assertEquals(#rec.popupExpire, 0)
+
+    NotesTimer:Tick(33.25)
+    assertEquals(#rec.popupExpire, 1)
+end
+
+tests["compound bar preserves audio and countdown anchors"] = function()
+    local r = makeReminder({
+        time = 30,
+        duration = 5,
+        displayType = "Bar",
+        tts = "true",
+        ttsTimer = 3,
+        countdown = 3,
+        bossTicks = { { time = 1.25 }, { time = 2.25 }, { time = 3.25 } },
+    })
+    local rec = makeRecorder()
+    NotesTimer:Start(makeSection({ r }), rec.callbacks, 0)
+
+    NotesTimer:Tick(27.5)
+    assertEquals(#rec.audio, 1)
+    assertTableEquals(countdownNumbers(rec), { 3 })
+    NotesTimer:Tick(30.5)
+    assertEquals(#rec.audio, 1)
+    assertTableEquals(countdownNumbers(rec), { 3, 2, 1 })
+    assertEquals(#rec.popupExpire, 0)
+end
+
+tests["compound bar may appear after reminder time without replaying warnings"] = function()
+    local r = makeReminder({
+        time = 30,
+        duration = 5,
+        displayType = "Bar",
+        tts = "true",
+        ttsTimer = 3,
+        countdown = 3,
+        bossTicks = { { time = 1.25 }, { time = 2.25 }, { time = 3.25 } },
+    })
+    local rec = makeRecorder()
+    NotesTimer:Start(makeSection({ r }), rec.callbacks, 0)
+
+    NotesTimer:Tick(31)
+    NotesTimer:Tick(31.5)
+    assertEquals(#rec.popupShow, 1)
+    assertEquals(#rec.audio, 0)
+    assertEquals(#rec.countdown, 0)
+    assertEquals(#rec.popupExpire, 0)
 end
 
 tests["audio fires once when remaining <= ttsTimer"] = function()

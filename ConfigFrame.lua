@@ -95,6 +95,47 @@ function Components.GetBasicDropdown(parent, labelText, getItems, isSelectedCall
     return frame
 end
 
+function Components.GetTextureDropdown(parent, labelText, getTextures, isSelectedCallback, onSelectionCallback)
+    local frame = CreateFrame("Frame", nil, parent)
+    frame:SetHeight(ROW_HEIGHT)
+    frame:SetPoint("LEFT", 20, 0)
+    frame:SetPoint("RIGHT", -20, 0)
+
+    local dropdown = CreateFrame("DropdownButton", nil, frame, "WowStyle1DropdownTemplate")
+    dropdown:SetWidth(200)
+    dropdown:SetPoint("LEFT", frame, "LEFT", LABEL_WIDTH - 20, 0)
+
+    local label = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    label:SetPoint("LEFT", 0, 0)
+    label:SetPoint("RIGHT", frame, "LEFT", LABEL_WIDTH - 40, 0)
+    label:SetJustifyH("RIGHT")
+    label:SetText(labelText)
+
+    dropdown:SetupMenu(function(_, rootDescription)
+        for _, texture in ipairs(getTextures()) do
+            local preview = texture.name
+            if texture.path then
+                preview = "|T" .. texture.path .. ":16:80|t " .. texture.name
+            end
+            rootDescription:CreateRadio(
+                preview,
+                function() return isSelectedCallback(texture.value) end,
+                function() onSelectionCallback(texture.value) end
+            )
+        end
+        rootDescription:SetScrollMode(20 * 10)
+    end)
+
+    function frame:SetValue()
+        dropdown:GenerateMenu()
+    end
+
+    frame.Label = label
+    frame.DropDown = dropdown
+
+    return frame
+end
+
 function Components.GetSliderWithInput(parent, labelText, min, max, step, isDecimal, callback)
     local holder = CreateFrame("Frame", nil, parent)
     holder:SetHeight(ROW_HEIGHT)

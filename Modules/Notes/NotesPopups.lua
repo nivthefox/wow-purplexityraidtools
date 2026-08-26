@@ -29,7 +29,12 @@ local DEFAULT_ANCHOR = {
 local ICON_SIZE = 48
 local BAR_WIDTH = 220
 local BAR_HEIGHT = 24
-local BAR_ICON = 22
+local BAR_MIN_WIDTH = 100
+local BAR_MAX_WIDTH = 1000
+local BAR_MIN_HEIGHT = 10
+local BAR_MAX_HEIGHT = 100
+local DEFAULT_BAR_TEXTURE = "Blizzard"
+local DEFAULT_BAR_TEXTURE_PATH = "Interface\\TargetingFrame\\UI-StatusBar"
 local CIRCLE_SIZE = 56
 local TEXT_HEIGHT = 22
 local POPUP_SPACING = 4
@@ -49,6 +54,7 @@ local pools = {}        -- type -> { free = {}, active = {} }
 local activeByType = {} -- type -> array of active popup frames (for arrangement)
 local reminderToPopup = {} -- reminder table -> popup frame (for Expire/Dismiss)
 local initialized = false
+local GetBarStyle
 
 local function GetSettings()
     return PRT:GetSetting("notes")
@@ -76,10 +82,9 @@ local function GetGrowSign()
 end
 
 local function IsLocked()
-    local s = GetSettings()
-    -- Absence of the key means locked (default is true, but be defensive).
-    if s and s.locked ~= nil then
-        return s.locked
+    local popups = GetPopupSettings()
+    if popups and popups.locked ~= nil then
+        return popups.locked
     end
     return true
 end
@@ -178,9 +183,10 @@ local function CreateIconPopup(mover)
 end
 
 local function CreateBarPopup(mover)
+    local style = GetBarStyle()
     local f = CreateFrame("StatusBar", nil, mover)
-    f:SetSize(BAR_WIDTH, BAR_HEIGHT)
-    f:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
+    f:SetSize(style.width, style.height)
+    f:SetStatusBarTexture(style.texturePath)
     f:SetMinMaxValues(0, 1)
     f:SetValue(1)
 
@@ -190,7 +196,8 @@ local function CreateBarPopup(mover)
     f.bg = bg
 
     local icon = f:CreateTexture(nil, "ARTWORK")
-    icon:SetSize(BAR_ICON, BAR_ICON)
+    local iconSize = math.max(1, style.height - 2)
+    icon:SetSize(iconSize, iconSize)
     icon:SetPoint("LEFT", f, "LEFT", 1, 0)
     icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
     f.icon = icon
@@ -206,6 +213,7 @@ local function CreateBarPopup(mover)
     timer:SetPoint("RIGHT", f, "RIGHT", -4, 0)
     timer:SetTextColor(1, 1, 1, 1)
     f.timer = timer
+    f.tickMarks = {}
 
     return f
 end
@@ -286,6 +294,8 @@ local function AcquirePopup(displayType)
         f = CONSTRUCTORS[displayType](movers[displayType])
         f.displayType = displayType
     end
+    f.fading = false
+    f.fadeElapsed = 0
     f:SetParent(movers[displayType])
     f:SetAlpha(1)
     movers[displayType]:Show()
@@ -305,6 +315,12 @@ local function ReleasePopup(f)
         reminderToPopup[reminder] = nil
     end
     f.reminder = nil
+    f.barTimeline = nil
+    if f.tickMarks then
+        for _, marker in ipairs(f.tickMarks) do
+            marker:Hide()
+        end
+    end
 
     local displayType = f.displayType
     local active = activeByType[displayType]
@@ -399,16 +415,104 @@ local function FadeOnUpdate(f, elapsed)
     f:SetAlpha(1 - t)
 end
 
--- `remaining` is the seconds until the event at the moment of the call; the
--- countdown runs from here to zero.
+local function Clamp(value, minimum, maximum, fallback)
+    value = tonumber(value) or fallback
+    return math.max(minimum, math.min(maximum, value))
+end
+
+function NotesPopups.MigrateSettings(_, popups)
+    popups = popups or GetPopupSettings()
+    if type(popups) ~= "table" then
+        return
+    end
+    if not popups.typeEnablementMigrated then
+        local enabled = popups.enabled ~= false
+        popups.enabledTypes = popups.enabledTypes or {}
+        for _, displayType in ipairs(TYPES) do
+            popups.enabledTypes[displayType] = enabled
+        end
+        popups.enabled = nil
+        popups.typeEnablementMigrated = true
+    end
+    if type(popups.enabledTypes) ~= "table" then
+        popups.enabledTypes = {}
+    end
+    for _, displayType in ipairs(TYPES) do
+        if popups.enabledTypes[displayType] == nil then
+            popups.enabledTypes[displayType] = true
+        end
+    end
+end
+
+function NotesPopups.IsTypeEnabled(_, displayType, popups)
+    popups = popups or GetPopupSettings()
+    if type(popups) ~= "table" then
+        return true
+    end
+    local enabledTypes = popups.enabledTypes
+    return type(enabledTypes) ~= "table" or enabledTypes[displayType] ~= false
+end
+
+function NotesPopups.GetBarStyle(_, popups, fetchTexture)
+    popups = popups or GetPopupSettings()
+    local width = Clamp(
+        popups and popups.barWidth,
+        BAR_MIN_WIDTH,
+        BAR_MAX_WIDTH,
+        BAR_WIDTH
+    )
+    local height = Clamp(
+        popups and popups.barHeight,
+        BAR_MIN_HEIGHT,
+        BAR_MAX_HEIGHT,
+        BAR_HEIGHT
+    )
+    local texture = popups and popups.barTexture or DEFAULT_BAR_TEXTURE
+    local texturePath = fetchTexture and fetchTexture(texture)
+    return {
+        width = width,
+        height = height,
+        texture = texture,
+        texturePath = texturePath or DEFAULT_BAR_TEXTURE_PATH,
+    }
+end
+
+GetBarStyle = function()
+    return NotesPopups:GetBarStyle(GetPopupSettings(), function(texture)
+        local lsm = LibStub and LibStub("LibSharedMedia-3.0", true)
+        return lsm and lsm:Fetch("statusbar", texture, true)
+    end)
+end
+
+local function SetBarTicks(f, timeline)
+    for _, marker in ipairs(f.tickMarks) do
+        marker:Hide()
+    end
+    if not timeline then
+        return
+    end
+
+    for index, tick in ipairs(timeline.ticks) do
+        local marker = f.tickMarks[index]
+        if not marker then
+            marker = f:CreateTexture(nil, "OVERLAY", nil, 7)
+            marker:SetColorTexture(1, 1, 1, 0.9)
+            f.tickMarks[index] = marker
+        end
+        local width = f:GetWidth()
+        marker:SetSize(2, f:GetHeight())
+        local x = math.max(1, math.min(width - 1, tick.progress * width))
+        marker:ClearAllPoints()
+        marker:SetPoint("CENTER", f, "LEFT", x, 0)
+        marker:Show()
+    end
+end
+
+-- `remaining` is the seconds until the reminder time at the moment of the call.
+-- Compound bars continue from there through their final tick.
 function NotesPopups:Show(reminder, remaining)
     if not reminder then return end
     if not initialized then self:Init() end
-
-    local p = GetPopupSettings()
-    if p and p.enabled == false then
-        return
-    end
 
     if reminderToPopup[reminder] then
         return
@@ -418,23 +522,40 @@ function NotesPopups:Show(reminder, remaining)
     if not CONSTRUCTORS[displayType] then
         displayType = reminder.spellID and "Icon" or "Text"
     end
+    if not self:IsTypeEnabled(displayType) then
+        return
+    end
 
     remaining = tonumber(remaining)
-    if not remaining or remaining < 0 then
+    if not remaining then
         remaining = reminder.duration or 0
     end
     local duration = reminder.duration or remaining
     if duration <= 0 then duration = remaining > 0 and remaining or 1 end
 
+    local barTimeline
+    if displayType == "Bar" and PRT.NotesBossTimeline then
+        barTimeline = PRT.NotesBossTimeline:GetBarTimeline(reminder)
+    end
+    local popupRemaining = remaining
+    if barTimeline then
+        duration = barTimeline.duration
+        popupRemaining = remaining + barTimeline.postDuration
+    elseif popupRemaining < 0 then
+        popupRemaining = duration
+        remaining = duration
+    end
+
     local now = GetTime()
     local f = AcquirePopup(displayType)
     f.released = false
     f.reminder = reminder
-    f.eventTime = now + remaining
+    f.eventTime = now + popupRemaining
     f.duration = duration
     f.lastShown = nil
     f.textFormat = nil
     f.baseText = nil
+    f.barTimeline = barTimeline
 
     reminderToPopup[reminder] = f
     table.insert(activeByType[displayType], f)
@@ -449,6 +570,10 @@ function NotesPopups:Show(reminder, remaining)
         if cr then f.label:SetTextColor(cr, cg, cb, ca) else f.label:SetTextColor(1, 1, 1, 1) end
 
     elseif displayType == "Bar" then
+        if f.SetReverseFill then
+            f:SetReverseFill(barTimeline ~= nil)
+        end
+        SetBarTicks(f, barTimeline)
         local tex = SpellTexture(reminder.spellID)
         if tex then
             f.icon:SetTexture(tex)
@@ -657,7 +782,12 @@ end
 local function CreateMover(displayType)
     local mover = CreateFrame("Frame", "PRT_NotesPopupMover_" .. displayType, UIParent, "BackdropTemplate")
     local size = MOVER_SIZE[displayType]
-    mover:SetSize(size.w, size.h)
+    if displayType == "Bar" then
+        local style = GetBarStyle()
+        mover:SetSize(style.width, style.height)
+    else
+        mover:SetSize(size.w, size.h)
+    end
     mover:SetFrameStrata("HIGH")
     mover:SetClampedToScreen(true)
     mover:EnableMouse(false)
@@ -709,6 +839,38 @@ function NotesPopups:SetLocked(locked)
 end
 
 function NotesPopups:ApplySettings()
+    self:MigrateSettings()
+    local style = GetBarStyle()
+    local barMover = movers.Bar
+    if barMover then
+        barMover:SetSize(style.width, style.height)
+    end
+    local barPool = pools.Bar
+    if barPool then
+        local function ApplyBarStyle(f)
+            f:SetSize(style.width, style.height)
+            f:SetStatusBarTexture(style.texturePath)
+            local iconSize = math.max(1, style.height - 2)
+            f.icon:SetSize(iconSize, iconSize)
+            SetBarTicks(f, f.barTimeline)
+        end
+        for _, f in ipairs(barPool.free) do
+            ApplyBarStyle(f)
+        end
+        for _, f in ipairs(activeByType.Bar) do
+            ApplyBarStyle(f)
+        end
+    end
+
+    for _, displayType in ipairs(TYPES) do
+        if not self:IsTypeEnabled(displayType) then
+            local active = activeByType[displayType] or {}
+            for index = #active, 1, -1 do
+                ReleasePopup(active[index])
+            end
+        end
+    end
+
     for _, displayType in ipairs(TYPES) do
         RestoreMoverPosition(displayType)
         self:Arrange(displayType)
@@ -719,6 +881,7 @@ end
 function NotesPopups:Init()
     if initialized then return end
     initialized = true
+    self:MigrateSettings()
 
     for _, displayType in ipairs(TYPES) do
         pools[displayType] = { free = {} }
@@ -728,6 +891,16 @@ function NotesPopups:Init()
     end
 
     self:SetLocked(IsLocked())
+end
+
+function NotesPopups:ShowTestSamples(samples, schedule)
+    for _, reminder in ipairs(samples) do
+        local sample = reminder
+        self:Show(sample, sample.duration)
+        schedule(sample.duration, function()
+            self:Expire(sample)
+        end)
+    end
 end
 
 function NotesPopups:Test()
@@ -752,10 +925,7 @@ function NotesPopups:Test()
         },
     }
 
-    for _, reminder in ipairs(samples) do
-        self:Show(reminder, reminder.duration)
-        C_Timer.After(reminder.duration, function()
-            NotesPopups:Expire(reminder)
-        end)
-    end
+    self:ShowTestSamples(samples, function(delay, callback)
+        C_Timer.After(delay, callback)
+    end)
 end

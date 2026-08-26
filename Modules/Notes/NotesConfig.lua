@@ -31,6 +31,8 @@ local GROW_OPTIONS = {
     { name = "Down", value = "Down" },
 }
 
+local POPUP_TYPES = { "Icon", "Bar", "Text", "Circle" }
+
 local CONTENT_CHECKBOXES = {
     { label = "Open World",        path = { "contentTypes", "openWorld" } },
     { label = "Dungeon (Normal)",  path = { "contentTypes", "dungeon", "normal" } },
@@ -74,6 +76,28 @@ local function ListFonts()
     local items = {}
     for _, name in ipairs(names) do
         items[#items + 1] = { name = name, value = name }
+    end
+    return items
+end
+
+local function ListStatusBars()
+    local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
+    if not LSM then
+        return {
+            {
+                name = "Blizzard",
+                value = "Blizzard",
+                path = "Interface\\TargetingFrame\\UI-StatusBar",
+            },
+        }
+    end
+    local items = {}
+    for _, name in ipairs(LSM:List("statusbar")) do
+        items[#items + 1] = {
+            name = name,
+            value = name,
+            path = LSM:Fetch("statusbar", name),
+        }
     end
     return items
 end
@@ -538,7 +562,7 @@ PRT:RegisterTab("Notes", function(parent)
         yOffset = yOffset - ROW_HEIGHT
 
         local lockedCheckbox = PRT.Components.GetCheckbox(scrollChild, "Locked", function(value)
-            GetSettings().locked = value
+            GetSettings().display.locked = value
             PRT:ApplySettings("notes")
         end)
         lockedCheckbox:SetPoint("TOPLEFT", 0, yOffset)
@@ -625,7 +649,7 @@ PRT:RegisterTab("Notes", function(parent)
             local settings = GetSettings()
             showMineCheckbox:SetValue(settings.display.showOnlyMine)
             hideExpiredCheckbox:SetValue(settings.display.hideExpired)
-            lockedCheckbox:SetValue(settings.locked)
+            lockedCheckbox:SetValue(settings.display.locked)
             hideModeDropdown:SetValue()
             fontDropdown:SetValue()
             fontSizeSlider:SetValue(settings.display.fontSize)
@@ -642,18 +666,102 @@ PRT:RegisterTab("Notes", function(parent)
 
     local function SetupPopups(panel)
         local yOffset = -10
+        PRT.NotesPopups:MigrateSettings()
 
-        local popupsCheckbox = PRT.Components.GetCheckbox(panel, "Enable popups", function(value)
-            GetSettings().popups.enabled = value
+        local testPopupsButton
+        local function HasEnabledPopupType()
+            for _, displayType in ipairs(POPUP_TYPES) do
+                if PRT.NotesPopups:IsTypeEnabled(displayType) then
+                    return true
+                end
+            end
+            return false
+        end
+
+        local function RefreshTestButton()
+            if not testPopupsButton then
+                return
+            end
+            if HasEnabledPopupType() then
+                testPopupsButton:Enable()
+            else
+                testPopupsButton:Disable()
+            end
+        end
+
+        local typeCheckboxes = {}
+        for _, displayType in ipairs(POPUP_TYPES) do
+            local popupType = displayType
+            local checkbox = PRT.Components.GetCheckbox(
+                panel,
+                "Enable " .. popupType .. " popups",
+                function(value)
+                    GetSettings().popups.enabledTypes[popupType] = value
+                    PRT:ApplySettings("notes")
+                    RefreshTestButton()
+                end
+            )
+            checkbox:SetPoint("TOPLEFT", 0, yOffset)
+            yOffset = yOffset - ROW_HEIGHT
+            typeCheckboxes[popupType] = checkbox
+        end
+
+        local popupLockedCheckbox = PRT.Components.GetCheckbox(panel, "Locked", function(value)
+            GetSettings().popups.locked = value
             PRT:ApplySettings("notes")
         end)
-        popupsCheckbox:SetPoint("TOPLEFT", 0, yOffset)
+        popupLockedCheckbox:SetPoint("TOPLEFT", 0, yOffset)
         yOffset = yOffset - ROW_HEIGHT
 
-        local popupScaleSlider = PRT.Components.GetSliderWithInput(panel, "Popup Scale", 0.5, 2, 0.05, true, function(value)
-            GetSettings().popups.scale = value
-            PRT:ApplySettings("notes")
-        end)
+        local barWidthInput = PRT.Components.GetIntegerInput(
+            panel,
+            "Bar Width",
+            100,
+            1000,
+            function(value)
+                GetSettings().popups.barWidth = value
+                PRT:ApplySettings("notes")
+            end
+        )
+        barWidthInput:SetPoint("TOPLEFT", 0, yOffset)
+        yOffset = yOffset - ROW_HEIGHT
+
+        local barHeightInput = PRT.Components.GetIntegerInput(
+            panel,
+            "Bar Height",
+            10,
+            100,
+            function(value)
+                GetSettings().popups.barHeight = value
+                PRT:ApplySettings("notes")
+            end
+        )
+        barHeightInput:SetPoint("TOPLEFT", 0, yOffset)
+        yOffset = yOffset - ROW_HEIGHT
+
+        local barTextureDropdown = PRT.Components.GetTextureDropdown(panel, "Bar Texture",
+            ListStatusBars,
+            function(value) return GetSettings().popups.barTexture == value end,
+            function(value)
+                GetSettings().popups.barTexture = value
+                PRT:ApplySettings("notes")
+            end
+        )
+        barTextureDropdown:SetPoint("TOPLEFT", 0, yOffset)
+        yOffset = yOffset - ROW_HEIGHT
+
+        local popupScaleSlider = PRT.Components.GetSliderWithInput(
+            panel,
+            "Popup Scale",
+            0.5,
+            2,
+            0.05,
+            true,
+            function(value)
+                GetSettings().popups.scale = value
+                PRT:ApplySettings("notes")
+            end
+        )
         popupScaleSlider:SetPoint("TOPLEFT", 0, yOffset)
         yOffset = yOffset - ROW_HEIGHT
 
@@ -681,7 +789,7 @@ PRT:RegisterTab("Notes", function(parent)
         soundsCheckbox:SetPoint("TOPLEFT", 0, yOffset)
         yOffset = yOffset - ROW_HEIGHT - 8
 
-        local testPopupsButton = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+        testPopupsButton = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
         testPopupsButton:SetSize(120, 22)
         testPopupsButton:SetPoint("TOPLEFT", 0, yOffset)
         testPopupsButton:SetText("Test Popups")
@@ -691,16 +799,21 @@ PRT:RegisterTab("Notes", function(parent)
 
         panel:SetScript("OnShow", function()
             local settings = GetSettings()
-            popupsCheckbox:SetValue(settings.popups.enabled)
+            PRT.NotesPopups:MigrateSettings(settings.popups)
+            for _, displayType in ipairs(POPUP_TYPES) do
+                typeCheckboxes[displayType]:SetValue(
+                    PRT.NotesPopups:IsTypeEnabled(displayType, settings.popups)
+                )
+            end
+            popupLockedCheckbox:SetValue(settings.popups.locked)
+            barWidthInput:SetValue(settings.popups.barWidth)
+            barHeightInput:SetValue(settings.popups.barHeight)
+            barTextureDropdown:SetValue()
             popupScaleSlider:SetValue(settings.popups.scale)
             growDropdown:SetValue()
             ttsCheckbox:SetValue(settings.popups.ttsEnabled)
             soundsCheckbox:SetValue(settings.popups.soundsEnabled)
-            if settings.popups.enabled then
-                testPopupsButton:Enable()
-            else
-                testPopupsButton:Disable()
-            end
+            RefreshTestButton()
         end)
     end
 
@@ -712,6 +825,7 @@ PRT:RegisterTab("Notes", function(parent)
 end)
 
 PRT:RegisterApplyCallback("notes", function()
+    PRT.Notes:MigrateLockSettings()
     PRT.NotesFrame:ApplySettings()
     PRT.NotesPopups:ApplySettings()
 end)

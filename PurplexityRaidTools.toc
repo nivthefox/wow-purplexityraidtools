@@ -45,6 +45,7 @@ Modules/Notes/NotesParser.lua
 Modules/Notes/NotesSerializer.lua
 Modules/Notes/NotesMerge.lua
 Modules/Notes/NotesTags.lua
+Modules/Notes/NotesBossTimeline.lua
 Modules/Notes/NotesTimer.lua
 Modules/Notes/NotesPlanner.lua
 Modules/Notes/NotesFrame.lua

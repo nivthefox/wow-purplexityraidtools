@@ -1,6 +1,30 @@
 local PRT = PurplexityRaidTools
 local EncounterPhases = PRT.EncounterPhases
 
+local function copyTicks(ticks)
+    if type(ticks) ~= "table" then
+        return nil
+    end
+    local result = {}
+    local previousTime = 0
+    for index, tick in ipairs(ticks) do
+        if type(tick) ~= "table"
+            or type(tick.time) ~= "number"
+            or tick.time <= previousTime
+        then
+            return nil
+        end
+        for field in pairs(tick) do
+            if field ~= "time" then
+                return nil
+            end
+        end
+        result[index] = { time = tick.time }
+        previousTime = tick.time
+    end
+    return result
+end
+
 local function normalizeOccurrence(phaseID, occurrence, sourceOrder)
     if type(occurrence) ~= "table"
         or not EncounterPhases.IsInteger(occurrence.spellID)
@@ -11,12 +35,27 @@ local function normalizeOccurrence(phaseID, occurrence, sourceOrder)
         return nil, "Stored occurrence is invalid."
     end
 
-    return {
+    local normalized = {
         phase = phaseID,
         time = occurrence.time,
         spellID = occurrence.spellID,
         sourceOrder = sourceOrder,
     }
+    if occurrence.duration ~= nil or occurrence.ticks ~= nil then
+        if type(occurrence.duration) ~= "number"
+            or occurrence.duration <= 0
+            or not EncounterPhases.IsArray(occurrence.ticks, false)
+        then
+            return nil, "Stored occurrence is invalid."
+        end
+        local ticks = copyTicks(occurrence.ticks)
+        if not ticks then
+            return nil, "Stored occurrence is invalid."
+        end
+        normalized.duration = occurrence.duration
+        normalized.ticks = ticks
+    end
+    return normalized
 end
 
 local function occurrenceSort(left, right)

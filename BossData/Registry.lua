@@ -15,6 +15,13 @@ local DEFINITION_FIELDS = {
     Observe = true,
 }
 local OCCURRENCE_FIELDS = { spellID = true, time = true }
+local COMPOUND_OCCURRENCE_FIELDS = {
+    spellID = true,
+    time = true,
+    duration = true,
+    ticks = true,
+}
+local TICK_FIELDS = { time = true }
 
 local function hasExactFields(value, fields)
     if type(value) ~= "table" then
@@ -34,11 +41,37 @@ local function hasExactFields(value, fields)
 end
 
 local function validateOccurrence(occurrence)
-    return hasExactFields(occurrence, OCCURRENCE_FIELDS)
-        and EncounterPhases.IsInteger(occurrence.spellID)
-        and occurrence.spellID > 0
-        and EncounterPhases.IsInteger(occurrence.time)
-        and occurrence.time >= 0
+    local simple = hasExactFields(occurrence, OCCURRENCE_FIELDS)
+    local compound = hasExactFields(occurrence, COMPOUND_OCCURRENCE_FIELDS)
+    if not simple and not compound then
+        return false
+    end
+    if not EncounterPhases.IsInteger(occurrence.spellID) or occurrence.spellID <= 0 then
+        return false
+    end
+    if not EncounterPhases.IsInteger(occurrence.time) or occurrence.time < 0 then
+        return false
+    end
+    if simple then
+        return true
+    end
+    if type(occurrence.duration) ~= "number" or occurrence.duration <= 0
+        or not EncounterPhases.IsArray(occurrence.ticks, false)
+    then
+        return false
+    end
+
+    local previousTime = 0
+    for _, tick in ipairs(occurrence.ticks) do
+        if not hasExactFields(tick, TICK_FIELDS)
+            or type(tick.time) ~= "number"
+            or tick.time <= previousTime
+        then
+            return false
+        end
+        previousTime = tick.time
+    end
+    return true
 end
 
 local function validateOccurrences(occurrences)

@@ -29,6 +29,41 @@ local Notes = PRT.Notes
 local MULTI_ENCOUNTER_ERROR =
     "A note may only contain one encounter. Use a separate note per encounter."
 
+tests["legacy shared lock migrates to both independent locks"] = function()
+    local settings = {
+        locked = false,
+        display = { locked = true },
+        popups = { locked = true },
+    }
+
+    Notes:MigrateLockSettings(settings)
+
+    assertNil(settings.locked)
+    assertFalse(settings.display.locked)
+    assertFalse(settings.popups.locked)
+end
+
+tests["independent note and popup locks survive migration"] = function()
+    local settings = {
+        display = { locked = true },
+        popups = { locked = false },
+    }
+
+    Notes:MigrateLockSettings(settings)
+
+    assertTrue(settings.display.locked)
+    assertFalse(settings.popups.locked)
+end
+
+tests["missing note and popup locks default to locked"] = function()
+    local settings = {}
+
+    Notes:MigrateLockSettings(settings)
+
+    assertTrue(settings.display.locked)
+    assertTrue(settings.popups.locked)
+end
+
 -- Reset the fake profile's notes table to a known-empty state before each test.
 local function resetNotes()
     PRT.Profiles.current.notes = { savedNotes = {}, annotations = {} }

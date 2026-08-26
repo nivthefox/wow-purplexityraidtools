@@ -63,32 +63,45 @@ local function evaluate(self, reminder, now)
     end
 
     local remaining = reminder.time - (now - self.phaseStart)
+    local timeline = PRT.NotesBossTimeline
+        and PRT.NotesBossTimeline:GetBarTimeline(reminder)
+    local postDuration = timeline and timeline.postDuration or 0
 
-    -- First seen already at or past its event: the popup window was missed, so
-    -- fire nothing and retire. Happens when SetPhase starts a phase into an
-    -- already-elapsed schedule, or a first Tick lands past the event.
-    if not s.shown and remaining <= 0 then
+    -- Compound bars remain useful through their final tick. Ordinary reminders
+    -- retain the original missed-window behavior because postDuration is zero.
+    if not s.shown and remaining <= -postDuration then
         s.expired = true
         return
     end
 
+    local firstSeenAfterEvent = not s.shown and remaining <= 0
+    if firstSeenAfterEvent then
+        s.audioFired = true
+    end
+
     -- Crossings measure against the previous tick's remaining, so resolve them
     -- before overwriting lastRemaining below.
-    fireCountdowns(self, reminder, s, remaining)
+    if not firstSeenAfterEvent then
+        fireCountdowns(self, reminder, s, remaining)
+    end
 
     if not s.shown and remaining <= reminder.duration then
         s.shown = true
         self.callbacks.onPopupShow(reminder, remaining)
     end
 
-    if not s.audioFired and reminder.ttsTimer ~= nil and remaining <= reminder.ttsTimer then
+    if not firstSeenAfterEvent
+        and not s.audioFired
+        and reminder.ttsTimer ~= nil
+        and remaining <= reminder.ttsTimer
+    then
         s.audioFired = true
         self.callbacks.onAudio(reminder)
     end
 
     -- A single tick may both show and expire (jump from before-threshold to
     -- past-event), so this is not an else of the popup branch.
-    if s.shown and not s.expired and remaining <= 0 then
+    if s.shown and not s.expired and remaining <= -postDuration then
         s.expired = true
         self.callbacks.onPopupExpire(reminder)
     end

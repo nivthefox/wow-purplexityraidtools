@@ -20,7 +20,8 @@ PRT:RegisterModule("notes", Notes)
 --   Timed lines before the metadata line are freeform, not reminders.
 --   Reminder = { time, tag, text, spellID, phase(number), phaseKey(string),
 --                duration, displayType, tts, ttsTimer, countdown, sound,
---                bossSpell, colors, relevant(bool, set by tag matcher) }
+--                bossSpell, colors, relevant(bool, set by tag matcher),
+--                bossDuration, bossTicks (derived from canonical BossData) }
 --   phaseKey is tostring(phase) ("2.5") to avoid float table-key identity.
 --   duration and ttsTimer are clamped to time at parse (spec 9.2.1).
 --
@@ -46,6 +47,7 @@ PRT.defaults.notes = {
                       -- deep-copy it into every profile permanently.
     annotations = {},
     display = {
+        locked = true,
         showOnlyMine = true,
         hideExpired = true,
         hideMode = "Immediately",  -- "Immediately" | "Fade" | "Never"
@@ -57,13 +59,21 @@ PRT.defaults.notes = {
         backgroundOpacity = 0.7,
     },
     popups = {
-        enabled = true,
+        locked = true,
+        enabledTypes = {
+            Icon = true,
+            Bar = true,
+            Text = true,
+            Circle = true,
+        },
+        barWidth = 220,
+        barHeight = 24,
+        barTexture = "Blizzard",
         scale = 1,
         growDirection = "Down",
         ttsEnabled = true,
         soundsEnabled = true,
     },
-    locked = true,
     contentTypes = {
         openWorld = false,
         dungeon = { normal = false, heroic = false, mythic = false, mythicPlus = false },
@@ -72,6 +82,31 @@ PRT.defaults.notes = {
     },
     positions = {},
 }
+
+function Notes:MigrateLockSettings(settings)
+    settings = settings or PRT:GetSetting("notes")
+    if type(settings) ~= "table" then
+        return
+    end
+    if type(settings.display) ~= "table" then
+        settings.display = {}
+    end
+    if type(settings.popups) ~= "table" then
+        settings.popups = {}
+    end
+
+    if settings.locked ~= nil then
+        settings.display.locked = settings.locked
+        settings.popups.locked = settings.locked
+        settings.locked = nil
+    end
+    if settings.display.locked == nil then
+        settings.display.locked = true
+    end
+    if settings.popups.locked == nil then
+        settings.popups.locked = true
+    end
+end
 
 local function GetNotesStore()
     local profile = PRT.Profiles:GetCurrent()
@@ -457,6 +492,13 @@ local function OnEncounterStart(encounterID, difficultyID)
         Notes:TestStop()
     end
 
+    local planningModel = PRT.EncounterPhases
+        and PRT.EncounterPhases.GetPlanningModel
+        and PRT.EncounterPhases:GetPlanningModel(encounterID, tonumber(difficultyID))
+    if PRT.NotesBossTimeline then
+        PRT.NotesBossTimeline:Apply(activeNote, planningModel)
+    end
+
     StartEncounterPhaseAttempt(encounterID, tonumber(difficultyID))
 
     if not useCanonicalPhases
@@ -515,6 +557,17 @@ function Notes:TestStart()
     encounterPhase = 1
     phaseStart = GetTime()
 
+    local difficultyID = PRT.NotesPlanner
+        and PRT.NotesPlanner:GetDifficultyID(activeNote.difficulty)
+    local planningModel = difficultyID
+        and activeNote.encounterID
+        and PRT.EncounterPhases
+        and PRT.EncounterPhases.GetPlanningModel
+        and PRT.EncounterPhases:GetPlanningModel(activeNote.encounterID, difficultyID)
+    if PRT.NotesBossTimeline then
+        PRT.NotesBossTimeline:Apply(activeNote, planningModel)
+    end
+
     PRT.NotesTags.MarkRelevance(activeNote, BuildPlayerCtx())
     PRT.NotesFrame:SetNote(activeNote)
     PRT.NotesFrame:Show()
@@ -523,8 +576,11 @@ function Notes:TestStart()
     local maxTime = 0
     for _, bucket in pairs(activeNote.reminders) do
         for _, reminder in ipairs(bucket) do
-            if reminder.time > maxTime then
-                maxTime = reminder.time
+            local timeline = PRT.NotesBossTimeline
+                and PRT.NotesBossTimeline:GetBarTimeline(reminder)
+            local endTime = reminder.time + (timeline and timeline.postDuration or 0)
+            if endTime > maxTime then
+                maxTime = endTime
             end
         end
     end
@@ -715,6 +771,7 @@ function Notes:OnActiveNoteChanged()
 end
 
 function Notes:Initialize()
+    self:MigrateLockSettings()
     PRT.NotesFrame:Init()
     PRT.NotesPopups:Init()
 end

@@ -174,6 +174,51 @@ tests["sound options are sorted and preserve an unavailable current value"] = fu
     assertEquals(options[4].name, "Old\\Custom.ogg (current)")
 end
 
+tests["editing display text recovers the stored ability when the target is unavailable"] = function()
+    local originalSpellData = PurplexityRaidTools.SpellData
+    PurplexityRaidTools.SpellData = {
+        [71] = {
+            abilities = {
+                rallyingCry = {
+                    name = "Rallying Cry",
+                    spellId = 97462,
+                    cooldown = 180,
+                },
+            },
+        },
+    }
+
+    local ok, ability, displayText = pcall(
+        NotesEditor.SplitReminderText,
+        "Rallying Cry first Dirge",
+        {},
+        97462
+    )
+    PurplexityRaidTools.SpellData = originalSpellData
+
+    if not ok then
+        error(ability)
+    end
+    assertEquals(ability, "Rallying Cry")
+    assertEquals(displayText, "first Dirge")
+    assertEquals(
+        NotesEditor.BuildReminderText(ability, "second Dirge"),
+        "Rallying Cry second Dirge"
+    )
+
+    ability, displayText = NotesEditor.SplitReminderText(
+        "Soak the next orbs",
+        {},
+        nil
+    )
+    assertEquals(ability, "")
+    assertEquals(displayText, "Soak the next orbs")
+    assertEquals(
+        NotesEditor.BuildReminderText(ability, "Soak the final orbs"),
+        "Soak the final orbs"
+    )
+end
+
 tests["editing a personal reminder replaces the stored annotation copy"] = function()
     local original = {
         time = 30,

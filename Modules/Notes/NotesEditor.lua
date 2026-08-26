@@ -802,29 +802,87 @@ local function CollectFreeformLines(parsedNote, activePhase)
     return result
 end
 
-local function SplitAbilityAndText(text, knownAbilities)
-    if not text or text == "" then
-        return "", ""
+local function FindAbilityNameBySpellID(spellID, knownAbilities)
+    if not spellID then
+        return nil
     end
-    if knownAbilities then
-        for _, ab in ipairs(knownAbilities) do
-            local abLen = #ab.name
-            if text:sub(1, abLen) == ab.name then
-                local rest = text:sub(abLen + 1)
-                if rest == "" then
-                    return ab.name, ""
-                end
-                if rest:sub(1, 1) == " " then
-                    return ab.name, rest:sub(2)
-                end
+
+    for _, ability in ipairs(knownAbilities or {}) do
+        if ability.spellId == spellID then
+            return ability.name
+        end
+    end
+
+    for _, specData in pairs(PRT.SpellData or {}) do
+        for _, ability in pairs(specData.abilities or {}) do
+            if ability.spellId == spellID then
+                return ability.name
             end
         end
     end
-    return text, ""
+
+    if C_Spell and C_Spell.GetSpellName then
+        return C_Spell.GetSpellName(spellID)
+    end
+end
+
+local function SplitOnAbility(text, abilityName)
+    if not abilityName then
+        return nil
+    end
+
+    local abilityLength = #abilityName
+    if text:sub(1, abilityLength) ~= abilityName then
+        return nil
+    end
+
+    local rest = text:sub(abilityLength + 1)
+    if rest == "" then
+        return abilityName, ""
+    end
+    if rest:sub(1, 1) == " " then
+        return abilityName, rest:sub(2)
+    end
+end
+
+function NotesEditor.SplitReminderText(text, knownAbilities, spellID)
+    if not text or text == "" then
+        return "", ""
+    end
+
+    local storedAbilityName = FindAbilityNameBySpellID(spellID, knownAbilities)
+    local abilityName, displayText = SplitOnAbility(text, storedAbilityName)
+    if abilityName then
+        return abilityName, displayText
+    end
+
+    for _, ability in ipairs(knownAbilities or {}) do
+        abilityName, displayText = SplitOnAbility(text, ability.name)
+        if abilityName then
+            return abilityName, displayText
+        end
+    end
+
+    return "", text
+end
+
+function NotesEditor.BuildReminderText(abilityName, displayText)
+    abilityName = abilityName or ""
+    displayText = displayText or ""
+
+    if abilityName ~= "" and displayText ~= "" then
+        return abilityName .. " " .. displayText
+    end
+    if abilityName ~= "" then
+        return abilityName
+    end
+    if displayText ~= "" then
+        return displayText
+    end
 end
 
 function NotesEditor.FindAbilitySpellID(text, knownAbilities)
-    local abilityName = SplitAbilityAndText(text, knownAbilities)
+    local abilityName = NotesEditor.SplitReminderText(text, knownAbilities)
     for _, ability in ipairs(knownAbilities or {}) do
         if ability.name == abilityName then
             return ability.spellId
@@ -2704,7 +2762,11 @@ function NotesEditor:OpenEditPanel(reminder)
         currentAbilities = NotesEditor.GetAbilitiesForTag(reminder.tag)
     end
 
-    local abilityName, displayText = SplitAbilityAndText(reminder.text, currentAbilities)
+    local abilityName, displayText = NotesEditor.SplitReminderText(
+        reminder.text,
+        currentAbilities,
+        reminder.spellID
+    )
     editFields.ability:SetValue(abilityName)
     editFields.abilityText = abilityName
     editFields.ability:GenerateMenu()
@@ -2754,14 +2816,8 @@ function NotesEditor:SaveFromPanel()
     local abilityName = editFields.abilityText or ""
     local abilitySpellId = editFields.abilitySpellId
     local displayText = editFields.displayText:GetText() or ""
-    local combinedText
-    if abilityName ~= "" and displayText ~= "" then
-        combinedText = abilityName .. " " .. displayText
-    elseif abilityName ~= "" then
-        combinedText = abilityName
-    elseif displayText ~= "" then
-        combinedText = displayText
-    else
+    local combinedText = NotesEditor.BuildReminderText(abilityName, displayText)
+    if not combinedText then
         editPanel.errorText:SetText("Ability or text is required.")
         return
     end

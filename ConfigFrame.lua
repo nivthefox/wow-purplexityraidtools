@@ -477,7 +477,10 @@ ConfigFrame:Hide()
 ButtonFrameTemplate_HidePortrait(ConfigFrame)
 ButtonFrameTemplate_HideButtonBar(ConfigFrame)
 ConfigFrame.Inset:Hide()
-ConfigFrame:SetTitle("PurplexityRaidTools")
+ConfigFrame:SetTitle(string.format(
+    "PurplexityRaidTools v%s",
+    C_AddOns.GetAddOnMetadata("PurplexityRaidTools", "Version")
+))
 
 ConfigFrame:SetMovable(true)
 ConfigFrame:SetClampedToScreen(true)

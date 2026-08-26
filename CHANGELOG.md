@@ -15,6 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- The configuration window header now shows the installed addon version.
 - Icon, bar, text, and circle popups can now be enabled independently, and the note window and popup movers have separate lock settings.
 - Notes can now change difficulty after reminders are added, while boss changes remain locked.
 

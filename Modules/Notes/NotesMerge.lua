@@ -35,6 +35,26 @@ local function sortBucketByTime(bucket)
     end)
 end
 
+local function reminderComesBefore(a, b)
+    local aPhase = tonumber(a.phase) or 1
+    local bPhase = tonumber(b.phase) or 1
+    if aPhase ~= bPhase then
+        return aPhase < bPhase
+    end
+    return (a.time or 0) < (b.time or 0)
+end
+
+local function insertReminderLineChronologically(lines, reminder)
+    local insertAt = #lines + 1
+    for i, entry in ipairs(lines) do
+        if entry.type == "reminder" and reminderComesBefore(reminder, entry.reminder) then
+            insertAt = i
+            break
+        end
+    end
+    table.insert(lines, insertAt, { type = "reminder", reminder = reminder })
+end
+
 local OVERRIDE_FIELDS = { "displayType", "sound", "tts", "ttsTimer", "countdown" }
 
 function NotesMerge:Merge(canonicalNote, annotationNote)
@@ -81,7 +101,7 @@ function NotesMerge:Merge(canonicalNote, annotationNote)
                 phaseBucket[#phaseBucket + 1] = personal
                 sortBucketByTime(phaseBucket)
 
-                merged.lines[#merged.lines + 1] = { type = "reminder", reminder = personal }
+                insertReminderLineChronologically(merged.lines, personal)
             end
         end
     end

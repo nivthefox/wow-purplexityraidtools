@@ -148,7 +148,16 @@ tests["field layouts keep annotation content immutable and personal forms consis
     assertTrue(contains(personal, "ttsMode"))
     assertTrue(contains(personal, "audioLeadTime"))
     assertTrue(contains(personal, "countdown"))
+    assertTrue(contains(personal, "bossSpell"))
+    assertTrue(contains(personal, "colors"))
     assertFalse(contains(personal, "who"))
+
+    for _, field in ipairs(edit) do
+        if field ~= "who" then
+            assertTrue(contains(personal, field),
+                "personal reminders should include main-note field " .. field)
+        end
+    end
 end
 
 tests["sound options are sorted and preserve an unavailable current value"] = function()

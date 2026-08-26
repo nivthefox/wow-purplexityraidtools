@@ -18,6 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 
 - Test Popups now removes every preview when the test finishes instead of leaving reused popups onscreen.
+- Personal reminders added in Annotate mode now include Boss Spell ID and color options and appear in phase and time order in the note window.
 
 ## [1.3.1] - 2026-08-24
 

@@ -46,7 +46,7 @@ local ALERT_FIELD_LAYOUTS = {
     personal = {
         "phase", "time", "ability", "displayText", "duration",
         "displayType", "sound", "ttsMode", "ttsCustom", "audioLeadTime",
-        "countdown",
+        "countdown", "bossSpell", "colors",
     },
 }
 

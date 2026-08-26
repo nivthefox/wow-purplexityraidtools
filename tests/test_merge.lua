@@ -224,6 +224,41 @@ tests["personal reminder injected at correct time position within phase"] = func
     assertEquals(bucket[3].text, "Third")
 end
 
+tests["personal reminder line is inserted in chronological order"] = function()
+    local canonical = makeNote({ encounterID = 3176 })
+    addReminderToNote(canonical, makeReminder({ time = 10, text = "First" }))
+    addFreeformToNote(canonical, "-- Keep with first")
+    addReminderToNote(canonical, makeReminder({ time = 50, text = "Third" }))
+
+    local annotation = makeNote()
+    addReminderToNote(annotation, makeReminder({ time = 30, text = "Personal Middle" }))
+
+    local merged = Merge:Merge(canonical, annotation)
+
+    assertEquals(#merged.lines, 4)
+    assertEquals(merged.lines[1].reminder.text, "First")
+    assertEquals(merged.lines[2].text, "-- Keep with first")
+    assertEquals(merged.lines[3].reminder.text, "Personal Middle")
+    assertEquals(merged.lines[4].reminder.text, "Third")
+end
+
+tests["personal reminder line is inserted before later phases"] = function()
+    local canonical = makeNote({ encounterID = 3176 })
+    addReminderToNote(canonical, makeReminder({ time = 10, text = "Phase 1 First" }))
+    addReminderToNote(canonical, makeReminder({
+        time = 10, text = "Phase 2", phase = 2,
+    }))
+
+    local annotation = makeNote()
+    addReminderToNote(annotation, makeReminder({ time = 50, text = "Phase 1 Personal" }))
+
+    local merged = Merge:Merge(canonical, annotation)
+
+    assertEquals(merged.lines[1].reminder.text, "Phase 1 First")
+    assertEquals(merged.lines[2].reminder.text, "Phase 1 Personal")
+    assertEquals(merged.lines[3].reminder.text, "Phase 2")
+end
+
 tests["personal reminder in merged result has correct phase bucket"] = function()
     local canonical = makeNote({ encounterID = 3176 })
     addReminderToNote(canonical, makeReminder({ time = 30, text = "P1 Reminder", phase = 1 }))

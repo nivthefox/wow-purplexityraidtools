@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-08-27
+
 ### Fixed
 
 - Raid member version detection now uses group messages, avoiding repeated "No player named" errors for some cross-realm players.
@@ -256,7 +258,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Initial alpha release with Don't Release and Ready Check modules.
 
-[Unreleased]: https://github.com/nivthefox/wow-purplexityraidtools/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/nivthefox/wow-purplexityraidtools/compare/v1.4.1...HEAD
+[1.4.1]: https://github.com/nivthefox/wow-purplexityraidtools/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/nivthefox/wow-purplexityraidtools/compare/v1.3.1...v1.4.0
 [1.3.1]: https://github.com/nivthefox/wow-purplexityraidtools/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/nivthefox/wow-purplexityraidtools/compare/v1.2.2...v1.3.0

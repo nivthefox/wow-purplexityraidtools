@@ -2,7 +2,7 @@
 ## Title: PurplexityRaidTools
 ## Notes: Raid tools for Purplexity
 ## Author: Niv
-## Version: 1.4.1
+## Version: 1.4.2
 ## OptionalDeps: EllesmereUIRaidFrames, EllesmereUIUnitFrames, MethodInternal, DandersFrames, Grid2
 ## SavedVariables: PurplexityRaidToolsDB, PurplexityRaidToolsAttendanceDB, PurplexityRaidToolsRosterDB
 

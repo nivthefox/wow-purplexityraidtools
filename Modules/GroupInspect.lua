@@ -40,6 +40,7 @@ local SWEEP_INTERVAL_SECONDS = 60
 local ADDON_NAME = "PurplexityRaidTools"
 local VERSION_QUERY_MSG_TYPE = "versionQuery"
 local VERSION_RESPONSE_MSG_TYPE = "versionResponse"
+local versionResponsePending = false
 
 --- Pack "major.minor.patch" into a single comparable integer, dropping any
 --- prerelease suffix. Anything unparseable encodes to 0 ("installed, version
@@ -66,19 +67,47 @@ local function GetLocalVersion()
     return GroupInspect.EncodeVersion(C_AddOns.GetAddOnMetadata(ADDON_NAME, "Version"))
 end
 
---- Whisper a version query to the unit being inspected. Members running PRT
---- answer; silence means the addon is missing. The target must carry the realm
---- for cross-realm members, and is nil for a unit that just left the group.
-local function SendVersionQuery(unit)
-    local target = GetUnitName(unit, true)
-    if not target then
-        return
+local function HasOtherPlayer()
+    for unit in PRT:IterateGroup() do
+        if UnitIsPlayer(unit) and not UnitIsUnit(unit, "player") then
+            return true
+        end
     end
-    PRT.Comms:Send(VERSION_QUERY_MSG_TYPE, {}, "WHISPER", target)
+    return false
 end
 
-local function OnVersionQuery(_, sender)
-    PRT.Comms:Send(VERSION_RESPONSE_MSG_TYPE, { version = GetLocalVersion() }, "WHISPER", sender)
+--- Version advertisements use the current group channel so delivery never
+--- depends on a realm-qualified player name.
+local function GetVersionChannel()
+    if IsInGroup(LE_PARTY_CATEGORY_INSTANCE) and IsInInstance() then
+        return "INSTANCE_CHAT"
+    end
+    if not HasOtherPlayer() then
+        return nil
+    end
+    if IsInRaid(LE_PARTY_CATEGORY_HOME) then
+        return "RAID"
+    end
+    if IsInGroup(LE_PARTY_CATEGORY_HOME) then
+        return "PARTY"
+    end
+    return nil
+end
+
+local function BroadcastVersion()
+    local channel = GetVersionChannel()
+    if not channel then
+        return
+    end
+    PRT.Comms:Send(VERSION_RESPONSE_MSG_TYPE, { version = GetLocalVersion() }, channel)
+end
+
+local function BroadcastVersionQuery()
+    local channel = GetVersionChannel()
+    if not channel then
+        return
+    end
+    PRT.Comms:Send(VERSION_QUERY_MSG_TYPE, { version = GetLocalVersion() }, channel)
 end
 
 local function OnVersionResponse(data, sender)
@@ -97,6 +126,19 @@ local function OnVersionResponse(data, sender)
     end
 
     member.addonVersion = data.version
+end
+
+local function OnVersionQuery(data, sender)
+    OnVersionResponse(data, sender)
+    if versionResponsePending or not GetVersionChannel() then
+        return
+    end
+
+    versionResponsePending = true
+    C_Timer.After(1 + math.random() * 2, function()
+        versionResponsePending = false
+        BroadcastVersion()
+    end)
 end
 
 local function GetPlayerSpecId()
@@ -174,7 +216,6 @@ local function BeginInspect(unit)
             inspectPending = nil
         end
     end)
-    SendVersionQuery(unit)
 end
 
 --- Return true if the Blizzard inspect window is open. Inspecting while it is
@@ -483,6 +524,7 @@ function GroupInspect:ScanRoster()
 
     if changed then
         NotifyListeners()
+        BroadcastVersion()
     end
 end
 
@@ -549,8 +591,15 @@ local function OnInspectReady(eventGUID)
 end
 
 local function OnEvent(_, event, ...)
-    if event == "GROUP_ROSTER_UPDATE" or event == "PLAYER_ENTERING_WORLD" then
+    if event == "GROUP_ROSTER_UPDATE" then
         GroupInspect:ScanRoster()
+
+    elseif event == "PLAYER_ENTERING_WORLD" then
+        local hadMembers = next(GroupInspect.members) ~= nil
+        GroupInspect:ScanRoster()
+        if not hadMembers then
+            BroadcastVersionQuery()
+        end
 
     elseif event == "UNIT_CONNECTION" then
         local unit, isConnected = ...

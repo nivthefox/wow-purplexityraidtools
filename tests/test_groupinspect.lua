@@ -1,11 +1,9 @@
 -- tests/test_groupinspect.lua
--- Addon version detection in Modules/GroupInspect.lua
--- (docs/spec/2026-08-04-addon-detection.html): EncodeVersion, the versionQuery
--- and versionResponse handshake that rides along with each inspect, and the
--- addonVersion field on member records. Also the member-name contract required
--- by docs/spec/2026-08-05-attendance-tracking.html. The inspect loop runs on
--- file-local C_Timer tickers, so this suite captures the ticker callbacks (1s
--- drains the inspect queues, 60s refills the sweep) and fires them by hand.
+-- Addon version detection in Modules/GroupInspect.lua: EncodeVersion,
+-- group-channel discovery, and the addonVersion field on member records.
+-- The inspect loop runs on file-local C_Timer tickers, so this suite captures
+-- the ticker callbacks (1s drains the inspect queues, 60s refills the sweep)
+-- and fires them by hand.
 
 local tests = {}
 
@@ -75,6 +73,7 @@ local function newSim()
         inspectChecks = {},
         uninspectableUnits = {},
         sentMessages = {},
+        groupChannel = "RAID",
     }
 end
 
@@ -199,8 +198,26 @@ local function makeStubs()
                 and not sim.uninspectableUnits[unitToken]
         end,
         UnitAffectingCombat = function() return false end,
-        IsInGroup = function() return #sim.units > 0 end,
-        IsInRaid = function() return #sim.units > 0 end,
+        LE_PARTY_CATEGORY_HOME = 1,
+        LE_PARTY_CATEGORY_INSTANCE = 2,
+        IsInGroup = function(category)
+            if category == 2 then
+                return #sim.units > 0 and sim.groupChannel == "INSTANCE_CHAT"
+            end
+            if category == 1 then
+                return #sim.units > 0 and sim.groupChannel ~= "INSTANCE_CHAT"
+            end
+            return #sim.units > 0
+        end,
+        IsInRaid = function(category)
+            if category == 2 then
+                return false
+            end
+            return #sim.units > 0 and sim.groupChannel == "RAID"
+        end,
+        IsInInstance = function()
+            return sim.groupChannel == "INSTANCE_CHAT"
+        end,
         NotifyInspect = function(unitToken)
             table.insert(sim.inspectedUnits, unitToken)
         end,
@@ -458,16 +475,20 @@ tests["a unit whose GUID has not resolved is skipped and picked up by a later sc
     end)
 end
 
-tests["roster scan writes the local player's version directly and sends no comms"] = function()
+tests["roster scan writes and broadcasts the local player's version"] = function()
     runSim(function()
-        sim.units = { "raid1" }
+        sim.units = { "raid1", "raid2" }
         GroupInspect:ScanRoster()
 
         local record = GroupInspect.members["GUID-NIV"]
         assertNotNil(record, "the local player must have a member record")
         assertEquals(record.addonVersion, LOCAL_ENCODED_VERSION,
             "the local encoded version must be written during roster scan")
-        assertEquals(#sim.sentMessages, 0, "no comms message may be sent for the local player")
+        local responses = sentOfType("versionResponse")
+        assertEquals(#responses, 1, "a changed roster must advertise the local version once")
+        assertEquals(responses[1].channel, "RAID")
+        assertNil(responses[1].target)
+        assertEquals(responses[1].data.version, LOCAL_ENCODED_VERSION)
     end)
 end
 
@@ -476,7 +497,8 @@ tests["a version response stores the sender's encoded version on their member re
         sim.units = { "raid1", "raid2" }
         GroupInspect:ScanRoster()
         driveInspectTick()
-        assertEquals(#sentOfType("versionQuery"), 1, "the inspect must have sent a version query")
+        assertEquals(#sentOfType("versionResponse"), 1,
+            "the roster scan must advertise the local version")
 
         Comms:Dispatch(encode("versionResponse", { version = 1001003 }), "Bob-Illidan")
 
@@ -486,14 +508,14 @@ tests["a version response stores the sender's encoded version on their member re
     end)
 end
 
-tests["no version response leaves the member's version nil"] = function()
+tests["no remote version advertisement leaves the member's version nil"] = function()
     runSim(function()
         sim.units = { "raid1", "raid2" }
         GroupInspect:ScanRoster()
         driveInspectTick()
 
-        assertEquals(#sentOfType("versionQuery"), 1,
-            "the query must actually have been sent for silence to mean anything")
+        assertEquals(#sentOfType("versionResponse"), 1,
+            "the local advertisement must not populate a remote member")
         local record = GroupInspect.members["GUID-BOB"]
         assertNotNil(record, "the queried member must have a record")
         assertNil(record.addonVersion,
@@ -523,7 +545,7 @@ tests["a re-inspect with no response keeps the stored version"] = function()
         sim.units = { "raid1", "raid2" }
         GroupInspect:ScanRoster()
         driveInspectTick()
-        assertEquals(#sentOfType("versionQuery"), 1)
+        assertEquals(#sentOfType("versionResponse"), 1)
 
         local record = GroupInspect.members["GUID-BOB"]
         assertNotNil(record, "the queried member must have a record")
@@ -535,8 +557,8 @@ tests["a re-inspect with no response keeps the stored version"] = function()
 
         driveSweepTick()
         driveInspectTick()
-        assertEquals(#sentOfType("versionQuery"), 2,
-            "the sweep re-inspect must send a second query")
+        assertEquals(#sentOfType("versionResponse"), 1,
+            "the inspect sweep must not add periodic version traffic")
 
         assertEquals(record.addonVersion, 1001003,
             "a missing response on re-inspect must not clear the stored version")
@@ -589,7 +611,7 @@ tests["a departed player's member record is removed by the next roster scan"] = 
     end)
 end
 
-tests["a priority-queue inspect sends a version query to the new player"] = function()
+tests["a priority-queue inspect does not add per-player version traffic"] = function()
     runSim(function()
         sim.units = { "raid1", "raid3" }
         GroupInspect:ScanRoster()
@@ -598,11 +620,82 @@ tests["a priority-queue inspect sends a version query to the new player"] = func
         assertEquals(#sim.inspectedUnits, 1, "the new member must be inspected")
         assertEquals(sim.inspectedUnits[1], "raid3")
 
+        local responses = sentOfType("versionResponse")
+        assertEquals(#responses, 1,
+            "the roster advertisement must be the only version traffic")
+        assertEquals(responses[1].channel, "RAID")
+        assertNil(responses[1].target)
+    end)
+end
+
+tests["initial group entry queries every PRT client over the group channel"] = function()
+    runSim(function()
+        sim.units = { "raid1", "raid2" }
+        onEventHandler(nil, "PLAYER_ENTERING_WORLD")
+
         local queries = sentOfType("versionQuery")
-        assertEquals(#queries, 1, "the inspect must send exactly one version query")
-        assertEquals(queries[1].channel, "WHISPER")
-        assertEquals(queries[1].target, "Zed-Area52",
-            "the whisper target must be the fully qualified cross-realm name")
+        assertEquals(#queries, 1, "initial group entry must request the existing versions once")
+        assertEquals(queries[1].channel, "RAID")
+        assertNil(queries[1].target)
+        assertEquals(queries[1].data.version, LOCAL_ENCODED_VERSION,
+            "the query must advertise the sender so receivers learn it without another message")
+
+        sim.sentMessages = {}
+        onEventHandler(nil, "PLAYER_ENTERING_WORLD")
+        assertEquals(#sentOfType("versionQuery"), 0,
+            "zoning with an already populated roster must not repeat initial discovery")
+    end)
+end
+
+tests["simultaneous version queries are coalesced into one response"] = function()
+    runSim(function()
+        sim.units = { "raid1", "raid2", "raid3" }
+        GroupInspect:ScanRoster()
+        sim.sentMessages = {}
+
+        Comms:Dispatch(encode("versionQuery", { version = 1001003 }), "Bob-Illidan")
+        Comms:Dispatch(encode("versionQuery", { version = 2015007 }), "Zed-Area52")
+
+        assertEquals(GroupInspect.members["GUID-BOB"].addonVersion, 1001003,
+            "the query must identify its sender immediately")
+        assertEquals(GroupInspect.members["GUID-ZED"].addonVersion, 2015007,
+            "coalescing replies must not discard another query sender's version")
+        assertEquals(#sentOfType("versionResponse"), 0,
+            "the coalesced response must wait for its jitter timer")
+
+        flushTimers()
+
+        local responses = sentOfType("versionResponse")
+        assertEquals(#responses, 1, "a query burst must schedule one local response")
+        assertEquals(responses[1].channel, "RAID")
+        assertNil(responses[1].target)
+        assertEquals(responses[1].data.version, LOCAL_ENCODED_VERSION)
+    end)
+end
+
+tests["background inspection never sends player-targeted addon whispers"] = function()
+    runSim(function()
+        sim.units = { "raid1", "raid3" }
+        GroupInspect:ScanRoster()
+        driveInspectTick()
+
+        for _, message in ipairs(sim.sentMessages) do
+            assertFalse(message.channel == "WHISPER",
+                "inspection comms must use a group channel so an unroutable player name cannot spam chat")
+            assertNil(message.target,
+                "group-channel inspection comms must not carry a player-name target")
+        end
+    end)
+end
+
+tests["an NPC-only home group sends no version advertisement"] = function()
+    runSim(function()
+        sim.groupChannel = "PARTY"
+        sim.units = { "raid1", "raid6" }
+        GroupInspect:ScanRoster()
+
+        assertEquals(#sentOfType("versionResponse"), 0,
+            "a follower group with no other player must not send to PARTY")
     end)
 end
 
@@ -628,8 +721,8 @@ tests["follower NPCs are excluded from player inspection data and queues"] = fun
             "the NPC must never reach Blizzard's inspectability predicate")
         assertEquals(sim.inspectChecks[1].unit, "raid2")
         assertEquals(sim.inspectChecks[2].unit, "raid2")
-        assertEquals(#sentOfType("versionQuery"), 2,
-            "only the real player may receive inspect-coupled version queries")
+        assertEquals(#sentOfType("versionResponse"), 1,
+            "only the roster change may broadcast a version advertisement")
     end)
 end
 
@@ -652,7 +745,7 @@ tests["an offline priority target is skipped before the next available member"] 
     end)
 end
 
-tests["a sweep inspect sends a version query to an already-inspected player"] = function()
+tests["a sweep adds no version traffic"] = function()
     runSim(function()
         sim.units = { "raid1", "raid2" }
         GroupInspect:ScanRoster()
@@ -661,16 +754,15 @@ tests["a sweep inspect sends a version query to an already-inspected player"] = 
         driveInspectTick()
         assertEquals(#sim.inspectedUnits, 0,
             "the priority queue must skip a member whose spec is already known")
-        assertEquals(#sentOfType("versionQuery"), 0,
-            "no inspect means no version query; the query must live inside BeginInspect")
+        assertEquals(#sentOfType("versionResponse"), 1,
+            "the roster scan must advertise once before the sweep")
 
         driveSweepTick()
         driveInspectTick()
         assertEquals(#sim.inspectedUnits, 1, "the sweep must re-inspect the member")
-        local queries = sentOfType("versionQuery")
-        assertEquals(#queries, 1, "the sweep inspect must send a version query")
-        assertEquals(queries[1].channel, "WHISPER")
-        assertEquals(queries[1].target, "Bob")
+        local responses = sentOfType("versionResponse")
+        assertEquals(#responses, 1,
+            "the 60-second inspect sweep must not act as a version heartbeat")
     end)
 end
 
@@ -690,8 +782,8 @@ tests["the sweep skips a member Blizzard reports cannot be inspected"] = functio
 
         assertEquals(#sim.inspectedUnits, 0,
             "the sweep must not call NotifyInspect for an unavailable member")
-        assertEquals(#sentOfType("versionQuery"), 0,
-            "an unavailable member must not receive an inspect-coupled version query")
+        assertEquals(#sentOfType("versionResponse"), 1,
+            "the inspect sweep must send no version traffic even when a target is unavailable")
         assertEquals(#sim.inspectChecks, 1,
             "the sweep target must be checked exactly once")
         assertEquals(sim.inspectChecks[1].unit, "raid2")
@@ -700,18 +792,31 @@ tests["the sweep skips a member Blizzard reports cannot be inspected"] = functio
     end)
 end
 
-tests["a version query is answered with the local encoded version, whispered to the sender"] = function()
+tests["a party roster advertises the local version over PARTY"] = function()
     runSim(function()
-        Comms:Dispatch(encode("versionQuery", {}), "Rl-Illidan")
+        sim.groupChannel = "PARTY"
+        sim.units = { "raid1", "raid2" }
+        GroupInspect:ScanRoster()
 
         local responses = sentOfType("versionResponse")
-        assertEquals(#responses, 1, "a query must be answered unconditionally")
-        assertEquals(responses[1].channel, "WHISPER")
-        assertEquals(responses[1].target, "Rl-Illidan",
-            "the response must go back to the raw sender, realm intact")
+        assertEquals(#responses, 1)
+        assertEquals(responses[1].channel, "PARTY")
+        assertNil(responses[1].target)
         assertEquals(responses[1].data.version, LOCAL_ENCODED_VERSION)
-        assertEquals(#sentOfType("versionQuery"), 0,
-            "answering a query must not send a query of its own")
+    end)
+end
+
+tests["an instance-group roster advertises the local version over INSTANCE_CHAT"] = function()
+    runSim(function()
+        sim.groupChannel = "INSTANCE_CHAT"
+        sim.units = { "raid1", "raid2" }
+        GroupInspect:ScanRoster()
+
+        local responses = sentOfType("versionResponse")
+        assertEquals(#responses, 1)
+        assertEquals(responses[1].channel, "INSTANCE_CHAT")
+        assertNil(responses[1].target)
+        assertEquals(responses[1].data.version, LOCAL_ENCODED_VERSION)
     end)
 end
 

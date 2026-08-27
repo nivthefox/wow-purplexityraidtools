@@ -24,8 +24,14 @@ function RosterNicknames:RegisterAdapter(name, adapter)
     end
 end
 
-function RosterNicknames:InitializeAdapter(name, adapter)
-    if initializedAdapters[name] or type(adapter.Initialize) ~= "function" then
+function RosterNicknames:InitializeAdapter(name, adapter, loadedAddon)
+    if type(adapter.Initialize) ~= "function" then
+        return
+    end
+    if initializedAdapters[name] then
+        if type(adapter.Maintain) == "function" then
+            pcall(adapter.Maintain, adapter, loadedAddon)
+        end
         return
     end
 
@@ -109,9 +115,9 @@ function RosterNicknames:Initialize()
         self:RefreshAll()
     end)
     self.eventFrame:RegisterEvent("ADDON_LOADED")
-    self.eventFrame:SetScript("OnEvent", function()
+    self.eventFrame:SetScript("OnEvent", function(_, _, loadedAddon)
         for name, adapter in pairs(PRT.RosterNicknameAdapters) do
-            self:InitializeAdapter(name, adapter)
+            self:InitializeAdapter(name, adapter, loadedAddon)
         end
     end)
 end

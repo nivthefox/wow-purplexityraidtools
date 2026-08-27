@@ -3,7 +3,7 @@
 ## Notes: Raid tools for Purplexity
 ## Author: Niv
 ## Version: 1.4.1
-## OptionalDeps: EllesmereUIRaidFrames, EllesmereUIUnitFrames, DandersFrames, Grid2
+## OptionalDeps: EllesmereUIRaidFrames, EllesmereUIUnitFrames, MethodInternal, DandersFrames, Grid2
 ## SavedVariables: PurplexityRaidToolsDB, PurplexityRaidToolsAttendanceDB, PurplexityRaidToolsRosterDB
 
 Libs/LibStub/LibStub.lua

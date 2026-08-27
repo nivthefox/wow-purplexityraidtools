@@ -30,23 +30,17 @@ end
 
 function Adapter:Initialize()
     if self.registered then
+        self:Maintain()
         return true
     end
     if not IsEllesmereUILoaded() then
         return false
     end
 
-    local api = EasyNicknameAPI
-    if type(api) ~= "table" then
-        api = {}
-        _G.EasyNicknameAPI = api
-    end
-
-    self.previous = type(api.GetNicknameForUnit) == "function" and api.GetNicknameForUnit or nil
-    self.resolver = self.resolver or function(unit)
+    self.legacyResolver = self.legacyResolver or function(unit)
         local previousResult
-        if self.previous then
-            local ok, result = pcall(self.previous, unit)
+        if self.previousLegacy then
+            local ok, result = pcall(self.previousLegacy, unit)
             if ok then
                 previousResult = result
                 if IsNickname(result, unit) then
@@ -57,10 +51,59 @@ function Adapter:Initialize()
 
         return PRT.RosterNicknames:ResolveUnit(unit) or previousResult
     end
+    self.surfaceResolver = self.surfaceResolver or function(unit, surface)
+        local previousResult, previousHandled
+        if self.previousSurface then
+            local ok, result, handled = pcall(self.previousSurface, unit, surface)
+            if ok then
+                previousResult = result
+                previousHandled = handled
+                if handled == true then
+                    return result, handled
+                end
+            end
+        end
 
-    api.GetNicknameForUnit = self.resolver
-    self.api = api
+        local nickname = PRT.RosterNicknames:ResolveUnit(unit)
+        if nickname then
+            return nickname, true
+        end
+        return previousResult, previousHandled
+    end
     self.registered = true
+    self:Maintain()
+    return true
+end
+
+function Adapter:Maintain(loadedAddon)
+    if not self.registered then
+        return false
+    end
+    if loadedAddon and loadedAddon ~= "MethodInternal" then
+        return true
+    end
+
+    local api = EasyNicknameAPI
+    if type(api) ~= "table" then
+        api = {}
+        _G.EasyNicknameAPI = api
+    end
+
+    if self.api ~= api then
+        self.api = api
+        self.previousLegacy = nil
+        self.previousSurface = nil
+    end
+
+    if api.GetNicknameForUnit ~= self.legacyResolver then
+        self.previousLegacy = type(api.GetNicknameForUnit) == "function" and api.GetNicknameForUnit or nil
+        api.GetNicknameForUnit = self.legacyResolver
+    end
+    if api.GetNicknameForUnitForSurface ~= self.surfaceResolver then
+        self.previousSurface = type(api.GetNicknameForUnitForSurface) == "function"
+            and api.GetNicknameForUnitForSurface or nil
+        api.GetNicknameForUnitForSurface = self.surfaceResolver
+    end
     return true
 end
 

@@ -42,7 +42,7 @@ Records attendance automatically from pull countdowns in configured content type
 
 ### Roster
 
-Groups a raider's characters under one nickname and records observed class, main specialization, and off-specialization tags. Officers can add players manually, import characters from attendance records, drag characters between players, and sync the roster within the raid. The optional Roster Nicknames setting shows those nicknames on supported Blizzard frames, NivUI, EllesmereUI, Danders Frames, and Grid2. EllesmereUI Unit Frames also requires its Show Nicknames display option. ElvUI users can place `[prt-roster-nickname]` or a shortened `[prt-roster-nickname:1]` through `[prt-roster-nickname:12]` tag in their unit-frame text formats.
+Groups a raider's characters under one nickname and records observed class, main specialization, and off-specialization tags. Officers can add players manually, import characters from attendance records, drag characters between players, and sync the roster within the raid. The optional Roster Nicknames setting shows those nicknames on supported Blizzard frames, NivUI, EllesmereUI, Danders Frames, and Grid2. PRT's setting controls its nicknames on EllesmereUI Unit Frames independently of EllesmereUI's Show Nicknames option. ElvUI users can place `[prt-roster-nickname]` or a shortened `[prt-roster-nickname:1]` through `[prt-roster-nickname:12]` tag in their unit-frame text formats.
 
 ### Profiles
 

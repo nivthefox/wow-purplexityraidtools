@@ -69,6 +69,17 @@ local function withEnabledFeature(body)
     end
 end
 
+local function resetEllesmereAdapter()
+    local adapter = PRT.RosterNicknameAdapters.EllesmereUI
+    adapter.registered = false
+    adapter.api = nil
+    adapter.previousLegacy = nil
+    adapter.previousSurface = nil
+    adapter.legacyResolver = nil
+    adapter.surfaceResolver = nil
+    return adapter
+end
+
 tests["roster nickname feature modules load without provider addons"] = function()
     requireFeature()
     assertNotNil(PRT.RosterNicknames)
@@ -200,6 +211,29 @@ tests["late provider activation refreshes it and isolates provider errors"] = fu
     assertEquals(good.refreshed, 1)
     PRT.RosterNicknameAdapters.TestBroken = nil
     PRT.RosterNicknameAdapters.TestGood = nil
+    manager.initialized = savedInitialized
+end
+
+tests["initialized providers can maintain a replaced integration seam"] = function()
+    requireFeature()
+    local manager = PRT.RosterNicknames
+    local savedInitialized = manager.initialized
+    local adapter = { initialized = 0, maintained = 0 }
+    function adapter:Initialize()
+        self.initialized = self.initialized + 1
+        return true
+    end
+    function adapter:Maintain()
+        self.maintained = self.maintained + 1
+    end
+
+    manager.initialized = true
+    manager:RegisterAdapter("TestMaintain", adapter)
+    manager:InitializeAdapter("TestMaintain", adapter)
+
+    assertEquals(adapter.initialized, 1)
+    assertEquals(adapter.maintained, 1)
+    PRT.RosterNicknameAdapters.TestMaintain = nil
     manager.initialized = savedInitialized
 end
 
@@ -502,11 +536,7 @@ tests["EllesmereUI adapter preserves an existing nickname provider before PRT"] 
             return nil
         end,
     }
-    local adapter = PRT.RosterNicknameAdapters.EllesmereUI
-    adapter.registered = false
-    adapter.api = nil
-    adapter.previous = nil
-    adapter.resolver = nil
+    local adapter = resetEllesmereAdapter()
     PurplexityRaidToolsRosterDB = { rosterEntry("Starcaller", "Aster-MoonGuard") }
 
     withGlobals({
@@ -537,13 +567,67 @@ tests["EllesmereUI adapter preserves an existing nickname provider before PRT"] 
     end)
 end
 
-tests["EllesmereUI adapter supplies the API when no other provider owns it"] = function()
+tests["EllesmereUI adapter preserves an authoritative current surface result"] = function()
     requireFeature()
-    local adapter = PRT.RosterNicknameAdapters.EllesmereUI
-    adapter.registered = false
-    adapter.api = nil
-    adapter.previous = nil
-    adapter.resolver = nil
+    local surfaces = {}
+    local api = {
+        GetNicknameForUnitForSurface = function(unit, surface)
+            surfaces[unit] = surface
+            if unit == "party1" then
+                return "Aster", true
+            end
+            if unit == "party3" then
+                return "Fallback", false
+            end
+            return nil, false
+        end,
+    }
+    local adapter = resetEllesmereAdapter()
+    PurplexityRaidToolsRosterDB = { rosterEntry("Starcaller", "Aster-MoonGuard") }
+
+    withGlobals({
+        C_AddOns = { IsAddOnLoaded = function() return true end },
+        EasyNicknameAPI = api,
+        UnitName = function(unit) return unit == "party3" and "Nobody" or "Aster" end,
+        UnitIsPlayer = function() return true end,
+        UnitFullName = function(unit)
+            if unit == "party3" then
+                return "Nobody", "MoonGuard"
+            end
+            return "Aster", "MoonGuard"
+        end,
+        issecretvalue = function() return false end,
+    }, function()
+        assertTrue(adapter:Initialize())
+        local resolver = api.GetNicknameForUnitForSurface
+
+        withEnabledFeature(function()
+            local first, firstHandled = resolver("party1", "unitFrames")
+            assertEquals(first, "Aster")
+            assertTrue(firstHandled)
+
+            local second, secondHandled = resolver("party2", "raidFrames")
+            assertEquals(second, "Starcaller")
+            assertTrue(secondHandled)
+
+            local third, thirdHandled = resolver("party3", "unitFrames")
+            assertEquals(third, "Fallback")
+            assertFalse(thirdHandled)
+        end)
+
+        assertEquals(surfaces.party1, "unitFrames")
+        assertEquals(surfaces.party2, "raidFrames")
+        assertEquals(surfaces.party3, "unitFrames")
+
+        local disabled, disabledHandled = resolver("party2", "raidFrames")
+        assertNil(disabled)
+        assertFalse(disabledHandled)
+    end)
+end
+
+tests["EllesmereUI adapter supplies both API generations when no provider owns them"] = function()
+    requireFeature()
+    local adapter = resetEllesmereAdapter()
     PurplexityRaidToolsRosterDB = { rosterEntry("Starcaller", "Aster-MoonGuard") }
 
     withGlobals({
@@ -557,14 +641,75 @@ tests["EllesmereUI adapter supplies the API when no other provider owns it"] = f
         assertTrue(adapter:Initialize())
         assertEquals(type(EasyNicknameAPI), "table")
         assertEquals(type(EasyNicknameAPI.GetNicknameForUnit), "function")
+        assertEquals(type(EasyNicknameAPI.GetNicknameForUnitForSurface), "function")
         withEnabledFeature(function()
             assertEquals(EasyNicknameAPI.GetNicknameForUnit("party1"), "Starcaller")
+            local nickname, handled = EasyNicknameAPI.GetNicknameForUnitForSurface("party1", "unitFrames")
+            assertEquals(nickname, "Starcaller")
+            assertTrue(handled)
+        end)
+    end)
+end
+
+tests["EllesmereUI adapter repairs replaced functions and API tables without stacking"] = function()
+    requireFeature()
+    local api = {
+        GetNicknameForUnit = function() return "FirstLegacy" end,
+        GetNicknameForUnitForSurface = function() return "FirstSurface", true end,
+    }
+    local adapter = resetEllesmereAdapter()
+    PurplexityRaidToolsRosterDB = { rosterEntry("Starcaller", "Aster-MoonGuard") }
+
+    withGlobals({
+        C_AddOns = { IsAddOnLoaded = function() return true end },
+        EasyNicknameAPI = api,
+        UnitName = function() return "Aster" end,
+        UnitIsPlayer = function() return true end,
+        UnitFullName = function() return "Aster", "MoonGuard" end,
+        issecretvalue = function() return false end,
+    }, function()
+        assertTrue(adapter:Initialize())
+        local legacyResolver = api.GetNicknameForUnit
+        local surfaceResolver = api.GetNicknameForUnitForSurface
+
+        api.GetNicknameForUnit = function() return "LaterLegacy" end
+        api.GetNicknameForUnitForSurface = function() return "LaterSurface", true end
+        assertTrue(adapter:Maintain("UnrelatedAddon"))
+        assertEquals(api.GetNicknameForUnit(), "LaterLegacy")
+        local unrelatedSurface, unrelatedHandled = api.GetNicknameForUnitForSurface()
+        assertEquals(unrelatedSurface, "LaterSurface")
+        assertTrue(unrelatedHandled)
+
+        assertTrue(adapter:Maintain("MethodInternal"))
+        assertEquals(api.GetNicknameForUnit, legacyResolver)
+        assertEquals(api.GetNicknameForUnitForSurface, surfaceResolver)
+        assertEquals(legacyResolver("party1"), "LaterLegacy")
+        local surface, handled = surfaceResolver("party1", "raidFrames")
+        assertEquals(surface, "LaterSurface")
+        assertTrue(handled)
+
+        assertTrue(adapter:Maintain("MethodInternal"))
+        assertEquals(api.GetNicknameForUnit, legacyResolver)
+        assertEquals(api.GetNicknameForUnitForSurface, surfaceResolver)
+
+        local replacement = {
+            GetNicknameForUnitForSurface = function() return nil, false end,
+        }
+        _G.EasyNicknameAPI = replacement
+        assertTrue(adapter:Maintain("MethodInternal"))
+        assertEquals(replacement.GetNicknameForUnit, legacyResolver)
+        assertEquals(replacement.GetNicknameForUnitForSurface, surfaceResolver)
+        withEnabledFeature(function()
+            local nickname, nicknameHandled = replacement.GetNicknameForUnitForSurface("party1", "unitFrames")
+            assertEquals(nickname, "Starcaller")
+            assertTrue(nicknameHandled)
         end)
     end)
 end
 
 tests["EllesmereUI adapter refreshes raid names only out of combat"] = function()
     requireFeature()
+    resetEllesmereAdapter()
     local unitRefreshes, raidRefreshes = 0, 0
 
     withGlobals({

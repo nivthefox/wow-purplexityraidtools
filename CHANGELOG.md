@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Restored Roster Nicknames support for EllesmereUI raid and unit frames after EllesmereUI changed its nickname API.
+
 ## [1.4.1] - 2026-08-27
 
 ### Fixed

@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 
 - Attendance entries can now be deleted individually from the status popup.
+- Roster Nicknames can now replace character names in EnhanceQoL party and raid frames.
 
 ### Fixed
 

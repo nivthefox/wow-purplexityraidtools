@@ -66,6 +66,7 @@ Modules/RosterNicknames/ElvUI.lua
 Modules/RosterNicknames/EllesmereUI.lua
 Modules/RosterNicknames/DandersFrames.lua
 Modules/RosterNicknames/Grid2.lua
+Modules/RosterNicknames/EnhanceQoL.lua
 Modules/Attendance/RecordsUI.lua
 Modules/Attendance/AttendanceUI.lua
 Modules/Attendance/RosterUI.lua

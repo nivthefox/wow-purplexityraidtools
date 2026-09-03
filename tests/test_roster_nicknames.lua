@@ -15,6 +15,7 @@ local featureLoaded, featureLoadError = pcall(function()
     dofile("Modules/RosterNicknames/ElvUI.lua")
     dofile("Modules/RosterNicknames/EllesmereUI.lua")
     dofile("Modules/RosterNicknames/DandersFrames.lua")
+    dofile("Modules/RosterNicknames/EnhanceQoL.lua")
 end)
 
 local grid2AdapterLoaded, grid2AdapterLoadError = pcall(function()
@@ -88,6 +89,7 @@ tests["roster nickname feature modules load without provider addons"] = function
     assertNotNil(PRT.RosterNicknameAdapters.ElvUI)
     assertNotNil(PRT.RosterNicknameAdapters.EllesmereUI)
     assertNotNil(PRT.RosterNicknameAdapters.DandersFrames)
+    assertNotNil(PRT.RosterNicknameAdapters.EnhanceQoL)
     requireGrid2Adapter()
     assertNotNil(PRT.RosterNicknameAdapters.Grid2)
 end
@@ -824,6 +826,214 @@ tests["Danders Frames adapter wraps its external name seam once and refreshes fr
 
     assertEquals(fallbackCalls, 2)
     assertEquals(refreshes, 1)
+end
+
+local function resetEnhanceQoLAdapter()
+    local adapter = PRT.RosterNicknameAdapters.EnhanceQoL
+    adapter.registered = false
+    adapter.groupFrames = nil
+    adapter.helper = nil
+    adapter.previousUpdateName = nil
+    adapter.updateName = nil
+    adapter.appliedFrames = nil
+    return adapter
+end
+
+local function eqolFrame(kind, unit, config)
+    local nameText = {
+        value = "",
+        SetText = function(self, value) self.value = value end,
+    }
+    return {
+        _eqolCfg = config or { text = {} },
+        _eqolGroupKind = kind,
+        _eqolUFState = { nameText = nameText },
+        _eqolUnit = unit,
+        GetAttribute = function(self, key)
+            if key == "unit" then return self._eqolUnit end
+        end,
+    }
+end
+
+local function eqolGroupFrames(frames)
+    local groupFrames = { frames = frames or {} }
+    function groupFrames.UpdateName(_, frame)
+        local state = frame._eqolUFState
+        local name = UnitName(frame._eqolUnit)
+        if UnitIsConnected(frame._eqolUnit) == false then
+            name = name .. " |cffff6666DC|r"
+        end
+        if state._lastName ~= name then
+            state.nameText:SetText(name)
+            state._lastName = name
+        end
+    end
+    function groupFrames:RefreshNames(options)
+        self.refreshOptions = options
+        for _, frame in ipairs(self.frames) do
+            self:UpdateName(frame)
+        end
+    end
+    return groupFrames
+end
+
+tests["EnhanceQoL adapter replaces only party and raid primary names"] = function()
+    requireFeature()
+    local party = eqolFrame("party", "party1")
+    local raid = eqolFrame("raid", "raid1")
+    local unmatched = eqolFrame("party", "party2")
+    local mainTank = eqolFrame("mt", "raid1")
+    local preview = eqolFrame("party", "party1")
+    preview._eqolPreview = true
+    local groupFrames = eqolGroupFrames({ party, raid, unmatched, mainTank, preview })
+    local adapter = resetEnhanceQoLAdapter()
+    PurplexityRaidToolsRosterDB = {
+        rosterEntry("Starcaller", "Aster-MoonGuard"),
+        rosterEntry("Ember", "Cinder-MoonGuard"),
+    }
+
+    withGlobals({
+        EnhanceQoL = { Aura = { UF = { GroupFrames = groupFrames }, UFHelper = {} } },
+        UnitName = function(unit)
+            if unit == "party1" then return "Aster" end
+            if unit == "raid1" then return "Cinder" end
+            return "Nobody"
+        end,
+        UnitIsConnected = function() return true end,
+        UnitIsPlayer = function() return true end,
+        UnitFullName = function(unit)
+            if unit == "party1" then return "Aster", "MoonGuard" end
+            if unit == "raid1" then return "Cinder", "MoonGuard" end
+            return "Nobody", "MoonGuard"
+        end,
+        issecretvalue = function() return false end,
+    }, function()
+        assertTrue(adapter:Initialize())
+        local wrapped = groupFrames.UpdateName
+        assertTrue(adapter:Initialize())
+        assertEquals(groupFrames.UpdateName, wrapped)
+
+        withEnabledFeature(function()
+            for _, frame in ipairs(groupFrames.frames) do
+                groupFrames:UpdateName(frame)
+            end
+        end)
+    end)
+
+    assertEquals(party._eqolUFState.nameText.value, "Starcaller")
+    assertEquals(raid._eqolUFState.nameText.value, "Ember")
+    assertEquals(unmatched._eqolUFState.nameText.value, "Nobody")
+    assertEquals(mainTank._eqolUFState.nameText.value, "Cinder")
+    assertEquals(preview._eqolUFState.nameText.value, "Aster")
+    resetEnhanceQoLAdapter()
+end
+
+tests["EnhanceQoL adapter preserves truncation and disconnected status then restores the name"] = function()
+    requireFeature()
+    local party = eqolFrame("party", "party1", {
+        health = { font = "HealthFont", fontSize = 10, fontOutline = "OUTLINE" },
+        text = { fontSize = 12, nameMaxChars = 5, nameNoEllipsis = true },
+    })
+    local groupFrames = eqolGroupFrames({ party })
+    groupFrames.ScaleContentValue = function(frame, value, config, factor)
+        assertEquals(frame, party)
+        assertEquals(config, party._eqolCfg)
+        assertEquals(factor, 1)
+        return value
+    end
+    local helper = {
+        getNameLimitWidth = function(font, size, outline, maximumCharacters)
+            assertEquals(font, "HealthFont")
+            assertEquals(size, 12)
+            assertEquals(outline, "OUTLINE")
+            return maximumCharacters
+        end,
+        truncateTextToWidth = function(_, _, _, text, maximumWidth)
+            return string.sub(text, 1, maximumWidth)
+        end,
+    }
+    local adapter = resetEnhanceQoLAdapter()
+    PurplexityRaidToolsRosterDB = { rosterEntry("Starcaller", "Aster-MoonGuard") }
+
+    withGlobals({
+        EnhanceQoL = { Aura = { UF = { GroupFrames = groupFrames }, UFHelper = helper } },
+        UnitName = function() return "Aster" end,
+        UnitIsConnected = function() return false end,
+        UnitIsPlayer = function() return true end,
+        UnitFullName = function() return "Aster", "MoonGuard" end,
+        issecretvalue = function() return false end,
+    }, function()
+        assertTrue(adapter:Initialize())
+        withEnabledFeature(function()
+            groupFrames:UpdateName(party)
+        end)
+        assertEquals(party._eqolUFState.nameText.value, "Starc |cffff6666DC|r")
+
+        groupFrames:UpdateName(party)
+        assertEquals(party._eqolUFState.nameText.value, "Aster |cffff6666DC|r")
+    end)
+
+    resetEnhanceQoLAdapter()
+end
+
+tests["EnhanceQoL adapter refreshes names without requesting layout"] = function()
+    requireFeature()
+    local groupFrames = eqolGroupFrames()
+    local adapter = resetEnhanceQoLAdapter()
+
+    withGlobals({
+        EnhanceQoL = { Aura = { UF = { GroupFrames = groupFrames }, UFHelper = {} } },
+    }, function()
+        assertTrue(adapter:Initialize())
+        adapter:Refresh()
+    end)
+
+    assertTrue(groupFrames.refreshOptions.skipLayout)
+    resetEnhanceQoLAdapter()
+end
+
+tests["EnhanceQoL adapter initializes after the load-on-demand frames become available"] = function()
+    requireFeature()
+    local adapter = resetEnhanceQoLAdapter()
+
+    withGlobals({ EnhanceQoL = false }, function()
+        assertFalse(adapter:Initialize())
+    end)
+
+    local groupFrames = eqolGroupFrames()
+    withGlobals({
+        EnhanceQoL = { Aura = { UF = { GroupFrames = groupFrames }, UFHelper = {} } },
+    }, function()
+        assertTrue(adapter:Initialize())
+    end)
+
+    assertEquals(groupFrames.UpdateName, adapter.updateName)
+    resetEnhanceQoLAdapter()
+end
+
+tests["EnhanceQoL adapter leaves secret unit attributes untouched"] = function()
+    requireFeature()
+    local secret = {}
+    local party = eqolFrame("party", secret)
+    local groupFrames = {
+        UpdateName = function(_, frame)
+            frame._eqolUFState.nameText:SetText("Protected")
+        end,
+        RefreshNames = function() end,
+    }
+    local adapter = resetEnhanceQoLAdapter()
+
+    withGlobals({
+        EnhanceQoL = { Aura = { UF = { GroupFrames = groupFrames }, UFHelper = {} } },
+        UnitIsPlayer = function() error("a secret unit must not be inspected") end,
+        issecretvalue = function(value) return value == secret end,
+    }, function()
+        assertTrue(adapter:Initialize())
+        groupFrames:UpdateName(party)
+    end)
+
+    assertEquals(party._eqolUFState.nameText.value, "Protected")
+    resetEnhanceQoLAdapter()
 end
 
 local function resetGrid2Adapter()

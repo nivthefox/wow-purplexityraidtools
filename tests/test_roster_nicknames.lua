@@ -214,6 +214,51 @@ tests["late provider activation refreshes it and isolates provider errors"] = fu
     manager.initialized = savedInitialized
 end
 
+tests["provider unavailable at addon load initializes on entering world"] = function()
+    requireFeature()
+    local manager = PRT.RosterNicknames
+    local ready = false
+    local adapter = { initialized = 0, refreshed = 0 }
+    function adapter:Initialize()
+        self.initialized = self.initialized + 1
+        return ready
+    end
+    function adapter:Refresh()
+        self.refreshed = self.refreshed + 1
+    end
+
+    local savedAdapters = PRT.RosterNicknameAdapters
+    local savedEventFrame = manager.eventFrame
+    local eventFrame = { registered = {} }
+    function eventFrame:RegisterEvent(event)
+        self.registered[event] = true
+    end
+    function eventFrame:SetScript(_, handler)
+        self.onEvent = handler
+    end
+
+    PRT.RosterNicknameAdapters = { TestLoginReady = adapter }
+    manager.eventFrame = eventFrame
+    manager:RegisterProviderEvents()
+    assertTrue(eventFrame.registered.ADDON_LOADED)
+    assertTrue(eventFrame.registered.PLAYER_ENTERING_WORLD)
+
+    eventFrame.onEvent(nil, "ADDON_LOADED", "PurplexityRaidTools")
+    assertEquals(adapter.initialized, 1)
+    assertEquals(adapter.refreshed, 0)
+
+    ready = true
+    eventFrame.onEvent(nil, "PLAYER_ENTERING_WORLD")
+    assertEquals(adapter.initialized, 2)
+    assertEquals(adapter.refreshed, 1)
+
+    eventFrame.onEvent(nil, "PLAYER_ENTERING_WORLD")
+    assertEquals(adapter.initialized, 2)
+    assertEquals(adapter.refreshed, 1)
+    manager.eventFrame = savedEventFrame
+    PRT.RosterNicknameAdapters = savedAdapters
+end
+
 tests["initialized providers can maintain a replaced integration seam"] = function()
     requireFeature()
     local manager = PRT.RosterNicknames

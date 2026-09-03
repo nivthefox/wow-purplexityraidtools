@@ -44,6 +44,33 @@ function RosterNicknames:InitializeAdapter(name, adapter, loadedAddon)
     end
 end
 
+function RosterNicknames:InitializePendingAdapters()
+    for name, adapter in pairs(PRT.RosterNicknameAdapters) do
+        if not initializedAdapters[name] then
+            self:InitializeAdapter(name, adapter)
+        end
+    end
+end
+
+function RosterNicknames:HandleProviderEvent(event, loadedAddon)
+    if event == "PLAYER_ENTERING_WORLD" then
+        self:InitializePendingAdapters()
+        return
+    end
+
+    for name, adapter in pairs(PRT.RosterNicknameAdapters) do
+        self:InitializeAdapter(name, adapter, loadedAddon)
+    end
+end
+
+function RosterNicknames:RegisterProviderEvents()
+    self.eventFrame:RegisterEvent("ADDON_LOADED")
+    self.eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
+    self.eventFrame:SetScript("OnEvent", function(_, event, loadedAddon)
+        self:HandleProviderEvent(event, loadedAddon)
+    end)
+end
+
 function RosterNicknames:IsEnabled()
     local settings = PRT:GetSetting("rosterNicknames")
     return self.rosterIsValid ~= false and settings and settings.enabled == true
@@ -107,19 +134,12 @@ function RosterNicknames:Initialize()
         print("|cFFFF0000PurplexityRaidTools:|r Roster Nicknames disabled: " .. tostring(err))
     end
 
-    for name, adapter in pairs(PRT.RosterNicknameAdapters) do
-        self:InitializeAdapter(name, adapter)
-    end
+    self:InitializePendingAdapters()
 
     PRT.Roster:Listen(function()
         self:RefreshAll()
     end)
-    self.eventFrame:RegisterEvent("ADDON_LOADED")
-    self.eventFrame:SetScript("OnEvent", function(_, _, loadedAddon)
-        for name, adapter in pairs(PRT.RosterNicknameAdapters) do
-            self:InitializeAdapter(name, adapter, loadedAddon)
-        end
-    end)
+    self:RegisterProviderEvents()
 end
 
 PRT:RegisterApplyCallback("rosterNicknames", function()

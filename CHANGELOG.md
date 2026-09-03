@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Attendance entries can now be deleted individually from the status popup.
 
+### Fixed
+
+- Roster Nicknames now initialize reliably in Grid2 after login.
+
 ## [1.4.2] - 2026-08-27
 
 ### Fixed

@@ -38,7 +38,7 @@ Creates timed encounter notes in a visual editor or from imported [NSRT-style te
 
 ### Attendance
 
-Records attendance automatically from pull countdowns in configured content types. Reports combine a raider's characters under the roster and distinguish present, late, absent, and missing attendance. Records can be corrected manually, retained for a configurable period, and synced within the raid.
+Records attendance automatically from pull countdowns in configured content types. Reports combine a raider's characters under the roster and distinguish present, late, absent, and missing attendance. Records can be corrected manually, retained for a configurable period, and synced within the raid. The complete attendance history and roster can be backed up and restored together through a versioned text export.
 
 ### Roster
 

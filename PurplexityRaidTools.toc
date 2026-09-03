@@ -56,6 +56,7 @@ Modules/Notes/NotesConfig.lua
 Modules/Attendance/AttendanceStore.lua
 Modules/Attendance/RosterValidation.lua
 Modules/Attendance/Roster.lua
+Modules/Attendance/AttendanceDatabase.lua
 Modules/Attendance/AttendanceReport.lua
 Modules/Attendance/AttendanceSync.lua
 Modules/Attendance/AttendanceWiring.lua
@@ -68,6 +69,7 @@ Modules/RosterNicknames/DandersFrames.lua
 Modules/RosterNicknames/Grid2.lua
 Modules/RosterNicknames/EnhanceQoL.lua
 Modules/Attendance/RecordsUI.lua
+Modules/Attendance/AttendanceDatabaseUI.lua
 Modules/Attendance/AttendanceUI.lua
 Modules/Attendance/RosterUI.lua
 Modules/Profiles.lua

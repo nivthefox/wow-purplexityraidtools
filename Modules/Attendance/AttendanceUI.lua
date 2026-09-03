@@ -540,9 +540,14 @@ PRT:RegisterTab("Attendance", function(parent)
         end)
     end
 
+    local function SetupDatabase(panel)
+        PRT.AttendanceDatabaseUI:Build(panel)
+    end
+
     return PRT.Components.GetSubTabGroup(parent, {
         { name = "Grid", setup = SetupGrid },
         { name = "Records", setup = SetupRecords },
+        { name = "Database", setup = SetupDatabase },
         { name = "Settings", setup = SetupSettings },
     })
 end)

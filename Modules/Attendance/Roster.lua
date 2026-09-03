@@ -216,6 +216,10 @@ function Roster:Listen(callback)
     listeners[#listeners + 1] = callback
 end
 
+function Roster:NotifyDatabaseReplaced()
+    NotifyListeners()
+end
+
 function Roster:ResolveNickname(identity)
     local normalized = Validation:NormalizeIdentity(identity)
     if not normalized then

@@ -22,7 +22,7 @@ local NAME_WIDTH = 116
 local PCT_WIDTH = 46
 local CELL_WIDTH = 42
 
-local MODAL_WIDTH = 416
+local MODAL_WIDTH = 488
 local MODAL_CHARACTER_HEIGHT = 52
 local MODAL_HEADER_HEIGHT = 66
 local MODAL_FOOTER_HEIGHT = 40
@@ -169,6 +169,17 @@ local function BuildReport()
     return PRT.AttendanceReport:Build(PurplexityRaidToolsAttendanceDB or {}, AlphabeticalEntries())
 end
 
+local function HasRecordedCharacter(characters)
+    for _, dayRecord in pairs(PurplexityRaidToolsAttendanceDB or {}) do
+        for _, character in ipairs(characters) do
+            if dayRecord[character] ~= nil then
+                return true
+            end
+        end
+    end
+    return false
+end
+
 --------------------------------------------------------------------------------
 -- Per-character status modal
 --------------------------------------------------------------------------------
@@ -205,6 +216,19 @@ local function RenderEditModal()
                 row.buttons[order] = button
             end
 
+            row.delete = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+            row.delete:SetSize(STATUS_BUTTON_WIDTH, 22)
+            row.delete:SetPoint("TOPLEFT", #STATUS_OPTIONS * (STATUS_BUTTON_WIDTH + 4), -18)
+            row.delete:SetText("Delete")
+            row.delete:SetScript("OnClick", function()
+                local ok, err = PRT.AttendanceStore:DeleteStatus(editState.day, row.character)
+                if not ok then
+                    print("|cFFFF0000PurplexityRaidTools:|r " .. tostring(err))
+                    return
+                end
+                AttendanceUI:Refresh()
+            end)
+
             rows[index] = row
         end
 
@@ -226,6 +250,7 @@ local function RenderEditModal()
         for order, button in ipairs(row.buttons) do
             button:SetEnabled(STATUS_OPTIONS[order].status ~= status)
         end
+        row.delete:SetEnabled(status ~= nil)
 
         row:Show()
     end
@@ -536,6 +561,10 @@ function AttendanceUI:Refresh()
 
     local db = PurplexityRaidToolsAttendanceDB or {}
     if not db[editState.day] then
+        editModal:Hide()
+        return
+    end
+    if not HasRecordedCharacter(editState.characters) then
         editModal:Hide()
         return
     end

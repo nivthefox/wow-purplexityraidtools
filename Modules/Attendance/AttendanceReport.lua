@@ -118,14 +118,17 @@ function AttendanceReport:Build(db, entries)
     local days = RecordedDaysNewestFirst(db)
 
     local players = {}
-    for index, entry in ipairs(entries) do
+    for _, entry in ipairs(entries) do
         local statuses = ResolvedStatuses(db, days, entry.characters)
-        players[index] = {
-            name = entry.nickname,
-            characters = CopyCharacters(entry.characters),
-            statuses = statuses,
-            percentage = PercentageOf(statuses),
-        }
+        local percentage = PercentageOf(statuses)
+        if percentage ~= nil then
+            players[#players + 1] = {
+                name = entry.nickname,
+                characters = CopyCharacters(entry.characters),
+                statuses = statuses,
+                percentage = percentage,
+            }
+        end
     end
 
     local unrostered = {}

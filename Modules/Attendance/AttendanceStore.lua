@@ -123,6 +123,21 @@ function AttendanceStore:SetStatus(day, character, status)
     return true
 end
 
+function AttendanceStore:DeleteStatus(day, character)
+    local db = PurplexityRaidToolsAttendanceDB
+    local dayRecord = db and db[day]
+    if not dayRecord or dayRecord[character] == nil then
+        return false, "No attendance record exists for " .. tostring(character)
+            .. " on " .. tostring(day) .. "."
+    end
+
+    dayRecord[character] = nil
+    if next(dayRecord) == nil then
+        db[day] = nil
+    end
+    return true
+end
+
 function AttendanceStore:ExpireOldDays(thresholdDays, rolloverHour)
     local db = PurplexityRaidToolsAttendanceDB
     if not db then

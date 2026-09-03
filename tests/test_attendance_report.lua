@@ -512,16 +512,15 @@ tests["a day the player has no record for is absent from their statuses"] = func
     assertNil(hurricane.statuses[JUL_20])
 end
 
-tests["a rostered player with no records at all is a row with no percentage"] = function()
+tests["a rostered player with no records at all is omitted from the report"] = function()
     local db = { [AUG_05] = { [ELSIE] = PRESENT } }
     local entries = { entry(TEMPEST, ELSIE), entry(HURRICANE, OMNIVICENT, NIVEN) }
 
     local report = Report:Build(db, entries)
     local hurricane = rowNamed(report.players, HURRICANE)
 
-    assertNotNil(hurricane, "every roster entry is a row, recorded or not")
-    assertTableEquals(hurricane.statuses, {})
-    assertNil(hurricane.percentage)
+    assertNil(hurricane, "a player with no retained attendance entries must leave the grid")
+    assertTableEquals(namesOf(report.players), { TEMPEST })
 end
 
 tests["recorded characters on no roster entry are grouped under their raw names"] = function()

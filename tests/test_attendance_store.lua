@@ -147,6 +147,7 @@ tests["no store operation reads addon settings"] = function()
             { rosterEntry("Niv", "Omnivicent-Proudmoore") }, 6)
         Store:OnCountdownCancel({ "Elsie-Proudmoore" }, {}, 6)
         Store:SetStatus(PULL_DAY, "Elsie-Proudmoore", 1)
+        Store:DeleteStatus(PULL_DAY, "Elsie-Proudmoore")
         Store:ExpireOldDays(90, 6)
         Store:DeleteDay(PULL_DAY)
     end)
@@ -592,10 +593,48 @@ tests["a manual status write of nil is rejected and does not delete the record"]
 
     local ok, err = Store:SetStatus(PULL_DAY, "Elsie-Proudmoore", nil)
 
-    assertFalse(ok, "deleting a record is not an operation the spec defines")
+    assertFalse(ok, "record deletion must use the dedicated operation")
     assertEquals(type(err), "string", "a rejected write must explain itself")
     assertEquals(db[PULL_DAY]["Elsie-Proudmoore"], 3,
         "a nil status must never silently erase the character's record")
+end
+
+tests["deleting a character status preserves the other entries on that day"] = function()
+    local db = resetDB()
+    db[PULL_DAY] = {
+        ["Elsie-Proudmoore"] = 3,
+        ["Grimgrace-Proudmoore"] = 2,
+    }
+
+    local ok, err = Store:DeleteStatus(PULL_DAY, "Elsie-Proudmoore")
+
+    assertTrue(ok)
+    assertNil(err)
+    assertTableEquals(db, {
+        [PULL_DAY] = { ["Grimgrace-Proudmoore"] = 2 },
+    })
+end
+
+tests["deleting the final character status removes the empty day"] = function()
+    local db = resetDB()
+    db[PULL_DAY] = { ["Elsie-Proudmoore"] = 3 }
+
+    local ok, err = Store:DeleteStatus(PULL_DAY, "Elsie-Proudmoore")
+
+    assertTrue(ok)
+    assertNil(err)
+    assertTableEquals(db, {})
+end
+
+tests["deleting a missing character status changes nothing"] = function()
+    local db = resetDB()
+    db[PULL_DAY] = { ["Elsie-Proudmoore"] = 3 }
+
+    local ok, err = Store:DeleteStatus(PULL_DAY, "Grimgrace-Proudmoore")
+
+    assertFalse(ok)
+    assertEquals(type(err), "string")
+    assertTableEquals(db, { [PULL_DAY] = { ["Elsie-Proudmoore"] = 3 } })
 end
 
 tests["the expiry routine deletes a day older than the threshold"] = function()

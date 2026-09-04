@@ -584,9 +584,9 @@ tests["accepting a pending replacement swaps the day wholesale rather than mergi
         assertTrue(Sync:AcceptPendingDay(), "accepting an offered replacement must report success")
 
         assertTableEquals(db[AUG_05], {
-            [NIVEN] = MISSING,
-            [ZULJIN] = PRESENT,
-            [RANDOPUG] = LATE,
+            [NIVEN] = { status = MISSING },
+            [ZULJIN] = { status = PRESENT },
+            [RANDOPUG] = { status = LATE },
         }, "the incoming record replaces the local one entirely: Elsie is gone and Niven drops to Missing")
         assertNil(Sync:GetPendingDay(), "an accepted replacement is no longer pending")
     end)
@@ -602,7 +602,25 @@ tests["accepting a pending replacement preserves Standby"] = function()
         end)
 
         assertTrue(Sync:AcceptPendingDay())
-        assertEquals(db[AUG_05][ELSIE], STANDBY)
+        assertTableEquals(db[AUG_05][ELSIE], { status = STANDBY })
+    end)
+end
+
+tests["accepting a pending replacement preserves recorded item levels"] = function()
+    local db = localDatabase()
+    local incoming = {
+        [ELSIE] = { status = PRESENT, itemLevel = 712.5 },
+        [NIVEN] = { status = LATE },
+    }
+
+    withDatabases(db, {}, function()
+        freshSync()
+        withGlobals(LEADER_GLOBALS, function()
+            dispatch(DAY_PUSH, { day = AUG_05, records = incoming }, LEADER)
+        end)
+
+        assertTrue(Sync:AcceptPendingDay())
+        assertTableEquals(db[AUG_05], incoming)
     end)
 end
 
@@ -644,7 +662,7 @@ end
 
 tests["a second push replaces the offer, and accepting applies the newer one"] = function()
     local db = localDatabase()
-    local second = { [OMNIVICENT] = PRESENT }
+    local second = { [OMNIVICENT] = { status = PRESENT } }
 
     withDatabases(db, {}, function()
         freshSync()
@@ -699,11 +717,15 @@ tests["accepting a replacement for a day with no local record creates it, ready 
         assertEquals(pending.localCount, 0, "the receiver's side of the modal reads zero records")
 
         Sync:AcceptPendingDay()
-        assertTableEquals(db[JUL_29], incomingRecord(), "accepting creates the day locally")
+        assertTableEquals(db[JUL_29], {
+            [NIVEN] = { status = MISSING },
+            [ZULJIN] = { status = PRESENT },
+            [RANDOPUG] = { status = LATE },
+        }, "accepting creates the day locally")
 
         local ok, err = Store:SetStatus(JUL_29, OMNIVICENT, ABSENT)
         assertTrue(ok, "a synced day behaves like any recorded day: " .. tostring(err))
-        assertEquals(db[JUL_29][OMNIVICENT], ABSENT)
+        assertTableEquals(db[JUL_29][OMNIVICENT], { status = ABSENT })
     end)
 end
 
@@ -717,7 +739,11 @@ tests["accepting a replacement creates the attendance SavedVariable when it is n
 
         local created = rawget(_G, "PurplexityRaidToolsAttendanceDB")
         assertNotNil(created, "a fresh install has no database until something writes one")
-        assertTableEquals(created[AUG_05], incomingRecord())
+        assertTableEquals(created[AUG_05], {
+            [NIVEN] = { status = MISSING },
+            [ZULJIN] = { status = PRESENT },
+            [RANDOPUG] = { status = LATE },
+        })
     end)
 end
 
@@ -1402,6 +1428,14 @@ local MALFORMED_DAY_PAYLOADS = {
     { name = "a boolean status", payload = { day = AUG_05, records = { [ELSIE] = true } } },
     { name = "a table status", payload = { day = AUG_05, records = { [ELSIE] = {} } } },
     {
+        name = "an unavailable item level",
+        payload = { day = AUG_05, records = { [ELSIE] = { status = PRESENT, itemLevel = 0 } } },
+    },
+    {
+        name = "an unknown record field",
+        payload = { day = AUG_05, records = { [ELSIE] = { status = PRESENT, gear = 712 } } },
+    },
+    {
         name = "one bad status among good ones",
         payload = { day = AUG_05, records = { [ELSIE] = PRESENT, [NIVEN] = LATE, [ZULJIN] = 9 } },
     },
@@ -1465,7 +1499,10 @@ tests["a record keyed by a bare character name is accepted rather than dropped"]
 
         assertNotNil(Sync:GetPendingDay(), "an odd-looking name is not a malformed record")
         Sync:AcceptPendingDay()
-        assertTableEquals(db[AUG_05], { Elsie = PRESENT, ["Niven-"] = LATE })
+        assertTableEquals(db[AUG_05], {
+            Elsie = { status = PRESENT },
+            ["Niven-"] = { status = LATE },
+        })
     end)
 end
 
@@ -1475,7 +1512,7 @@ tests["an empty day table would make the next pull record everyone Late, so sync
             Store:OnCountdownStart({ ELSIE, NIVEN }, nil, 6)
         end)
 
-        assertEquals(PurplexityRaidToolsAttendanceDB[AUG_05][ELSIE], LATE,
+        assertEquals(Store.GetStatus(PurplexityRaidToolsAttendanceDB[AUG_05][ELSIE]), LATE,
             "the store reads the day KEY to decide a pull is the first one, not the record count")
     end)
 end

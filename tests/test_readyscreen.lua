@@ -6,6 +6,16 @@ end
 
 local ReadyScreen = PurplexityRaidTools.ReadyScreen
 
+tests["FormatItemLevel: unavailable values display as an em dash"] = function()
+    assertEquals(ReadyScreen.FormatItemLevel(nil), "\226\128\148")
+    assertEquals(ReadyScreen.FormatItemLevel(0), "\226\128\148")
+end
+
+tests["FormatItemLevel: whole and fractional values remain distinguishable"] = function()
+    assertEquals(ReadyScreen.FormatItemLevel(712), "712")
+    assertEquals(ReadyScreen.FormatItemLevel(712.5), "712.5")
+end
+
 tests["GetDisplayedState: offline member shows offline regardless of dead or response"] = function()
     assertEquals(ReadyScreen.GetDisplayedState(true, false, "ready"), "offline")
     assertEquals(ReadyScreen.GetDisplayedState(true, true, "ready"), "offline")
@@ -272,6 +282,84 @@ tests["Initialize: status reports from non-leaders resolve through group unit to
     GetUnitName = originalGetUnitName
     GetWeaponEnchantInfo = originalWeaponEnchantInfo
     GetInventoryItemDurability = originalInventoryDurability
+end
+
+local function withShowHarness(body)
+    local PRT = PurplexityRaidTools
+    local savedFrame = PRT.ReadyScreenFrame
+    local savedGroupInspect = PRT.GroupInspect
+    local savedGetSetting = PRT.GetSetting
+    local savedRequestStatuses = ReadyScreen.RequestStatuses
+    local savedIsInGroup = IsInGroup
+    local savedTimer = C_Timer
+    local context = { shown = {}, statusRequests = 0 }
+
+    PRT.ReadyScreenFrame = {
+        Show = function(_, view)
+            context.shown[#context.shown + 1] = view
+        end,
+        Hide = function() end,
+    }
+    PRT.GroupInspect = { members = {} }
+    PRT.GetSetting = function(_, key)
+        assertEquals(key, "readyScreen")
+        return { enabled = true }
+    end
+    ReadyScreen.RequestStatuses = function()
+        context.statusRequests = context.statusRequests + 1
+    end
+    IsInGroup = function()
+        return true
+    end
+    C_Timer = {
+        NewTicker = function()
+            return { Cancel = function() end }
+        end,
+    }
+
+    ReadyScreen:Close()
+    local ok, err = pcall(body, context)
+    ReadyScreen:Close()
+
+    PRT.ReadyScreenFrame = savedFrame
+    PRT.GroupInspect = savedGroupInspect
+    PRT.GetSetting = savedGetSetting
+    ReadyScreen.RequestStatuses = savedRequestStatuses
+    IsInGroup = savedIsInGroup
+    C_Timer = savedTimer
+
+    if not ok then
+        error(err, 0)
+    end
+end
+
+tests["ShowGear selects Gear without starting a readiness status request"] = function()
+    withShowHarness(function(context)
+        ReadyScreen:ShowGear()
+
+        assertEquals(ReadyScreen:GetMode(), "gear")
+        assertTableEquals(context.shown, { "gear" })
+        assertEquals(context.statusRequests, 0)
+    end)
+end
+
+tests["ShowReadiness selects the manual Readiness view"] = function()
+    withShowHarness(function(context)
+        ReadyScreen:ShowReadiness()
+
+        assertEquals(ReadyScreen:GetMode(), "audit")
+        assertTableEquals(context.shown, { "readiness" })
+        assertEquals(context.statusRequests, 1)
+    end)
+end
+
+tests["a ready check selects Readiness"] = function()
+    withShowHarness(function(context)
+        ReadyScreen:ShowReadyCheck(nil)
+
+        assertEquals(ReadyScreen:GetMode(), "readycheck")
+        assertTableEquals(context.shown, { "readiness" })
+    end)
 end
 
 return tests

@@ -336,7 +336,14 @@ SlashCmdList["PURPLEXITYRAIDTOOLS"] = function(msg)
 
     if cmd == "ready" then
         if PRT.ReadyScreen then
-            PRT.ReadyScreen:ShowAudit()
+            PRT.ReadyScreen:ShowReadiness()
+        end
+        return
+    end
+
+    if cmd == "gear" then
+        if PRT.ReadyScreen then
+            PRT.ReadyScreen:ShowGear()
         end
         return
     end

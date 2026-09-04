@@ -7,7 +7,7 @@ PRT:RegisterModule("groupInspect", GroupInspect)
 
 --- Per-player data, keyed by GUID.
 --- Each entry: { name, class, specId (nil until inspect), talents (nil until inspect),
----               addonVersion (nil until a version response arrives) }
+---               itemLevel (nil until available), addonVersion (nil until a version response arrives) }
 --- name is always a non-empty string, "Name-Realm" once the client can resolve
 --- both halves; display sites must not render the raw stored name.
 GroupInspect.members = {}
@@ -218,6 +218,29 @@ local function BeginInspect(unit)
     end)
 end
 
+local function NormalizeItemLevel(itemLevel)
+    if type(itemLevel) ~= "number" or itemLevel ~= itemLevel
+        or itemLevel <= 0 or itemLevel == math.huge then
+        return nil
+    end
+    return itemLevel
+end
+
+local function GetLocalEquippedItemLevel()
+    if not GetAverageItemLevel then
+        return nil
+    end
+    local _, equippedItemLevel = GetAverageItemLevel()
+    return NormalizeItemLevel(equippedItemLevel)
+end
+
+local function GetInspectedItemLevel(unit)
+    if not C_PaperDollInfo or not C_PaperDollInfo.GetInspectItemLevel then
+        return nil
+    end
+    return NormalizeItemLevel(C_PaperDollInfo.GetInspectItemLevel(unit))
+end
+
 --- Return true if the Blizzard inspect window is open. Inspecting while it is
 --- shown hijacks the single inspect slot and breaks the player's gear tooltips.
 local function IsInspectFrameOpen()
@@ -364,7 +387,8 @@ local function ProcessNextInspect()
         local guid = table.remove(priorityQueue, 1)
         local unit = UnitForGUID(guid)
         local member = GroupInspect.members[guid]
-        if unit and member and not member.specId and CanInspect(unit, false) then
+        if unit and member and (not member.specId or not member.itemLevel)
+            and CanInspect(unit, false) then
             BeginInspect(unit)
             return
         end
@@ -402,8 +426,8 @@ end
 
 --- A group member coming online becomes inspectable. Push them onto the
 --- priority queue so the next drain tick picks them up instead of waiting on
---- the 60-second sweep. The drain gate skips members that already have spec
---- data, so a reconnect with cached data costs nothing.
+--- the 60-second sweep. The drain gate skips members that already have both
+--- spec and item-level data, so a reconnect with a complete cache costs nothing.
 function GroupInspect:OnUnitConnected(unit)
     local guid = UnitGUID(unit)
     if not guid or not self.members[guid] then
@@ -420,21 +444,49 @@ function GroupInspect:OnUnitConnected(unit)
     table.insert(priorityQueue, guid)
 end
 
+local function TalentSetsDiffer(oldTalents, newTalents)
+    if not oldTalents then
+        return true
+    end
+    for spellId in pairs(newTalents) do
+        if not oldTalents[spellId] then
+            return true
+        end
+    end
+    for spellId in pairs(oldTalents) do
+        if not newTalents[spellId] then
+            return true
+        end
+    end
+    return false
+end
+
 local function ReadLocalPlayer(guid)
     local member = GroupInspect.members[guid]
     if not member then
         return
     end
 
+    local changed = false
     local specId = GetPlayerSpecId()
-    if specId and specId > 0 then
+    if specId and specId > 0 and member.specId ~= specId then
         member.specId = specId
+        changed = true
     end
 
     local talents = ReadPlayerTalents()
-    if talents then
+    if talents and TalentSetsDiffer(member.talents, talents) then
         member.talents = talents
+        changed = true
     end
+
+    local itemLevel = GetLocalEquippedItemLevel()
+    if itemLevel and member.itemLevel ~= itemLevel then
+        member.itemLevel = itemLevel
+        changed = true
+    end
+
+    return changed
 end
 
 --- The unit token is looked up again rather than captured: the roster may have
@@ -460,6 +512,7 @@ local function AddNewMember(unit, guid)
         class = classToken,
         specId = nil,
         talents = nil,
+        itemLevel = nil,
         addonVersion = nil,
     }
 
@@ -476,8 +529,8 @@ local function AddNewMember(unit, guid)
     ReadLocalPlayer(guid)
     member.addonVersion = GetLocalVersion()
 
-    -- The talent system may not be ready on the first frame after login; retry once.
-    if not member.specId or not member.talents then
+    -- Local player data may not be ready on the first frame after login; retry once.
+    if not member.specId or not member.talents or not member.itemLevel then
         C_Timer.After(1, function()
             if GroupInspect.members[guid] then
                 ReadLocalPlayer(guid)
@@ -528,23 +581,6 @@ function GroupInspect:ScanRoster()
     end
 end
 
-local function TalentSetsDiffer(oldTalents, newTalents)
-    if not oldTalents then
-        return true
-    end
-    for spellId in pairs(newTalents) do
-        if not oldTalents[spellId] then
-            return true
-        end
-    end
-    for spellId in pairs(oldTalents) do
-        if not newTalents[spellId] then
-            return true
-        end
-    end
-    return false
-end
-
 local function OnInspectReady(eventGUID)
     if not inspectPending then
         return
@@ -559,6 +595,7 @@ local function OnInspectReady(eventGUID)
 
     local specId = GetInspectSpecId(inspectPending)
     local talents = ReadInspectTalents()
+    local itemLevel = GetInspectedItemLevel(inspectPending)
     inspectPending = nil
 
     -- Release the single inspect slot so we stop squatting on it between sweeps.
@@ -582,6 +619,11 @@ local function OnInspectReady(eventGUID)
 
     if talents and TalentSetsDiffer(member.talents, talents) then
         member.talents = talents
+        changed = true
+    end
+
+    if itemLevel and member.itemLevel ~= itemLevel then
+        member.itemLevel = itemLevel
         changed = true
     end
 
@@ -610,6 +652,15 @@ local function OnEvent(_, event, ...)
     elseif event == "INSPECT_READY" then
         OnInspectReady(...)
 
+    elseif event == "UNIT_INVENTORY_CHANGED" then
+        local unit = ...
+        if unit == "player" then
+            local guid = UnitGUID(unit)
+            if guid and ReadLocalPlayer(guid) then
+                NotifyListeners()
+            end
+        end
+
     elseif event == "PLAYER_REGEN_DISABLED" then
         inCombat = true
 
@@ -623,6 +674,7 @@ function GroupInspect:Initialize()
     self.eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
     self.eventFrame:RegisterEvent("UNIT_CONNECTION")
     self.eventFrame:RegisterEvent("INSPECT_READY")
+    self.eventFrame:RegisterEvent("UNIT_INVENTORY_CHANGED")
     self.eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
     self.eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
     self.eventFrame:SetScript("OnEvent", OnEvent)

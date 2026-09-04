@@ -22,10 +22,17 @@ local STATUS_PRIORITY = {
     [PRESENT] = 4,
 }
 
+local function RecordStatus(record)
+    if type(record) == "table" then
+        return record.status
+    end
+    return record
+end
+
 local function BestRecordedStatus(dayRecord, characters)
     local resolved
     for i = 1, #characters do
-        local status = dayRecord[characters[i]]
+        local status = RecordStatus(dayRecord[characters[i]])
         if status ~= nil and (resolved == nil
                 or STATUS_PRIORITY[status] > STATUS_PRIORITY[resolved]) then
             resolved = status

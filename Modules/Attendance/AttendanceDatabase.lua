@@ -6,7 +6,7 @@ local LibSerialize = LibStub("LibSerialize")
 local LibDeflate = LibStub("LibDeflate")
 
 local FORMAT_PREFIX = "PRTATTENDANCE:"
-local FORMAT_VERSION = 1
+local FORMAT_VERSION = 2
 local ISO_DAY_PATTERN = "^(%d%d%d%d)%-(%d%d)%-(%d%d)$"
 local VALID_STATUSES = {
     [0] = true,
@@ -50,6 +50,34 @@ local function IsValidDay(day)
     return dayOfMonth >= 1 and dayOfMonth <= daysInMonth[month]
 end
 
+local function IsValidItemLevel(itemLevel)
+    return type(itemLevel) == "number" and itemLevel == itemLevel
+        and itemLevel > 0 and itemLevel < math.huge
+end
+
+local function PrepareRecord(record)
+    if type(record) ~= "table" then
+        return nil
+    end
+    for key in pairs(record) do
+        if key ~= "status" and key ~= "itemLevel" then
+            return nil
+        end
+    end
+    if not VALID_STATUSES[record.status] then
+        return nil
+    end
+    if record.itemLevel ~= nil and not IsValidItemLevel(record.itemLevel) then
+        return nil
+    end
+
+    local prepared = { status = record.status }
+    if record.itemLevel then
+        prepared.itemLevel = record.itemLevel
+    end
+    return prepared
+end
+
 local function PrepareAttendance(history)
     if type(history) ~= "table" then
         return nil, "The attendance history must be a table."
@@ -66,14 +94,15 @@ local function PrepareAttendance(history)
         end
 
         local preparedRecords = {}
-        for character, status in pairs(records) do
+        for character, record in pairs(records) do
             if type(character) ~= "string" or character == "" then
                 return nil, "Attendance for " .. day .. " contains an invalid character name."
             end
-            if not VALID_STATUSES[status] then
-                return nil, "Attendance for " .. day .. " contains an invalid status."
+            local preparedRecord = PrepareRecord(record)
+            if not preparedRecord then
+                return nil, "Attendance for " .. day .. " contains an invalid record."
             end
-            preparedRecords[character] = status
+            preparedRecords[character] = preparedRecord
             recordCount = recordCount + 1
         end
         prepared[day] = preparedRecords

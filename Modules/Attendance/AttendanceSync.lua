@@ -126,29 +126,64 @@ local function IsSoundInventory(days)
     return true
 end
 
-local function IsSoundDayRecord(data)
+local function IsItemLevel(itemLevel)
+    return type(itemLevel) == "number" and itemLevel == itemLevel
+        and itemLevel > 0 and itemLevel < math.huge
+end
+
+local function PrepareRecord(record)
+    if VALID_STATUSES[record] then
+        return { status = record }
+    end
+    if type(record) ~= "table" then
+        return nil
+    end
+    for key in pairs(record) do
+        if key ~= "status" and key ~= "itemLevel" then
+            return nil
+        end
+    end
+    if not VALID_STATUSES[record.status] then
+        return nil
+    end
+    if record.itemLevel ~= nil and not IsItemLevel(record.itemLevel) then
+        return nil
+    end
+
+    local prepared = { status = record.status }
+    if record.itemLevel then
+        prepared.itemLevel = record.itemLevel
+    end
+    return prepared
+end
+
+local function PrepareDayRecord(data)
     if type(data) ~= "table" then
-        return false
+        return nil
     end
     if type(data.day) ~= "string" or not data.day:match(ISO_DAY_PATTERN) then
-        return false
+        return nil
     end
     if type(data.records) ~= "table" then
-        return false
+        return nil
     end
 
-    local recorded = 0
-    for character, status in pairs(data.records) do
+    local prepared = {}
+    for character, record in pairs(data.records) do
         if type(character) ~= "string" or character == "" then
-            return false
+            return nil
         end
-        if not VALID_STATUSES[status] then
-            return false
+        local preparedRecord = PrepareRecord(record)
+        if not preparedRecord then
+            return nil
         end
-        recorded = recorded + 1
+        prepared[character] = preparedRecord
     end
 
-    return recorded > 0
+    if next(prepared) == nil then
+        return nil
+    end
+    return prepared
 end
 
 --- Refilled in place rather than reassigned: Roster:GetEntries hands out the
@@ -231,7 +266,8 @@ local function OnPullMissing(data, sender)
 end
 
 local function PendDayReplacement(data, sender)
-    if not IsSoundDayRecord(data) then
+    local records = PrepareDayRecord(data)
+    if not records then
         return
     end
 
@@ -239,8 +275,8 @@ local function PendDayReplacement(data, sender)
         sender = sender,
         day = data.day,
         localCount = LocalRecordCount(data.day),
-        incomingCount = CountRecords(data.records),
-        records = data.records,
+        incomingCount = CountRecords(records),
+        records = records,
     }
     NotifyListeners()
 end

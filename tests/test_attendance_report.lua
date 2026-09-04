@@ -618,7 +618,8 @@ tests["a pull after a roster removal writes no Missing record for the removed pl
         Store:OnCountdownStart({ ELSIE }, entries, 6)
 
         local day = Store:GetRaidDay(6)
-        assertTableEquals(PurplexityRaidToolsAttendanceDB[day], { [ELSIE] = PRESENT },
+        assertTableEquals(PurplexityRaidToolsAttendanceDB[day],
+            { [ELSIE] = { status = PRESENT } },
             "a removed player is no longer Missing-filled, however much history they have")
         assertTableEquals(PurplexityRaidToolsAttendanceDB[JUL_31],
             { [OMNIVICENT] = PRESENT, [ELSIE] = PRESENT },

@@ -20,13 +20,13 @@ local tests = {}
 local function RichAttendance()
     return {
         ["2026-08-25"] = {
-            ["Aster-MoonGuard"] = 3,
-            ["Cinder-Illidan"] = 4,
+            ["Aster-MoonGuard"] = { status = 3, itemLevel = 712.5 },
+            ["Cinder-Illidan"] = { status = 4 },
         },
         ["2026-08-26"] = {
-            ["Aster-MoonGuard"] = 2,
-            ["Cinder-Illidan"] = 1,
-            ["Zephyra-Area52"] = 0,
+            ["Aster-MoonGuard"] = { status = 2, itemLevel = 713 },
+            ["Cinder-Illidan"] = { status = 1 },
+            ["Zephyra-Area52"] = { status = 0 },
         },
     }
 end
@@ -83,7 +83,7 @@ local function EncodePayload(payload, version)
     local deflate = LibStub("LibDeflate")
     local serialized = serialize:Serialize(payload)
     local encoded = deflate:EncodeForPrint(deflate:CompressDeflate(serialized))
-    return "PRTATTENDANCE:" .. (version or 1) .. ":" .. encoded
+    return "PRTATTENDANCE:" .. (version or Database.FORMAT_VERSION) .. ":" .. encoded
 end
 
 tests["export and import preserve the complete attendance database"] = function()
@@ -178,6 +178,28 @@ tests["pasted exports may have surrounding whitespace"] = function()
     end)
 end
 
+tests["unreleased version one exports are rejected without changing data"] = function()
+    local attendance = RichAttendance()
+    local roster = RichRoster()
+    local beforeAttendance = CopyTable(attendance)
+    local beforeRoster = CopyTable(roster)
+    local text = EncodePayload({
+        attendance = {
+            ["2026-08-25"] = { ["Aster-MoonGuard"] = 3 },
+        },
+        roster = {},
+    }, 1)
+
+    WithDatabases(attendance, roster, function()
+        local prepared, err = Database:PrepareImport(text)
+
+        assertNil(prepared)
+        assertEquals(type(err), "string")
+        assertTableEquals(PurplexityRaidToolsAttendanceDB, beforeAttendance)
+        assertTableEquals(PurplexityRaidToolsRosterDB, beforeRoster)
+    end)
+end
+
 tests["unsupported format versions are rejected without changing data"] = function()
     local attendance = RichAttendance()
     local roster = RichRoster()
@@ -188,7 +210,7 @@ tests["unsupported format versions are rejected without changing data"] = functi
         local prepared, err = Database:PrepareImport(EncodePayload({
             attendance = {},
             roster = {},
-        }, 2))
+        }, 3))
         assertNil(prepared)
         assertEquals(type(err), "string")
         assertTableEquals(PurplexityRaidToolsAttendanceDB, beforeAttendance)
@@ -199,7 +221,7 @@ end
 tests["malformed exports are rejected without changing data"] = function()
     local malformed = {
         "not an export",
-        "PRTATTENDANCE:1:not-valid-encoded-data",
+        "PRTATTENDANCE:2:not-valid-encoded-data",
         EncodePayload({ attendance = {}, roster = {}, extra = true }),
         EncodePayload({ attendance = { ["2026-02-30"] = { Aster = 3 } }, roster = {} }),
         EncodePayload({ attendance = { ["2026-08-25"] = { Aster = 9 } }, roster = {} }),

@@ -1,5 +1,5 @@
 -- AttendanceStore: pull-driven attendance records, stored as
--- PurplexityRaidToolsAttendanceDB[raidDay]["Name-Realm"] = status.
+-- PurplexityRaidToolsAttendanceDB[raidDay]["Name-Realm"] = { status, itemLevel }.
 --
 -- Every day key is derived from the realm's CalendarTime. This keeps one raid
 -- night on the same day for players in different client timezones.
@@ -21,6 +21,9 @@ local STATUS = {
     STANDBY = 4,
 }
 AttendanceStore.STATUS = STATUS
+
+local SCHEMA_VERSION = 2
+AttendanceStore.SCHEMA_VERSION = SCHEMA_VERSION
 
 local VALID_STATUSES = {}
 for _, status in pairs(STATUS) do
@@ -53,6 +56,61 @@ local function EnsureDB()
     return PurplexityRaidToolsAttendanceDB
 end
 
+local function IsItemLevel(itemLevel)
+    return type(itemLevel) == "number" and itemLevel == itemLevel
+        and itemLevel > 0 and itemLevel < math.huge
+end
+
+local function NewRecord(status, itemLevel)
+    local record = { status = status }
+    if IsItemLevel(itemLevel) then
+        record.itemLevel = itemLevel
+    end
+    return record
+end
+
+function AttendanceStore.GetStatus(record)
+    if type(record) == "table" then
+        return record.status
+    end
+    return record
+end
+
+function AttendanceStore.GetItemLevel(record)
+    if type(record) == "table" and IsItemLevel(record.itemLevel) then
+        return record.itemLevel
+    end
+    return nil
+end
+
+local function UpdateItemLevel(record, itemLevel)
+    if type(record) == "table" and IsItemLevel(itemLevel) then
+        record.itemLevel = itemLevel
+    end
+end
+
+function AttendanceStore:MigrateDatabase()
+    PurplexityRaidToolsDB = PurplexityRaidToolsDB or {}
+    local version = PurplexityRaidToolsDB.attendanceSchemaVersion
+    if version == SCHEMA_VERSION or type(version) == "number" and version > SCHEMA_VERSION then
+        return false
+    end
+
+    local db = EnsureDB()
+    for _, dayRecord in pairs(db) do
+        if type(dayRecord) == "table" then
+            for character, record in pairs(dayRecord) do
+                if type(record) == "number" then
+                    dayRecord[character] = NewRecord(record)
+                end
+            end
+        end
+    end
+
+    PurplexityRaidToolsDB.attendanceSchemaVersion = SCHEMA_VERSION
+    return true
+end
+
 local function AnyCharacterRecorded(dayRecord, characters)
     for i = 1, #characters do
         if dayRecord[characters[i]] ~= nil then
@@ -67,7 +125,7 @@ function AttendanceStore:GetRaidDay(rolloverHour)
     return CalendarDayKey(raidDay)
 end
 
-function AttendanceStore:OnCountdownStart(group, roster, rolloverHour)
+function AttendanceStore:OnCountdownStart(group, roster, rolloverHour, itemLevels)
     local db = EnsureDB()
     local day = self:GetRaidDay(rolloverHour)
 
@@ -83,10 +141,17 @@ function AttendanceStore:OnCountdownStart(group, roster, rolloverHour)
         local character = group[i]
         local recorded = dayRecord[character]
         if recorded == nil then
-            dayRecord[character] = arrivalStatus
-        elseif recorded == STATUS.MISSING then
-            dayRecord[character] = STATUS.LATE
+            recorded = NewRecord(arrivalStatus, itemLevels and itemLevels[character])
+            dayRecord[character] = recorded
+        elseif self.GetStatus(recorded) == STATUS.MISSING then
+            if type(recorded) == "table" then
+                recorded.status = STATUS.LATE
+            else
+                recorded = NewRecord(STATUS.LATE)
+                dayRecord[character] = recorded
+            end
         end
+        UpdateItemLevel(recorded, itemLevels and itemLevels[character])
     end
 
     if not roster then
@@ -97,7 +162,7 @@ function AttendanceStore:OnCountdownStart(group, roster, rolloverHour)
         local characters = roster[i].characters
         local primary = characters and characters[1]
         if primary and not AnyCharacterRecorded(dayRecord, characters) then
-            dayRecord[primary] = STATUS.MISSING
+            dayRecord[primary] = NewRecord(STATUS.MISSING)
         end
     end
 end
@@ -119,7 +184,12 @@ function AttendanceStore:SetStatus(day, character, status)
         return false, "No attendance record exists for " .. tostring(day) .. "."
     end
 
-    dayRecord[character] = status
+    local record = dayRecord[character]
+    if type(record) == "table" then
+        record.status = status
+    else
+        dayRecord[character] = NewRecord(status)
+    end
     return true
 end
 

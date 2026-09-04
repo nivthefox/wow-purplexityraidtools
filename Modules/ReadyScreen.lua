@@ -375,6 +375,21 @@ function ReadyScreen.ClassifyVersion(memberVersion, rlVersion)
     return "current"
 end
 
+function ReadyScreen.IsItemLevelAvailable(itemLevel)
+    return type(itemLevel) == "number" and itemLevel == itemLevel
+        and itemLevel > 0 and itemLevel < math.huge
+end
+
+function ReadyScreen.FormatItemLevel(itemLevel)
+    if not ReadyScreen.IsItemLevelAvailable(itemLevel) then
+        return "\226\128\148"
+    end
+    if itemLevel % 1 == 0 then
+        return string.format("%d", itemLevel)
+    end
+    return string.format("%.1f", itemLevel)
+end
+
 function ReadyScreen:GetMode()
     return mode
 end
@@ -387,22 +402,46 @@ function ReadyScreen:IsReadyCheckActive()
     return readyCheckActive
 end
 
-function ReadyScreen:ShowAudit()
+local function CanShow()
     if readyCheckActive then
-        return
+        return true
     end
     if not IsInGroup() then
-        return
+        return false
     end
     local settings = PRT:GetSetting("readyScreen")
     if not settings or not settings.enabled then
+        return false
+    end
+    return true
+end
+
+function ReadyScreen:ShowReadiness()
+    if not CanShow() then
         return
     end
 
-    mode = "audit"
+    mode = readyCheckActive and "readycheck" or "audit"
     ReadyScreen:RequestStatuses()
     if PRT.ReadyScreenFrame then
-        PRT.ReadyScreenFrame:Show("audit")
+        PRT.ReadyScreenFrame:Show("readiness")
+    end
+end
+
+function ReadyScreen:ShowAudit()
+    self:ShowReadiness()
+end
+
+function ReadyScreen:ShowGear()
+    if not CanShow() then
+        return
+    end
+
+    if not readyCheckActive then
+        mode = "gear"
+    end
+    if PRT.ReadyScreenFrame then
+        PRT.ReadyScreenFrame:Show("gear")
     end
 end
 
@@ -433,7 +472,7 @@ function ReadyScreen:ShowReadyCheck(initiator)
     ReadyScreen:RequestStatuses()
 
     if PRT.ReadyScreenFrame then
-        PRT.ReadyScreenFrame:Show("readycheck")
+        PRT.ReadyScreenFrame:Show("readiness")
     end
 
     readyCheckTicker = C_Timer.NewTicker(0.5, function()
@@ -544,7 +583,7 @@ function ReadyScreen:OnEnable()
                 ReadyScreen:ShowReadyCheck(initiator)
             end
         elseif event == "READY_CHECK_CONFIRM" then
-            if mode == "readycheck" then
+            if readyCheckActive then
                 ReadyScreen:OnReadyCheckConfirm(...)
             end
         elseif event == "READY_CHECK_FINISHED" then

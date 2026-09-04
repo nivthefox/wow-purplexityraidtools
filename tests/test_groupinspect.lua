@@ -36,6 +36,8 @@ GroupInspect:Initialize()
 local LOCAL_VERSION_STRING = "3.7.2-beta-1"
 local LOCAL_ENCODED_VERSION = 3007002
 local SPEC_ID = 71
+local LOCAL_EQUIPPED_ITEM_LEVEL = 712.5
+local REMOTE_EQUIPPED_ITEM_LEVEL = 706.25
 local LOCAL_REALM = "Illidan"
 local UNKNOWN_UNIT_NAME = "Unknown"
 
@@ -225,6 +227,14 @@ local function makeStubs()
         Constants = { TraitConsts = { INSPECT_TRAIT_CONFIG_ID = -1 } },
         C_Traits = { GetConfigInfo = function() return nil end },
         GetInspectSpecialization = function() return SPEC_ID end,
+        GetAverageItemLevel = function()
+            return 730, LOCAL_EQUIPPED_ITEM_LEVEL
+        end,
+        C_PaperDollInfo = {
+            GetInspectItemLevel = function()
+                return REMOTE_EQUIPPED_ITEM_LEVEL
+            end,
+        },
         C_SpecializationInfo = {
             GetSpecialization = function() return 1 end,
             GetSpecializationInfo = function() return SPEC_ID end,
@@ -492,6 +502,16 @@ tests["roster scan writes and broadcasts the local player's version"] = function
     end)
 end
 
+tests["a roster scan stores the local player's equipped item level"] = function()
+    runSim(function()
+        sim.units = { "raid1" }
+        GroupInspect:ScanRoster()
+
+        assertEquals(GroupInspect.members["GUID-NIV"].itemLevel, LOCAL_EQUIPPED_ITEM_LEVEL,
+            "the bags-inclusive first result must not be recorded")
+    end)
+end
+
 tests["a version response stores the sender's encoded version on their member record"] = function()
     runSim(function()
         sim.units = { "raid1", "raid2" }
@@ -750,6 +770,7 @@ tests["a sweep adds no version traffic"] = function()
         sim.units = { "raid1", "raid2" }
         GroupInspect:ScanRoster()
         GroupInspect.members["GUID-BOB"].specId = SPEC_ID
+        GroupInspect.members["GUID-BOB"].itemLevel = REMOTE_EQUIPPED_ITEM_LEVEL
 
         driveInspectTick()
         assertEquals(#sim.inspectedUnits, 0,
@@ -853,16 +874,17 @@ tests["duplicate login events queue a member once"] = function()
     end)
 end
 
-tests["a login with cached spec data does not trigger an inspect"] = function()
+tests["a login with cached inspection data does not trigger an inspect"] = function()
     runSim(function()
         sim.units = { "raid1", "raid2" }
         GroupInspect:ScanRoster()
         GroupInspect.members["GUID-BOB"].specId = SPEC_ID
+        GroupInspect.members["GUID-BOB"].itemLevel = REMOTE_EQUIPPED_ITEM_LEVEL
 
         GroupInspect:OnUnitConnected("raid2")
         driveInspectTick()
         assertEquals(#sim.inspectedUnits, 0,
-            "the drain gate must skip a reconnect that kept its spec data")
+            "the drain gate must skip a reconnect that kept its inspection data")
     end)
 end
 
@@ -895,6 +917,21 @@ tests["INSPECT_READY updates the member specId"] = function()
 
         assertEquals(record.specId, SPEC_ID,
             "INSPECT_READY must populate the member specId")
+    end)
+end
+
+tests["INSPECT_READY stores the inspected member's equipped item level"] = function()
+    runSim(function()
+        sim.units = { "raid1", "raid2" }
+        GroupInspect:ScanRoster()
+        driveInspectTick()
+
+        local record = GroupInspect.members["GUID-BOB"]
+        assertNil(record.itemLevel)
+
+        onEventHandler(nil, "INSPECT_READY", "GUID-BOB")
+
+        assertEquals(record.itemLevel, REMOTE_EQUIPPED_ITEM_LEVEL)
     end)
 end
 

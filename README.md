@@ -10,7 +10,7 @@ Prevents accidental spirit releases in raids. Adds a configurable delay before t
 
 ### Ready Screen
 
-Shows the current group's readiness in one table, including spec, role, ready-check response, raid-buff coverage, soulstone status, PRT version, food, weapon enhancement, flask, augment rune, Vantus rune, and durability. It opens automatically during ready checks and can be opened manually with `/prt ready`.
+Shows the current group in separate Readiness and Gear views. Readiness includes spec, role, ready-check response, raid-buff coverage, soulstone status, PRT version, food, weapon enhancement, flask, augment rune, Vantus rune, and durability. Gear shows each character's latest inspected equipped item level. The screen opens to Readiness automatically during ready checks and can be opened manually with `/prt ready` or `/prt gear`.
 
 ### Ready Check
 
@@ -38,7 +38,7 @@ Creates timed encounter notes in a visual editor or from imported [NSRT-style te
 
 ### Attendance
 
-Records attendance automatically from pull countdowns in configured content types. Reports combine a raider's characters under the roster and distinguish present, late, absent, and missing attendance. Records can be corrected manually, retained for a configurable period, and synced within the raid. The complete attendance history and roster can be backed up and restored together through a versioned text export.
+Records attendance automatically from pull countdowns in configured content types, including each character's latest available equipped item level. Reports combine a raider's characters under the roster and distinguish present, late, absent, and missing attendance. Records can be corrected manually, retained for a configurable period, and synced within the raid. The complete attendance history and roster can be backed up and restored together through a versioned text export.
 
 ### Roster
 
@@ -59,7 +59,8 @@ Modules can broadcast data to the raid using AceComm, with messages serialized v
 | `/prt` | Toggle the config panel |
 | `/purplexity` | Toggle the config panel |
 | `/prt inv` or `/prt invite` | Mass-invite guild members by rank |
-| `/prt ready` | Open the Raid Audit for the current group |
+| `/prt ready` | Open the Readiness view for the current group |
+| `/prt gear` | Open the Gear view for the current group |
 
 ## Dependencies
 

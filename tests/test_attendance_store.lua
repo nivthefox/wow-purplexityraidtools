@@ -290,9 +290,9 @@ tests["a first pull creates the day and records every group character Present"] 
 
     assertNotNil(db[PULL_DAY], "the first pull must create the raid day's record")
     assertTableEquals(db[PULL_DAY], {
-        ["Omnivicent-Proudmoore"] = 3,
-        ["Elsie-Proudmoore"] = 3,
-        ["Grimgrace-Proudmoore"] = 3,
+        ["Omnivicent-Proudmoore"] = { status = 3 },
+        ["Elsie-Proudmoore"] = { status = 3 },
+        ["Grimgrace-Proudmoore"] = { status = 3 },
     })
 end
 
@@ -305,7 +305,7 @@ tests["a first pull creates the database when the SavedVariable is nil"] = funct
     resetDB()
 
     assertNotNil(created, "the store must create the SavedVariable table on first use")
-    assertEquals(created[PULL_DAY]["Elsie-Proudmoore"], 3)
+    assertTableEquals(created[PULL_DAY]["Elsie-Proudmoore"], { status = 3 })
 end
 
 tests["a later pull records a group character with no record for the day as Late"] = function()
@@ -314,9 +314,9 @@ tests["a later pull records a group character with no record for the day as Late
 
     Store:OnCountdownStart({ "Elsie-Proudmoore", "Grimgrace-Proudmoore" }, {}, 6)
 
-    assertEquals(db[PULL_DAY]["Grimgrace-Proudmoore"], 2,
+    assertEquals(Store.GetStatus(db[PULL_DAY]["Grimgrace-Proudmoore"]), 2,
         "a character arriving after the first pull is Late")
-    assertEquals(db[PULL_DAY]["Elsie-Proudmoore"], 3)
+    assertEquals(Store.GetStatus(db[PULL_DAY]["Elsie-Proudmoore"]), 3)
 end
 
 tests["a later pull leaves existing non-Missing statuses unchanged"] = function()
@@ -361,11 +361,11 @@ tests["automated pull recording never assigns Standby"] = function()
     }, 6)
     Store:OnCountdownStart({ "Elsie-Proudmoore", "Latecomer-Proudmoore" }, {}, 6)
 
-    assertEquals(db[PULL_DAY]["Elsie-Proudmoore"], 3)
-    assertEquals(db[PULL_DAY]["Benchwarmer-Proudmoore"], 0)
-    assertEquals(db[PULL_DAY]["Latecomer-Proudmoore"], 2)
-    for _, status in pairs(db[PULL_DAY]) do
-        assertFalse(status == 4, "pull recording must not create Standby")
+    assertEquals(Store.GetStatus(db[PULL_DAY]["Elsie-Proudmoore"]), 3)
+    assertEquals(Store.GetStatus(db[PULL_DAY]["Benchwarmer-Proudmoore"]), 0)
+    assertEquals(Store.GetStatus(db[PULL_DAY]["Latecomer-Proudmoore"]), 2)
+    for _, record in pairs(db[PULL_DAY]) do
+        assertFalse(Store.GetStatus(record) == 4, "pull recording must not create Standby")
     end
 end
 
@@ -375,7 +375,7 @@ tests["a later pull upgrades a group character's Missing record to Late"] = func
 
     Store:OnCountdownStart({ "Elsie-Proudmoore", "Grimgrace-Proudmoore" }, {}, 6)
 
-    assertEquals(db[PULL_DAY]["Grimgrace-Proudmoore"], 2,
+    assertEquals(Store.GetStatus(db[PULL_DAY]["Grimgrace-Proudmoore"]), 2,
         "presence at a pull outranks a Missing record")
 end
 
@@ -388,7 +388,7 @@ tests["a Missing written manually is upgraded to Late by a later pull"] = functi
 
     Store:OnCountdownStart({ "Elsie-Proudmoore", "Grimgrace-Proudmoore" }, {}, 6)
 
-    assertEquals(db[PULL_DAY]["Grimgrace-Proudmoore"], 2,
+    assertEquals(Store.GetStatus(db[PULL_DAY]["Grimgrace-Proudmoore"]), 2,
         "a Missing is upgraded regardless of how it was written")
 end
 
@@ -400,11 +400,11 @@ tests["a pull records Missing against the first character of an unrecorded roste
         rosterEntry("Niv", "Omnivicent-Proudmoore", "Niven-Proudmoore"),
     }, 6)
 
-    assertEquals(db[PULL_DAY]["Omnivicent-Proudmoore"], 0,
+    assertEquals(Store.GetStatus(db[PULL_DAY]["Omnivicent-Proudmoore"]), 0,
         "the absent roster member is Missing-filled on their primary character")
     assertNil(db[PULL_DAY]["Niven-Proudmoore"],
         "only the first-listed character receives the Missing fill")
-    assertEquals(db[PULL_DAY]["Elsie-Proudmoore"], 3,
+    assertEquals(Store.GetStatus(db[PULL_DAY]["Elsie-Proudmoore"]), 3,
         "a roster member who is in the group is not Missing-filled")
 end
 
@@ -417,7 +417,7 @@ tests["a later pull Missing-fills a roster member who still has no record for th
         rosterEntry("Niv", "Omnivicent-Proudmoore", "Niven-Proudmoore"),
     }, 6)
 
-    assertEquals(db[PULL_DAY]["Omnivicent-Proudmoore"], 0,
+    assertEquals(Store.GetStatus(db[PULL_DAY]["Omnivicent-Proudmoore"]), 0,
         "the Missing fill runs on every pull, not only the one that creates the day")
     assertNil(db[PULL_DAY]["Niven-Proudmoore"],
         "only the first-listed character receives the Missing fill")
@@ -444,9 +444,9 @@ tests["a group character on no roster entry is recorded under its raw name-realm
         rosterEntry("Elsie", "Elsie-Proudmoore"),
     }, 6)
 
-    assertEquals(db[PULL_DAY]["Randopug-Stormrage"], 3,
+    assertEquals(Store.GetStatus(db[PULL_DAY]["Randopug-Stormrage"]), 3,
         "an un-rostered character is recorded under its own full name-realm")
-    assertEquals(db[PULL_DAY]["Elsie-Proudmoore"], 0)
+    assertEquals(Store.GetStatus(db[PULL_DAY]["Elsie-Proudmoore"]), 0)
 end
 
 tests["a Missing-filled player arriving on another character records Late and keeps the Missing"] = function()
@@ -460,7 +460,7 @@ tests["a Missing-filled player arriving on another character records Late and ke
 
     assertEquals(db[PULL_DAY]["Omnivicent-Proudmoore"], 0,
         "only a character at the pull is upgraded, never the rest of the player's entry")
-    assertEquals(db[PULL_DAY]["Niven-Proudmoore"], 2,
+    assertEquals(Store.GetStatus(db[PULL_DAY]["Niven-Proudmoore"]), 2,
         "the character that showed up records Late on its own record")
 end
 
@@ -475,7 +475,7 @@ tests["an Absent player arriving on another character records Late and keeps the
 
     assertEquals(db[PULL_DAY]["Omnivicent-Proudmoore"], 1,
         "the Absent record stays on the character it was written against")
-    assertEquals(db[PULL_DAY]["Niven-Proudmoore"], 2,
+    assertEquals(Store.GetStatus(db[PULL_DAY]["Niven-Proudmoore"]), 2,
         "the arriving character records Late on its own record")
 end
 
@@ -484,7 +484,7 @@ tests["a pull with no roster records the group and fills no Missing rows"] = fun
 
     Store:OnCountdownStart({ "Elsie-Proudmoore" }, nil, 6)
 
-    assertTableEquals(db[PULL_DAY], { ["Elsie-Proudmoore"] = 3 })
+    assertTableEquals(db[PULL_DAY], { ["Elsie-Proudmoore"] = { status = 3 } })
 end
 
 tests["the countdown-cancel handler changes nothing after a countdown start"] = function()
@@ -524,7 +524,7 @@ tests["a manual status write on an existing day persists the written value"] = f
 
     assertTrue(ok)
     assertNil(err)
-    assertEquals(db[PULL_DAY]["Elsie-Proudmoore"], 1)
+    assertTableEquals(db[PULL_DAY]["Elsie-Proudmoore"], { status = 1 })
 end
 
 tests["a manual status write creates a character record within an existing day"] = function()
@@ -537,7 +537,7 @@ tests["a manual status write creates a character record within an existing day"]
     assertNil(err)
     assertTableEquals(db[PULL_DAY], {
         ["Elsie-Proudmoore"] = 3,
-        ["Grimgrace-Proudmoore"] = 1,
+        ["Grimgrace-Proudmoore"] = { status = 1 },
     })
 end
 
@@ -570,7 +570,7 @@ tests["every status in the enum is accepted by a manual write"] = function()
         local ok, err = Store:SetStatus(PULL_DAY, "Elsie-Proudmoore", status)
         assertTrue(ok, "status " .. status .. " is a valid write")
         assertNil(err)
-        assertEquals(db[PULL_DAY]["Elsie-Proudmoore"], status)
+        assertEquals(Store.GetStatus(db[PULL_DAY]["Elsie-Proudmoore"]), status)
     end
 end
 
@@ -741,6 +741,80 @@ tests["a manual delete of a day with no record returns false and changes nothing
 
     assertFalse(ok)
     assertTableEquals(db, { [PULL_DAY] = { ["Elsie-Proudmoore"] = 3 } })
+end
+
+tests["the schema migration preserves legacy days characters and statuses"] = function()
+    local savedRoot = PurplexityRaidToolsDB
+    local db = resetDB()
+    PurplexityRaidToolsDB = {}
+    db[PULL_DAY] = {
+        ["Elsie-Proudmoore"] = 3,
+        ["Grimgrace-Proudmoore"] = 0,
+    }
+
+    local ok, err = pcall(function()
+        Store:MigrateDatabase()
+
+        assertTableEquals(db[PULL_DAY], {
+            ["Elsie-Proudmoore"] = { status = 3 },
+            ["Grimgrace-Proudmoore"] = { status = 0 },
+        })
+        assertEquals(PurplexityRaidToolsDB.attendanceSchemaVersion,
+            Store.SCHEMA_VERSION)
+
+        local afterFirstMigration = CopyTable(db)
+        Store:MigrateDatabase()
+        assertTableEquals(db, afterFirstMigration, "the migration must be idempotent")
+    end)
+
+    PurplexityRaidToolsDB = savedRoot
+    if not ok then
+        error(err, 0)
+    end
+end
+
+tests["a pull records the latest available item level without requiring one"] = function()
+    local db = resetDB()
+
+    Store:OnCountdownStart({ "Elsie-Proudmoore", "Grimgrace-Proudmoore" }, {}, 6, {
+        ["Elsie-Proudmoore"] = 712.5,
+    })
+
+    assertTableEquals(db[PULL_DAY], {
+        ["Elsie-Proudmoore"] = { status = 3, itemLevel = 712.5 },
+        ["Grimgrace-Proudmoore"] = { status = 3 },
+    })
+end
+
+tests["later pulls replace an attendance item level only when a newer value is available"] = function()
+    local db = resetDB()
+
+    Store:OnCountdownStart({ "Elsie-Proudmoore" }, {}, 6, {
+        ["Elsie-Proudmoore"] = 710,
+    })
+    Store:OnCountdownStart({ "Elsie-Proudmoore" }, {}, 6, {
+        ["Elsie-Proudmoore"] = 712.5,
+    })
+    Store:OnCountdownStart({ "Elsie-Proudmoore" }, {}, 6, {})
+
+    assertTableEquals(db[PULL_DAY]["Elsie-Proudmoore"], {
+        status = 3,
+        itemLevel = 712.5,
+    })
+end
+
+tests["manual status changes preserve the recorded item level"] = function()
+    local db = resetDB()
+    db[PULL_DAY] = {
+        ["Elsie-Proudmoore"] = { status = 3, itemLevel = 712.5 },
+    }
+
+    assertTrue(Store:SetStatus(PULL_DAY, "Elsie-Proudmoore", 1))
+
+    assertTableEquals(db[PULL_DAY]["Elsie-Proudmoore"], {
+        status = 1,
+        itemLevel = 712.5,
+    })
 end
 
 return tests

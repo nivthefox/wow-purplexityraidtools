@@ -335,12 +335,17 @@ end
 local function storeSpy()
     local spy = { starts = {}, cancels = 0, expiries = {} }
 
-    function spy:OnCountdownStart(group, roster, rolloverHour)
+    function spy:OnCountdownStart(group, roster, rolloverHour, itemLevels)
         self.starts[#self.starts + 1] = {
             group = group,
             roster = roster,
             rolloverHour = rolloverHour,
+            itemLevels = itemLevels,
         }
+    end
+
+    function spy:MigrateDatabase()
+        self.migrations = (self.migrations or 0) + 1
     end
 
     function spy:OnCountdownCancel()
@@ -629,6 +634,7 @@ tests["a countdown start hands the store the snapshot, the roster entries, and t
         "the roster comes from Roster:GetEntries, which creates the table on a fresh install")
     assertEquals(recorded.rolloverHour, 2,
         "the rollover hour is the officer's setting, not the store's default")
+    assertTableEquals(recorded.itemLevels, {})
 end
 
 tests["a countdown start reads the attendance settings exactly once"] = function()
@@ -648,6 +654,15 @@ tests["a countdown start reads the attendance settings exactly once"] = function
     assertEquals(#reads.contentTypes, 1)
     assertEquals(reads.contentTypes[1], settings.contentTypes,
         "the shared content-type gate receives the attendance content settings")
+end
+
+tests["BuildSnapshot returns available item levels keyed by full name-realm"] = function()
+    local _, itemLevels = AttendanceWiring:BuildSnapshot(groupData({
+        { name = NIV, class = "MAGE", itemLevel = 712.5 },
+        { name = BOB, class = "WARRIOR" },
+    }))
+
+    assertTableEquals(itemLevels, { [NIV] = 712.5 })
 end
 
 tests["a countdown start outside an enabled content type records nothing"] = function()
@@ -738,9 +753,9 @@ tests["a countdown start records Present for the group and Missing for the absen
     assertNil(attendance[AUG_04],
         "03:00 with a rollover hour of 2 belongs to the new day, not the night before")
     assertTableEquals(attendance[AUG_05], {
-        [NIV] = PRESENT,
-        [BOB] = PRESENT,
-        [SASJAH] = MISSING,
+        [NIV] = { status = PRESENT },
+        [BOB] = { status = PRESENT },
+        [SASJAH] = { status = MISSING },
     }, "the placeholder must reach neither the record nor the database")
 end
 
@@ -1134,6 +1149,12 @@ tests["Initialize registers the sync module's comms handlers"] = function()
     withInitialized(nil, function(context)
         assertEquals(context.sync.registrations, 1,
             "registration is an explicit call, so somebody has to make it")
+    end)
+end
+
+tests["Initialize migrates attendance before wiring its consumers"] = function()
+    withInitialized(nil, function(context)
+        assertEquals(context.store.migrations, 1)
     end)
 end
 

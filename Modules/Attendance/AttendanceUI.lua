@@ -239,7 +239,7 @@ local function RenderEditModal()
         row:SetPoint("RIGHT", editModal, "RIGHT", -16, 0)
 
         local dayRecord = (PurplexityRaidToolsAttendanceDB or {})[editState.day] or {}
-        local status = dayRecord[character]
+        local status = PRT.AttendanceStore.GetStatus(dayRecord[character])
 
         local label = ClassColoredName(character)
         if status == nil then

@@ -2,6 +2,7 @@ local PRT = PurplexityRaidTools
 
 local ROW_HEIGHT = 20
 local HEADER_HEIGHT = 24
+local VIEW_TABS_HEIGHT = 26
 local COLUMN_PADDING = 4
 local BACKDROP_PADDING = 8
 
@@ -105,7 +106,7 @@ local frame
 local headerRow
 local rows = {}
 local buffColumns = {}
-local currentMode = nil
+local currentView = nil
 
 local function CreateRow(parent, index)
     local row = CreateFrame("Frame", nil, parent)
@@ -240,7 +241,7 @@ local function CreateHeaderRow(parent)
     return row
 end
 
-local function LayoutHeaderColumns(row, showReady, columns)
+local function LayoutHeaderColumns(row, showReady, columns, isGear)
     local x = BACKDROP_PADDING
 
     row.nameLabel:ClearAllPoints()
@@ -257,6 +258,7 @@ local function LayoutHeaderColumns(row, showReady, columns)
 
     row.versionLabel:ClearAllPoints()
     row.versionLabel:SetPoint("LEFT", row, "LEFT", x, 0)
+    row.versionLabel:SetText(isGear and "iLvl" or "PRT")
     x = x + COL_VERSION_WIDTH + COLUMN_PADDING
 
     if showReady then
@@ -337,6 +339,7 @@ local function BuildRoster()
             class = member.class,
             specId = member.specId,
             addonVersion = member.addonVersion,
+            itemLevel = member.itemLevel,
             unit = unitMap[guid],
         })
     end
@@ -490,7 +493,16 @@ local function SetRowBuffs(row, entry, isOffline)
     end
 end
 
-local function UpdateRow(row, entry, showReady, responses, rlVersion)
+local function SetRowItemLevel(row, entry)
+    row.versionText:SetText(PRT.ReadyScreen.FormatItemLevel(entry.itemLevel))
+    if PRT.ReadyScreen.IsItemLevelAvailable(entry.itemLevel) then
+        row.versionText:SetTextColor(1, 1, 1)
+    else
+        row.versionText:SetTextColor(0.5, 0.5, 0.5)
+    end
+end
+
+local function UpdateRow(row, entry, showReady, responses, rlVersion, isGear)
     local isOffline = (entry.unit and not UnitIsConnected(entry.unit)) or false
     local isDead = (entry.unit and UnitIsDeadOrGhost(entry.unit)) or false
 
@@ -498,7 +510,11 @@ local function UpdateRow(row, entry, showReady, responses, rlVersion)
     SetRowName(row, entry)
     SetRowSpec(row, entry)
     SetRowRole(row, entry)
-    SetRowVersion(row, entry, rlVersion)
+    if isGear then
+        SetRowItemLevel(row, entry)
+    else
+        SetRowVersion(row, entry, rlVersion)
+    end
 
     if showReady then
         SetRowReady(row, entry, responses, isOffline, isDead)
@@ -506,7 +522,14 @@ local function UpdateRow(row, entry, showReady, responses, rlVersion)
         row.readyIcon:Hide()
     end
 
-    SetRowBuffs(row, entry, isOffline)
+    if isGear then
+        for i = 1, #row.buffIcons do
+            row.buffIcons[i]:Hide()
+            row.buffTexts[i]:Hide()
+        end
+    else
+        SetRowBuffs(row, entry, isOffline)
+    end
 end
 
 local function InitFrame()
@@ -536,6 +559,24 @@ local function InitFrame()
         PRT.ReadyScreen:Close()
     end)
 
+    local readinessButton = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+    readinessButton:SetSize(88, 22)
+    readinessButton:SetPoint("TOPLEFT", frame, "TOPLEFT", BACKDROP_PADDING, -28)
+    readinessButton:SetText("Readiness")
+    readinessButton:SetScript("OnClick", function()
+        PRT.ReadyScreen:ShowReadiness()
+    end)
+    frame.readinessButton = readinessButton
+
+    local gearButton = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+    gearButton:SetSize(64, 22)
+    gearButton:SetPoint("LEFT", readinessButton, "RIGHT", 4, 0)
+    gearButton:SetText("Gear")
+    gearButton:SetScript("OnClick", function()
+        PRT.ReadyScreen:ShowGear()
+    end)
+    frame.gearButton = gearButton
+
     frame:SetMovable(true)
     frame:EnableMouse(true)
     frame:RegisterForDrag("LeftButton")
@@ -548,7 +589,8 @@ local function InitFrame()
     end)
 
     headerRow = CreateHeaderRow(frame)
-    headerRow:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -(BACKDROP_PADDING + HEADER_HEIGHT + 4))
+    headerRow:SetPoint("TOPLEFT", frame, "TOPLEFT", 0,
+        -(BACKDROP_PADDING + HEADER_HEIGHT + VIEW_TABS_HEIGHT + 4))
     headerRow:SetPoint("RIGHT", frame, "RIGHT", 0, 0)
 
     -- Swap the question-mark fallbacks for real icons once requested spell
@@ -593,16 +635,13 @@ function ReadyScreenFrame:RestorePosition()
     end
 end
 
-function ReadyScreenFrame:Show(mode)
+function ReadyScreenFrame:Show(view)
     InitFrame()
-    currentMode = mode
-    RequestBuffSpellData(GetBuffColumns())
-
-    if mode == "audit" then
-        frame.title:SetText("Raid Audit")
-    else
-        frame.title:SetText("Ready Screen")
+    currentView = view
+    if view == "readiness" then
+        RequestBuffSpellData(GetBuffColumns())
     end
+    frame.title:SetText("Ready Screen")
 
     self:RestorePosition()
     frame:Show()
@@ -613,7 +652,7 @@ function ReadyScreenFrame:Hide()
     if frame then
         frame:Hide()
     end
-    currentMode = nil
+    currentView = nil
 end
 
 function ReadyScreenFrame:IsShown()
@@ -623,11 +662,15 @@ end
 function ReadyScreenFrame:Refresh()
     if not frame or not frame:IsShown() then return end
 
-    buffColumns = GetBuffColumns()
-    local showReady = currentMode == "readycheck" or currentMode == "completed"
+    local isGear = currentView == "gear"
+    buffColumns = isGear and {} or GetBuffColumns()
+    local mode = PRT.ReadyScreen:GetMode()
+    local showReady = not isGear and (mode == "readycheck" or mode == "completed")
     local rlVersion = GetRaidLeaderVersion()
 
-    LayoutHeaderColumns(headerRow, showReady, buffColumns)
+    frame.readinessButton:SetEnabled(isGear)
+    frame.gearButton:SetEnabled(not isGear)
+    LayoutHeaderColumns(headerRow, showReady, buffColumns, isGear)
 
     local roster = BuildRoster()
 
@@ -649,10 +692,12 @@ function ReadyScreenFrame:Refresh()
         LayoutRowColumns(row, showReady, buffColumns)
 
         row:ClearAllPoints()
-        row:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -(BACKDROP_PADDING + HEADER_HEIGHT + 4 + HEADER_HEIGHT + (i - 1) * ROW_HEIGHT))
+        row:SetPoint("TOPLEFT", frame, "TOPLEFT", 0,
+            -(BACKDROP_PADDING + HEADER_HEIGHT + VIEW_TABS_HEIGHT + 4
+                + HEADER_HEIGHT + (i - 1) * ROW_HEIGHT))
         row:SetPoint("RIGHT", frame, "RIGHT", 0, 0)
 
-        UpdateRow(row, entry, showReady, responses, rlVersion)
+        UpdateRow(row, entry, showReady, responses, rlVersion, isGear)
         row:Show()
     end
 
@@ -660,6 +705,7 @@ function ReadyScreenFrame:Refresh()
         rows[i]:Hide()
     end
 
-    local contentHeight = BACKDROP_PADDING * 2 + HEADER_HEIGHT + 4 + HEADER_HEIGHT + #roster * ROW_HEIGHT
+    local contentHeight = BACKDROP_PADDING * 2 + HEADER_HEIGHT + VIEW_TABS_HEIGHT + 4
+        + HEADER_HEIGHT + #roster * ROW_HEIGHT
     frame:SetHeight(contentHeight)
 end

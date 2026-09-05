@@ -811,7 +811,8 @@ function ReadyScreenFrame:Refresh()
     if not frame or not frame:IsShown() then return end
 
     local isGear = currentView == "gear"
-    buffColumns = isGear and GEAR_COLUMNS or GetBuffColumns()
+    local readinessColumns = GetBuffColumns()
+    buffColumns = isGear and GEAR_COLUMNS or readinessColumns
     local mode = PRT.ReadyScreen:GetMode()
     local showReady = not isGear and (mode == "readycheck" or mode == "completed")
     local rlVersion = GetRaidLeaderVersion()
@@ -823,10 +824,10 @@ function ReadyScreenFrame:Refresh()
     local roster = BuildRoster()
 
     local buffColumnsWidth = 0
-    for _, col in ipairs(buffColumns) do
+    for _, col in ipairs(readinessColumns) do
         buffColumnsWidth = buffColumnsWidth + ColumnWidth(col) + COLUMN_PADDING
     end
-    local frameWidth = BACKDROP_PADDING * 2 + GetFixedColumnsWidth(showReady) + buffColumnsWidth
+    local frameWidth = BACKDROP_PADDING * 2 + GetFixedColumnsWidth(true) + buffColumnsWidth
     frame:SetWidth(frameWidth)
 
     while #rows < #roster do

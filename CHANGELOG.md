@@ -8,10 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- Attendance now shows item-level summaries and raider histories accessible by clicking a name.
+- Attendance now shows item-level summaries, roster averages, and raider histories accessible by clicking a name.
 - Attendance columns can now sort rostered players by name, percentage, or latest item level.
 - Item level and missing enchants or gems are recorded at each character’s first pull and preserved for the night.
-- The Gear view now identifies raid members with missing enchants or gems.
+- The Gear view now shows equipped item level and identifies raid members with missing enchants or gems.
 - Attendance history and the complete roster can now be exported and imported together as a text backup.
 - Attendance entries can now be deleted individually from the status popup, or across all days using the red x beside a player who is not on the roster.
 - Roster Nicknames can now replace character names in EnhanceQoL party and raid frames.

@@ -117,6 +117,25 @@ local rows = {}
 local buffColumns = {}
 local currentView = nil
 
+local function UpdateViewTab(tab, selected)
+    tab.selected = selected
+    if selected then
+        PanelTemplates_SelectTab(tab)
+        return
+    end
+    PanelTemplates_DeselectTab(tab)
+end
+
+local function CreateViewTab(parent, label, onClick)
+    local tab = PRT.Components.GetTab(parent, label)
+    tab:SetScript("OnShow", function(self)
+        PanelTemplates_TabResize(self, 15, nil, 70)
+        UpdateViewTab(self, self.selected)
+    end)
+    tab:SetScript("OnClick", onClick)
+    return tab
+end
+
 local function CreateRow(parent, index)
     local row = CreateFrame("Frame", nil, parent)
     row:SetHeight(ROW_HEIGHT)
@@ -591,46 +610,41 @@ end
 local function InitFrame()
     if frame then return end
 
-    frame = CreateFrame("Frame", "PRT_ReadyScreenFrame", UIParent, "BackdropTemplate")
+    frame = CreateFrame("Frame", "PRT_ReadyScreenFrame", UIParent)
     frame:SetFrameStrata("MEDIUM")
     frame:SetClampedToScreen(true)
     frame:Hide()
 
-    frame:SetBackdrop({
-        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        tile = true, tileSize = 16, edgeSize = 12,
-        insets = { left = 2, right = 2, top = 2, bottom = 2 },
+    local panel = CreateFrame("Frame", nil, frame, "BackdropTemplate")
+    panel:SetPoint("TOPLEFT", 0, -VIEW_TABS_HEIGHT)
+    panel:SetPoint("BOTTOMRIGHT")
+    panel:SetBackdrop({
+        bgFile = "Interface\\FrameGeneral\\UI-Background-Rock",
+        edgeFile = "Interface\\Buttons\\WHITE8X8",
+        tile = true, tileSize = 256, edgeSize = 1,
+        insets = { left = 1, right = 1, top = 1, bottom = 1 },
     })
-    frame:SetBackdropColor(0, 0, 0, 0.85)
-    frame:SetBackdropBorderColor(0.3, 0.3, 0.3, 0.8)
-
-    local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    title:SetPoint("TOPLEFT", BACKDROP_PADDING, -BACKDROP_PADDING)
-    frame.title = title
+    panel:SetBackdropColor(1, 1, 1, 1)
+    panel:SetBackdropBorderColor(0.3, 0.3, 0.3, 0.8)
+    panel:SetFrameLevel(frame:GetFrameLevel())
 
     local closeButton = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
-    closeButton:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -2, -2)
+    closeButton:SetSize(VIEW_TABS_HEIGHT, VIEW_TABS_HEIGHT)
+    closeButton:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
     closeButton:SetScript("OnClick", function()
         PRT.ReadyScreen:Close()
     end)
 
-    local readinessButton = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-    readinessButton:SetSize(88, 22)
-    readinessButton:SetPoint("TOPLEFT", frame, "TOPLEFT", BACKDROP_PADDING, -28)
-    readinessButton:SetText("Readiness")
-    readinessButton:SetScript("OnClick", function()
+    local readinessButton = CreateViewTab(frame, "Readiness", function()
         PRT.ReadyScreen:ShowReadiness()
     end)
+    readinessButton:SetPoint("TOPLEFT", frame, "TOPLEFT", BACKDROP_PADDING, 0)
     frame.readinessButton = readinessButton
 
-    local gearButton = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-    gearButton:SetSize(64, 22)
-    gearButton:SetPoint("LEFT", readinessButton, "RIGHT", 4, 0)
-    gearButton:SetText("Gear")
-    gearButton:SetScript("OnClick", function()
+    local gearButton = CreateViewTab(frame, "Gear", function()
         PRT.ReadyScreen:ShowGear()
     end)
+    gearButton:SetPoint("LEFT", readinessButton, "RIGHT", 0, 0)
     frame.gearButton = gearButton
 
     frame:SetMovable(true)
@@ -646,7 +660,7 @@ local function InitFrame()
 
     headerRow = CreateHeaderRow(frame)
     headerRow:SetPoint("TOPLEFT", frame, "TOPLEFT", 0,
-        -(BACKDROP_PADDING + HEADER_HEIGHT + VIEW_TABS_HEIGHT + 4))
+        -(BACKDROP_PADDING + VIEW_TABS_HEIGHT))
     headerRow:SetPoint("RIGHT", frame, "RIGHT", 0, 0)
 
     -- Swap the question-mark fallbacks for real icons once requested spell
@@ -697,7 +711,6 @@ function ReadyScreenFrame:Show(view)
     if view == "readiness" then
         RequestBuffSpellData(GetBuffColumns())
     end
-    frame.title:SetText("Ready Screen")
 
     self:RestorePosition()
     frame:Show()
@@ -724,8 +737,8 @@ function ReadyScreenFrame:Refresh()
     local showReady = not isGear and (mode == "readycheck" or mode == "completed")
     local rlVersion = GetRaidLeaderVersion()
 
-    frame.readinessButton:SetEnabled(isGear)
-    frame.gearButton:SetEnabled(not isGear)
+    UpdateViewTab(frame.readinessButton, not isGear)
+    UpdateViewTab(frame.gearButton, isGear)
     LayoutHeaderColumns(headerRow, showReady, buffColumns, isGear)
 
     local roster = BuildRoster()
@@ -749,7 +762,7 @@ function ReadyScreenFrame:Refresh()
 
         row:ClearAllPoints()
         row:SetPoint("TOPLEFT", frame, "TOPLEFT", 0,
-            -(BACKDROP_PADDING + HEADER_HEIGHT + VIEW_TABS_HEIGHT + 4
+            -(BACKDROP_PADDING + VIEW_TABS_HEIGHT
                 + HEADER_HEIGHT + (i - 1) * ROW_HEIGHT))
         row:SetPoint("RIGHT", frame, "RIGHT", 0, 0)
 
@@ -761,7 +774,7 @@ function ReadyScreenFrame:Refresh()
         rows[i]:Hide()
     end
 
-    local contentHeight = BACKDROP_PADDING * 2 + HEADER_HEIGHT + VIEW_TABS_HEIGHT + 4
+    local contentHeight = BACKDROP_PADDING * 2 + VIEW_TABS_HEIGHT
         + HEADER_HEIGHT + #roster * ROW_HEIGHT
     frame:SetHeight(contentHeight)
 end

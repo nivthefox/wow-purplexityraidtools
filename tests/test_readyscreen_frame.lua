@@ -31,6 +31,13 @@ local function withFrame(body)
     function tooltip:Hide() self.owner = nil end
     function tooltip:IsOwned(owner) return self.owner == owner end
     local prt = {
+        Components = {
+            GetTab = function(_, label)
+                local tab = newObject()
+                tab:SetText(label)
+                return tab
+            end,
+        },
         GearAudit = PurplexityRaidTools.GearAudit,
         GroupInspect = { members = members },
         IterateGroup = function() return function() end end,
@@ -48,6 +55,9 @@ local function withFrame(body)
     local overrides = {
         PurplexityRaidTools = prt,
         CreateFrame = function() return newObject() end,
+        PanelTemplates_SelectTab = function(tab) tab.selected = true end,
+        PanelTemplates_DeselectTab = function(tab) tab.selected = false end,
+        PanelTemplates_TabResize = function() end,
         UIParent = {}, GameTooltip = tooltip, RAID_CLASS_COLORS = {},
         Ambiguate = function(name) return name end,
         GetNormalizedRealmName = function() return "Realm" end,

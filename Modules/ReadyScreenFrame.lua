@@ -2,6 +2,7 @@ local PRT = PurplexityRaidTools
 
 local ROW_HEIGHT = 20
 local HEADER_HEIGHT = 24
+local TITLE_HEIGHT = 28
 local VIEW_TABS_HEIGHT = 26
 local COLUMN_PADDING = 4
 local BACKDROP_PADDING = 8
@@ -699,35 +700,24 @@ end
 local function InitFrame()
     if frame then return end
 
-    frame = CreateFrame("Frame", "PRT_ReadyScreenFrame", UIParent)
+    frame = CreateFrame("Frame", "PRT_ReadyScreenFrame", UIParent, "ButtonFrameTemplate")
     frame:SetFrameStrata("MEDIUM")
+    frame:SetToplevel(true)
     frame:SetClampedToScreen(true)
     frame:Hide()
 
-    local panel = CreateFrame("Frame", nil, frame, "BackdropTemplate")
-    panel:SetPoint("TOPLEFT", 0, -VIEW_TABS_HEIGHT)
-    panel:SetPoint("BOTTOMRIGHT")
-    panel:SetBackdrop({
-        bgFile = "Interface\\FrameGeneral\\UI-Background-Rock",
-        edgeFile = "Interface\\Buttons\\WHITE8X8",
-        tile = true, tileSize = 256, edgeSize = 1,
-        insets = { left = 1, right = 1, top = 1, bottom = 1 },
-    })
-    panel:SetBackdropColor(1, 1, 1, 1)
-    panel:SetBackdropBorderColor(0.3, 0.3, 0.3, 0.8)
-    panel:SetFrameLevel(frame:GetFrameLevel())
-
-    local closeButton = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
-    closeButton:SetSize(VIEW_TABS_HEIGHT, VIEW_TABS_HEIGHT)
-    closeButton:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
-    closeButton:SetScript("OnClick", function()
+    ButtonFrameTemplate_HidePortrait(frame)
+    ButtonFrameTemplate_HideButtonBar(frame)
+    frame.Inset:Hide()
+    frame:SetTitle("Ready Check")
+    frame.CloseButton:SetScript("OnClick", function()
         PRT.ReadyScreen:Close()
     end)
 
     local readinessButton = CreateViewTab(frame, "Readiness", function()
         PRT.ReadyScreen:ShowReadiness()
     end)
-    readinessButton:SetPoint("TOPLEFT", frame, "TOPLEFT", BACKDROP_PADDING, 0)
+    readinessButton:SetPoint("TOPLEFT", frame, "TOPLEFT", BACKDROP_PADDING, -TITLE_HEIGHT)
     frame.readinessButton = readinessButton
 
     local gearButton = CreateViewTab(frame, "Gear", function()
@@ -749,7 +739,7 @@ local function InitFrame()
 
     headerRow = CreateHeaderRow(frame)
     headerRow:SetPoint("TOPLEFT", frame, "TOPLEFT", 0,
-        -(BACKDROP_PADDING + VIEW_TABS_HEIGHT))
+        -(BACKDROP_PADDING + TITLE_HEIGHT + VIEW_TABS_HEIGHT))
     headerRow:SetPoint("RIGHT", frame, "RIGHT", 0, 0)
 
     -- Swap the question-mark fallbacks for real icons once requested spell
@@ -851,7 +841,7 @@ function ReadyScreenFrame:Refresh()
 
         row:ClearAllPoints()
         row:SetPoint("TOPLEFT", frame, "TOPLEFT", 0,
-            -(BACKDROP_PADDING + VIEW_TABS_HEIGHT
+            -(BACKDROP_PADDING + TITLE_HEIGHT + VIEW_TABS_HEIGHT
                 + HEADER_HEIGHT + (i - 1) * ROW_HEIGHT))
         row:SetPoint("RIGHT", frame, "RIGHT", 0, 0)
 
@@ -863,7 +853,7 @@ function ReadyScreenFrame:Refresh()
         rows[i]:Hide()
     end
 
-    local contentHeight = BACKDROP_PADDING * 2 + VIEW_TABS_HEIGHT
+    local contentHeight = BACKDROP_PADDING * 2 + TITLE_HEIGHT + VIEW_TABS_HEIGHT
         + HEADER_HEIGHT + #roster * ROW_HEIGHT
     frame:SetHeight(contentHeight)
 end

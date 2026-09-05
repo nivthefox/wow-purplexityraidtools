@@ -44,6 +44,7 @@ local function withFrame(body)
         GetSetting = function() return {} end,
         RAID_BUFFS = {}, SOULSTONE_BUFF_NAME = "Soulstone", SOULSTONE_SPELL_ID = 1,
         ReadyScreen = {
+            GetPreviewRoster = function() return nil end,
             GetMode = function() return "gear" end,
             GetResponses = function() return {} end,
             GetPersonalBuffColumns = function() return {} end,

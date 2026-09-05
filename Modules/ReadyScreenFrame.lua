@@ -9,6 +9,22 @@ local BACKDROP_PADDING = 8
 local COL_NAME_WIDTH = 130
 local COL_ICON_WIDTH = 24
 local COL_VERSION_WIDTH = 50
+local HEADER_DESCRIPTIONS = {
+    name = "The character's name. Characters from another realm also show their realm name.",
+    spec = "The character's current specialization. A blank cell means it is not available yet.",
+    role = "The character's assigned group role: tank, healer, or damage dealer.",
+    version = "The character's PRT version. Red means it is older than the group leader's version. A dash means no version was received.",
+    itemLevel = "The character's average equipped item level. A dash means it is not available yet.",
+    ready = "The character's ready check response, or whether they are dead or offline.",
+    enchants = "Whether the checked equipment slots have their required enchants. Unknown means the item data is not available. Hover over a character's row for details.",
+    gems = "Whether the checked equipment sockets have gems. Unknown means the item data is not available. Hover over a character's row for details.",
+    wellFed = "Whether the character has a Well Fed food buff.",
+    weaponEnhancement = "Whether at least one weapon has a temporary enhancement, such as an oil or sharpening stone. This status is reported by PRT.",
+    flask = "Whether the character has a recognized flask buff.",
+    augmentRune = "Whether the character has a recognized augment rune buff.",
+    vantusRune = "Whether the character has a Vantus Rune buff. This does not check whether it matches the current boss.",
+    durability = "The character's remaining equipment durability, reported by PRT. Yellow means 50% or less; red means 20% or less. A dash means no value is available.",
+}
 local GEAR_COLUMNS = {
     { key = "enchants", name = "Enchants", width = 80, display = "audit" },
     { key = "gems", name = "Gems", width = 80, display = "audit" },
@@ -241,6 +257,38 @@ local function LayoutRowColumns(row, showReady, columns)
     end
 end
 
+local function HideHeaderTooltip(self)
+    if GameTooltip:IsOwned(self) then
+        GameTooltip:Hide()
+    end
+end
+
+local function SetHeaderTooltip(row, key, anchor, width, title, description)
+    local target = row.tooltipTargets[key]
+    if not target then
+        target = CreateFrame("Frame", nil, row)
+        target:EnableMouse(true)
+        target:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:AddLine(self.tooltipTitle, 1, 1, 1)
+            GameTooltip:AddLine(self.tooltipDescription, 0.8, 0.8, 0.8, true)
+            GameTooltip:Show()
+        end)
+        target:SetScript("OnLeave", HideHeaderTooltip)
+        target:SetScript("OnHide", HideHeaderTooltip)
+        row.tooltipTargets[key] = target
+    end
+    if target.tooltipTitle ~= title then
+        HideHeaderTooltip(target)
+    end
+    target.tooltipTitle = title
+    target.tooltipDescription = description
+    target:ClearAllPoints()
+    target:SetPoint("CENTER", anchor, "CENTER")
+    target:SetSize(width, HEADER_HEIGHT)
+    target:Show()
+end
+
 local function CreateHeaderRow(parent)
     local row = CreateFrame("Frame", nil, parent)
     row:SetHeight(HEADER_HEIGHT)
@@ -282,6 +330,7 @@ local function CreateHeaderRow(parent)
 
     row.buffHeaders = {}
     row.buffLabels = {}
+    row.tooltipTargets = {}
 
     return row
 end
@@ -350,6 +399,25 @@ local function LayoutHeaderColumns(row, showReady, columns, isGear)
     for i = #columns + 1, #row.buffHeaders do
         row.buffHeaders[i]:Hide()
         row.buffLabels[i]:Hide()
+        row.tooltipTargets[i]:Hide()
+    end
+
+    SetHeaderTooltip(row, "name", row.nameLabel, COL_NAME_WIDTH, "Name", HEADER_DESCRIPTIONS.name)
+    SetHeaderTooltip(row, "spec", row.specLabel, COL_ICON_WIDTH, "Specialization", HEADER_DESCRIPTIONS.spec)
+    SetHeaderTooltip(row, "role", row.roleLabel, COL_ICON_WIDTH, "Role", HEADER_DESCRIPTIONS.role)
+    SetHeaderTooltip(row, "version", row.versionLabel, COL_VERSION_WIDTH,
+        isGear and "Equipped Item Level" or "PRT Version",
+        isGear and HEADER_DESCRIPTIONS.itemLevel or HEADER_DESCRIPTIONS.version)
+    if showReady then
+        SetHeaderTooltip(row, "ready", row.readyLabel, COL_ICON_WIDTH, "Ready Check", HEADER_DESCRIPTIONS.ready)
+    elseif row.tooltipTargets.ready then
+        row.tooltipTargets.ready:Hide()
+    end
+    for i, col in ipairs(columns) do
+        local description = HEADER_DESCRIPTIONS[col.key]
+            or ("Whether the character has " .. col.name .. ". A blank cell means the buff is missing or could not be read.")
+        local anchor = col.display == "audit" and row.buffLabels[i] or row.buffHeaders[i]
+        SetHeaderTooltip(row, i, anchor, ColumnWidth(col), col.name, description)
     end
 end
 
@@ -384,6 +452,22 @@ local function DisplayName(fullName)
 end
 
 local function BuildRoster()
+    local preview = PRT.ReadyScreen:GetPreviewRoster()
+    if preview then
+        local roster = {}
+        for _, entry in ipairs(preview) do
+            table.insert(roster, entry)
+        end
+        local _, class = UnitClass("player")
+        local spec = GetSpecialization()
+        local _, equipped = GetAverageItemLevel()
+        table.insert(roster, {
+            guid = UnitGUID("player"), name = GetUnitName("player", true), class = class,
+            specId = spec and GetSpecializationInfo(spec), unit = "player", itemLevel = equipped,
+            gearAudit = PRT.GearAudit.Evaluate(PRT.GearAudit.Capture("player")),
+        })
+        return PRT.ReadyScreen.SortRoster(roster)
+    end
     local unitMap = {}
     for unit in PRT:IterateGroup() do
         local guid = UnitGUID(unit)
@@ -436,7 +520,7 @@ local function SetRowSpec(row, entry)
 end
 
 local function SetRowRole(row, entry)
-    local role = entry.unit and UnitGroupRolesAssigned(entry.unit)
+    local role = entry.role or (entry.unit and UnitGroupRolesAssigned(entry.unit))
     local roleAtlas = role and ROLE_ATLASES[role]
     if not roleAtlas then
         row.roleIcon:Hide()
@@ -503,6 +587,9 @@ local function SetRowBuffs(row, entry, isOffline)
 
         if col.display == "percent" then
             local percent = PRT.ReadyScreen:GetDurability(entry.guid)
+            if entry.previewBuffs then
+                percent = entry.durability
+            end
             buffIcon:Hide()
             if type(percent) == "number" then
                 local rounded = math.floor(percent + 0.5)
@@ -520,6 +607,8 @@ local function SetRowBuffs(row, entry, isOffline)
                 buffText:SetTextColor(0.5, 0.5, 0.5)
                 buffText:Show()
             end
+        elseif entry.previewBuffs then
+            hasBuff = entry.previewBuffs[col.key or col.name] == true
         elseif col.kind == "personal" and col.key == "weaponEnhancement" then
             hasBuff = PRT.ReadyScreen:GetWeaponStatus(entry.guid) == true
         elseif col.kind == "personal" then

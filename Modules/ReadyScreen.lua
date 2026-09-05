@@ -75,6 +75,59 @@ local autoDismissTimer = nil
 local readyCheckActive = false
 local auraRefreshPending = false
 local readyCheckTicker = nil
+local previewRoster
+local PREVIEW_SPECS = {
+    { class = "WARRIOR", specId = 73, role = "TANK" },
+    { class = "PRIEST", specId = 257, role = "HEALER" },
+    { class = "MAGE", specId = 63, role = "DAMAGER" },
+    { class = "ROGUE", specId = 260, role = "DAMAGER" },
+    { class = "DRUID", specId = 102, role = "DAMAGER" },
+}
+
+function ReadyScreen:GetPreviewRoster()
+    if IsInGroup() then
+        previewRoster = nil
+        return nil
+    end
+    if previewRoster then
+        return previewRoster
+    end
+
+    previewRoster = {}
+    local auditStatuses = { "complete", "missing", "unknown" }
+    for i = 1, 4 do
+        local spec = PREVIEW_SPECS[math.random(#PREVIEW_SPECS)]
+        local buffs = {}
+        for _, buff in ipairs(PRT.RAID_BUFFS) do
+            buffs[buff.name] = math.random(2) == 1
+        end
+        buffs[PRT.SOULSTONE_BUFF_NAME] = math.random(2) == 1
+        for _, buff in ipairs(PERSONAL_BUFFS) do
+            buffs[buff.key] = math.random(2) == 1
+        end
+        local gearAudit = {}
+        for _, key in ipairs({ "enchants", "gems" }) do
+            local status = auditStatuses[math.random(3)]
+            gearAudit[key] = {
+                status = status,
+                missing = status == "missing" and { { slot = 11, count = 1 } } or {},
+                unknown = status == "unknown" and { 11 } or {},
+            }
+        end
+        previewRoster[i] = {
+            guid = "PRT-Preview-" .. i,
+            name = "Test " .. spec.class .. " " .. i,
+            class = spec.class,
+            specId = spec.specId,
+            role = spec.role,
+            previewBuffs = buffs,
+            durability = math.random(0, 100),
+            itemLevel = math.random(200, 280),
+            gearAudit = gearAudit,
+        }
+    end
+    return previewRoster
+end
 
 function ReadyScreen.GetPersonalBuffColumns()
     return PERSONAL_BUFFS
@@ -406,9 +459,6 @@ local function CanShow()
     if readyCheckActive then
         return true
     end
-    if not IsInGroup() then
-        return false
-    end
     local settings = PRT:GetSetting("readyScreen")
     if not settings or not settings.enabled then
         return false
@@ -491,6 +541,7 @@ function ReadyScreen:ShowReadyCheck(initiator)
 end
 
 function ReadyScreen:Close()
+    previewRoster = nil
     if autoDismissTimer then
         autoDismissTimer:Cancel()
         autoDismissTimer = nil
@@ -554,7 +605,7 @@ function ReadyScreen:OnReadyCheckFinished()
 end
 
 function ReadyScreen:IsActivatable()
-    return IsInGroup()
+    return true
 end
 
 function ReadyScreen:Initialize()

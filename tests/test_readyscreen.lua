@@ -368,4 +368,28 @@ tests["a ready check selects Readiness"] = function()
     end)
 end
 
+tests["solo readiness opens with isolated preview members and preserves them across tabs"] = function()
+    withShowHarness(function(context)
+        IsInGroup = function() return false end
+        ReadyScreen:ShowReadiness()
+        assertTableEquals(context.shown, { "readiness" })
+        assertEquals(ReadyScreen:IsActivatable(), true)
+        local roster = ReadyScreen:GetPreviewRoster()
+        assertEquals(#roster, 4)
+        assertEquals(next(PurplexityRaidTools.GroupInspect.members), nil)
+        for _, entry in ipairs(roster) do
+            assertEquals(entry.unit, nil)
+            assertEquals(type(entry.previewBuffs), "table")
+            assertEquals(entry.durability >= 0 and entry.durability <= 100, true)
+        end
+        ReadyScreen:ShowGear()
+        assertEquals(ReadyScreen:GetPreviewRoster(), roster)
+        ReadyScreen:Close()
+        ReadyScreen:ShowReadiness()
+        assertEquals(ReadyScreen:GetPreviewRoster() == roster, false)
+        IsInGroup = function() return true end
+        assertEquals(ReadyScreen:GetPreviewRoster(), nil)
+    end)
+end
+
 return tests

@@ -29,6 +29,16 @@ local function RecordStatus(record)
     return record
 end
 
+local function RecordedItemLevel(record)
+    if type(record) ~= "table" then
+        return nil
+    end
+    local level = record.itemLevel
+    if type(level) == "number" and level > 0 and level < math.huge then
+        return level
+    end
+end
+
 local function BestRecordedStatus(dayRecord, characters)
     local resolved
     for i = 1, #characters do
@@ -119,6 +129,59 @@ end
 
 function AttendanceReport:GetPercentage(db, days, characters)
     return PercentageOf(ResolvedStatuses(db, days, characters))
+end
+
+function AttendanceReport:GetAttendanceCounts(statuses)
+    local attended, recorded = 0, 0
+    for _, status in pairs(statuses) do
+        recorded = recorded + 1
+        if status >= LOWEST_ATTENDED_STATUS then
+            attended = attended + 1
+        end
+    end
+    return attended, recorded
+end
+
+function AttendanceReport:GetLatestItemLevel(db, days, characters)
+    for _, day in ipairs(days) do
+        local dayRecord = db[day]
+        local latestLevel, latestCharacter
+        for _, character in ipairs(characters) do
+            local level = RecordedItemLevel(dayRecord and dayRecord[character])
+            if level and (not latestCharacter or character < latestCharacter) then
+                latestLevel, latestCharacter = level, character
+            end
+        end
+        if latestCharacter then
+            return latestLevel, latestCharacter
+        end
+    end
+end
+
+function AttendanceReport:GetCharacterHistory(db, days, character)
+    local history = { character = character, observations = {}, measuredDays = 0 }
+    for index = #days, 1, -1 do
+        local day = days[index]
+        local record = db[day] and db[day][character]
+        local observation = { day = day, status = RecordStatus(record) }
+        if type(record) == "table" then
+            observation.gearSnapshotTaken = record.gearSnapshotTaken
+            local level = RecordedItemLevel(record)
+            if level then
+                observation.itemLevel = level
+                history.measuredDays = history.measuredDays + 1
+                history.first = history.first or observation
+                history.last = observation
+            end
+            observation.missingEnchants = record.missingEnchants
+            observation.missingGems = record.missingGems
+        end
+        history.observations[#history.observations + 1] = observation
+    end
+    if history.measuredDays > 1 then
+        history.change = history.last.itemLevel - history.first.itemLevel
+    end
+    return history
 end
 
 function AttendanceReport:Build(db, entries)

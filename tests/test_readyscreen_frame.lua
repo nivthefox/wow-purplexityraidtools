@@ -55,10 +55,19 @@ local function withFrame(body)
     }
     local overrides = {
         PurplexityRaidTools = prt,
-        CreateFrame = function() return newObject() end,
+        CreateFrame = function(_, _, _, template)
+            local frame = newObject()
+            if template == "ButtonFrameTemplate" then
+                frame.Inset = newObject()
+                frame.CloseButton = newObject()
+            end
+            return frame
+        end,
         PanelTemplates_SelectTab = function(tab) tab.selected = true end,
         PanelTemplates_DeselectTab = function(tab) tab.selected = false end,
         PanelTemplates_TabResize = function() end,
+        ButtonFrameTemplate_HidePortrait = function() end,
+        ButtonFrameTemplate_HideButtonBar = function() end,
         UIParent = {}, GameTooltip = tooltip, RAID_CLASS_COLORS = {},
         Ambiguate = function(name) return name end,
         GetNormalizedRealmName = function() return "Realm" end,

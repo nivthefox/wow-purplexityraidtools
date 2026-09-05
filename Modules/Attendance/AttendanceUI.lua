@@ -20,6 +20,8 @@ local SECTION_HEIGHT = 22
 local GRID_HEIGHT = 380
 local NAME_WIDTH = 116
 local PCT_WIDTH = 46
+local ITEM_LEVEL_WIDTH = 82
+local SUMMARY_WIDTH = NAME_WIDTH + PCT_WIDTH + ITEM_LEVEL_WIDTH
 local CELL_WIDTH = 42
 
 local MODAL_WIDTH = 488
@@ -75,6 +77,9 @@ local CONTENT_CHECKBOXES = {
 
 local RefreshGrid
 local gridPanel
+local detailPanel
+local OpenDetails
+local lastViewedCharacter
 local editModal
 local editState
 
@@ -334,8 +339,15 @@ end
 local function CreateGridRow(parent, cellCount)
     local row = CreateFrame("Frame", nil, parent)
     row:SetHeight(ROW_HEIGHT)
+    row.selection = row:CreateTexture(nil, "BACKGROUND")
+    row.selection:SetAllPoints()
+    row.selection:SetColorTexture(0.84, 0.72, 0.47, 0.12)
 
-    row.name = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    row.nameButton = CreateFrame("Button", nil, row)
+    row.nameButton:SetSize(NAME_WIDTH, ROW_HEIGHT)
+    row.nameButton:SetPoint("LEFT", 0, 0)
+    row.nameButton:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
+    row.name = row.nameButton:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     row.name:SetPoint("LEFT", 0, 0)
     row.name:SetWidth(NAME_WIDTH)
     row.name:SetJustifyH("LEFT")
@@ -346,11 +358,16 @@ local function CreateGridRow(parent, cellCount)
     row.percentage:SetWidth(PCT_WIDTH)
     row.percentage:SetJustifyH("CENTER")
 
+    row.itemLevel = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    row.itemLevel:SetPoint("LEFT", NAME_WIDTH + PCT_WIDTH, 0)
+    row.itemLevel:SetWidth(ITEM_LEVEL_WIDTH)
+    row.itemLevel:SetJustifyH("CENTER")
+
     row.cells = {}
     for index = 1, cellCount do
         local cell = CreateFrame("Button", nil, row)
         cell:SetSize(CELL_WIDTH, ROW_HEIGHT)
-        cell:SetPoint("LEFT", NAME_WIDTH + PCT_WIDTH + (index - 1) * CELL_WIDTH, 0)
+        cell:SetPoint("LEFT", SUMMARY_WIDTH + (index - 1) * CELL_WIDTH, 0)
 
         cell.highlight = cell:CreateTexture(nil, "HIGHLIGHT")
         cell.highlight:SetAllPoints()
@@ -366,9 +383,21 @@ local function CreateGridRow(parent, cellCount)
     return row
 end
 
-local function FillGridRow(row, entry, days)
+local function FillGridRow(row, entry, days, reportDays)
+    local selected = false
+    for _, character in ipairs(entry.characters) do
+        if character == lastViewedCharacter then
+            selected = true
+            break
+        end
+    end
+    row.selection:SetShown(selected)
     row.name:SetText(entry.name)
     row.percentage:SetText(PercentageText(entry.percentage))
+    row.nameButton:SetScript("OnClick", function() OpenDetails(entry, reportDays) end)
+    local level = PRT.AttendanceReport:GetLatestItemLevel(
+        PurplexityRaidToolsAttendanceDB or {}, reportDays, entry.characters)
+    row.itemLevel:SetText(level and string.format("%.1f", level) or "-")
 
     for index, cell in ipairs(row.cells) do
         local day = days[index]
@@ -389,14 +418,38 @@ end
 PRT:RegisterTab("Attendance", function(parent)
     local function SetupGrid(panel)
         gridPanel = panel
+        local overview = CreateFrame("Frame", nil, panel)
+        overview:SetAllPoints()
+        detailPanel = PRT.AttendanceDetailsUI:Build(panel, {
+            Back = function()
+                lastViewedCharacter = detailPanel.character
+                detailPanel:Hide()
+                overview:Show()
+                RefreshGrid()
+            end,
+            Edit = OpenEditModal,
+            Date = ColumnDate,
+            Status = StatusText,
+            Percentage = PercentageText,
+        })
+        OpenDetails = function(entry, days)
+            overview:Hide()
+            detailPanel:Open(entry, days)
+        end
 
         local gridRows = {}
         local visibleDayCount = math.max(1,
-            math.floor((panel:GetWidth() - 46 - NAME_WIDTH - PCT_WIDTH) / CELL_WIDTH))
+            math.floor((panel:GetWidth() - 46 - SUMMARY_WIDTH) / CELL_WIDTH))
 
-        local header = CreateFrame("Frame", nil, panel)
+        local title = overview:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+        title:SetPoint("TOPLEFT", 20, -10)
+        title:SetText("Attendance & gear")
+        local summary = overview:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+        summary:SetPoint("TOPLEFT", 20, -34)
+        summary:SetText("Click a player for gear history. Click a raid-day cell to edit attendance.")
+        local header = CreateFrame("Frame", nil, overview)
         header:SetHeight(HEADER_HEIGHT)
-        header:SetPoint("TOPLEFT", 20, -10)
+        header:SetPoint("TOPLEFT", 20, -60)
         header:SetPoint("RIGHT", panel, "RIGHT", -26, 0)
 
         local nameHeading = header:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -409,18 +462,24 @@ PRT:RegisterTab("Attendance", function(parent)
         pctHeading:SetJustifyH("CENTER")
         pctHeading:SetText("PCT")
 
+        local levelHeading = header:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        levelHeading:SetPoint("LEFT", NAME_WIDTH + PCT_WIDTH, 0)
+        levelHeading:SetWidth(ITEM_LEVEL_WIDTH)
+        levelHeading:SetJustifyH("CENTER")
+        levelHeading:SetText("Latest ilvl")
+
         local dayHeadings = {}
         for index = 1, visibleDayCount do
             local heading = header:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            heading:SetPoint("LEFT", NAME_WIDTH + PCT_WIDTH + (index - 1) * CELL_WIDTH, 0)
+            heading:SetPoint("LEFT", SUMMARY_WIDTH + (index - 1) * CELL_WIDTH, 0)
             heading:SetWidth(CELL_WIDTH)
             heading:SetJustifyH("CENTER")
             dayHeadings[index] = heading
         end
 
-        local scrollFrame = CreateFrame("ScrollFrame", nil, panel, "UIPanelScrollFrameTemplate")
+        local scrollFrame = CreateFrame("ScrollFrame", nil, overview, "UIPanelScrollFrameTemplate")
         scrollFrame:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -4)
-        scrollFrame:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -26, 24)
+        scrollFrame:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -26, 48)
 
         local scrollChild = CreateFrame("Frame", nil, scrollFrame)
         scrollChild:SetSize(panel:GetWidth() - 60, GRID_HEIGHT)
@@ -431,16 +490,33 @@ PRT:RegisterTab("Attendance", function(parent)
         sectionLabel:SetText("Not on roster")
         sectionLabel:Hide()
 
-        local emptyLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+        local emptyLabel = overview:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
         emptyLabel:SetPoint("TOPLEFT", scrollFrame, "TOPLEFT", 4, -4)
         emptyLabel:SetText("No attendance records yet. A pull countdown creates the first one.")
 
-        local truncationNote = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+        local truncationNote = overview:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
         truncationNote:SetPoint("TOPLEFT", scrollFrame, "BOTTOMLEFT", 4, -8)
         truncationNote:Hide()
+        local legend = overview:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+        legend:SetPoint("BOTTOMLEFT", 20, 8)
+        legend:SetText("P Present   S Standby   L Late   A Absent   M Missing   - No record")
 
         RefreshGrid = function()
             local report = BuildReport()
+            if detailPanel:IsShown() then
+                for _, rows in ipairs({ report.players, report.unrostered }) do
+                    for _, entry in ipairs(rows) do
+                        for _, character in ipairs(entry.characters) do
+                            if character == detailPanel.character then
+                                detailPanel:SetEntry(entry, report.days, character)
+                                return
+                            end
+                        end
+                    end
+                end
+                detailPanel:Hide()
+                overview:Show()
+            end
             local days = {}
             for index = 1, math.min(visibleDayCount, #report.days) do
                 days[index] = report.days[index]
@@ -466,7 +542,7 @@ PRT:RegisterTab("Attendance", function(parent)
                 row:ClearAllPoints()
                 row:SetPoint("TOPLEFT", 0, -yOffset)
                 row:SetPoint("RIGHT", scrollChild, "RIGHT", 0, 0)
-                FillGridRow(row, entry, days)
+                FillGridRow(row, entry, days, report.days)
                 yOffset = yOffset + ROW_HEIGHT
             end
 
@@ -499,13 +575,9 @@ PRT:RegisterTab("Attendance", function(parent)
                 emptyLabel:Hide()
             end
 
-            if #report.days > visibleDayCount then
-                truncationNote:SetText("Showing the " .. visibleDayCount .. " most recent of "
-                    .. #report.days .. " recorded days.")
-                truncationNote:Show()
-            else
-                truncationNote:Hide()
-            end
+            truncationNote:SetText("Showing " .. #days .. " of " .. #report.days
+                .. " days. Percentages use all recorded history.")
+            truncationNote:Show()
         end
 
         panel:SetScript("OnShow", function()

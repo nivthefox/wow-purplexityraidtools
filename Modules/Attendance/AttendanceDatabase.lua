@@ -8,13 +8,6 @@ local LibDeflate = LibStub("LibDeflate")
 local FORMAT_PREFIX = "PRTATTENDANCE:"
 local FORMAT_VERSION = 2
 local ISO_DAY_PATTERN = "^(%d%d%d%d)%-(%d%d)%-(%d%d)$"
-local VALID_STATUSES = {
-    [0] = true,
-    [1] = true,
-    [2] = true,
-    [3] = true,
-    [4] = true,
-}
 
 AttendanceDatabase.FORMAT_VERSION = FORMAT_VERSION
 
@@ -50,34 +43,6 @@ local function IsValidDay(day)
     return dayOfMonth >= 1 and dayOfMonth <= daysInMonth[month]
 end
 
-local function IsValidItemLevel(itemLevel)
-    return type(itemLevel) == "number" and itemLevel == itemLevel
-        and itemLevel > 0 and itemLevel < math.huge
-end
-
-local function PrepareRecord(record)
-    if type(record) ~= "table" then
-        return nil
-    end
-    for key in pairs(record) do
-        if key ~= "status" and key ~= "itemLevel" then
-            return nil
-        end
-    end
-    if not VALID_STATUSES[record.status] then
-        return nil
-    end
-    if record.itemLevel ~= nil and not IsValidItemLevel(record.itemLevel) then
-        return nil
-    end
-
-    local prepared = { status = record.status }
-    if record.itemLevel then
-        prepared.itemLevel = record.itemLevel
-    end
-    return prepared
-end
-
 local function PrepareAttendance(history)
     if type(history) ~= "table" then
         return nil, "The attendance history must be a table."
@@ -98,7 +63,7 @@ local function PrepareAttendance(history)
             if type(character) ~= "string" or character == "" then
                 return nil, "Attendance for " .. day .. " contains an invalid character name."
             end
-            local preparedRecord = PrepareRecord(record)
+            local preparedRecord = PRT.AttendanceStore.PrepareRecord(record)
             if not preparedRecord then
                 return nil, "Attendance for " .. day .. " contains an invalid record."
             end

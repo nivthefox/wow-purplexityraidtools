@@ -1,5 +1,7 @@
 local PRT = PurplexityRaidTools
 
+if not PRT.AttendanceStore then dofile("Modules/Attendance/AttendanceStore.lua") end
+
 if not LibStub then
     dofile("Libs/LibStub/LibStub.lua")
     dofile("Libs/LibSerialize/LibSerialize.lua")
@@ -20,7 +22,8 @@ local tests = {}
 local function RichAttendance()
     return {
         ["2026-08-25"] = {
-            ["Aster-MoonGuard"] = { status = 3, itemLevel = 712.5 },
+            ["Aster-MoonGuard"] = { status = 3, itemLevel = 712.5, gearSnapshotTaken = true,
+                missingEnchants = { [11] = 1 }, missingGems = { [2] = 2 } },
             ["Cinder-Illidan"] = { status = 4 },
         },
         ["2026-08-26"] = {
@@ -223,6 +226,9 @@ tests["malformed exports are rejected without changing data"] = function()
         "not an export",
         "PRTATTENDANCE:2:not-valid-encoded-data",
         EncodePayload({ attendance = {}, roster = {}, extra = true }),
+        EncodePayload({ attendance = { ["2026-08-25"] = { Aster = {
+            status = 3, missingEnchants = { [5] = 2 },
+        } } }, roster = {} }),
         EncodePayload({ attendance = { ["2026-02-30"] = { Aster = 3 } }, roster = {} }),
         EncodePayload({ attendance = { ["2026-08-25"] = { Aster = 9 } }, roster = {} }),
         EncodePayload({ attendance = {}, roster = { { nickname = "Broken" } } }),

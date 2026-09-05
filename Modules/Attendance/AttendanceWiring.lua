@@ -85,16 +85,18 @@ end
 function AttendanceWiring:BuildSnapshot(members)
     local snapshot = {}
     local itemLevels = {}
+    local gearAudits = {}
     for _, member in pairs(members) do
         if IsResolvedCharacterName(member.name) then
             snapshot[#snapshot + 1] = member.name
+            gearAudits[member.name] = member.gearAudit
             if type(member.itemLevel) == "number" and member.itemLevel == member.itemLevel
                 and member.itemLevel > 0 and member.itemLevel < math.huge then
                 itemLevels[member.name] = member.itemLevel
             end
         end
     end
-    return snapshot, itemLevels
+    return snapshot, itemLevels, gearAudits
 end
 
 --- A group the client has not resolved yet is not a group of nobody: recording
@@ -106,13 +108,13 @@ function AttendanceWiring:OnCountdownStart()
         return
     end
 
-    local group, itemLevels = self:BuildSnapshot(PRT.GroupInspect.members)
+    local group, itemLevels, gearAudits = self:BuildSnapshot(PRT.GroupInspect.members)
     if #group == 0 then
         return
     end
 
     PRT.AttendanceStore:OnCountdownStart(
-        group, PRT.Roster:GetEntries(), settings.rolloverHour, itemLevels)
+        group, PRT.Roster:GetEntries(), settings.rolloverHour, itemLevels, gearAudits)
 end
 
 function AttendanceWiring:OnCountdownCancel()

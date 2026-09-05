@@ -290,9 +290,9 @@ tests["a first pull creates the day and records every group character Present"] 
 
     assertNotNil(db[PULL_DAY], "the first pull must create the raid day's record")
     assertTableEquals(db[PULL_DAY], {
-        ["Omnivicent-Proudmoore"] = { status = 3 },
-        ["Elsie-Proudmoore"] = { status = 3 },
-        ["Grimgrace-Proudmoore"] = { status = 3 },
+        ["Omnivicent-Proudmoore"] = { status = 3, gearSnapshotTaken = true },
+        ["Elsie-Proudmoore"] = { status = 3, gearSnapshotTaken = true },
+        ["Grimgrace-Proudmoore"] = { status = 3, gearSnapshotTaken = true },
     })
 end
 
@@ -305,7 +305,7 @@ tests["a first pull creates the database when the SavedVariable is nil"] = funct
     resetDB()
 
     assertNotNil(created, "the store must create the SavedVariable table on first use")
-    assertTableEquals(created[PULL_DAY]["Elsie-Proudmoore"], { status = 3 })
+    assertTableEquals(created[PULL_DAY]["Elsie-Proudmoore"], { status = 3, gearSnapshotTaken = true })
 end
 
 tests["a later pull records a group character with no record for the day as Late"] = function()
@@ -484,7 +484,7 @@ tests["a pull with no roster records the group and fills no Missing rows"] = fun
 
     Store:OnCountdownStart({ "Elsie-Proudmoore" }, nil, 6)
 
-    assertTableEquals(db[PULL_DAY], { ["Elsie-Proudmoore"] = { status = 3 } })
+    assertTableEquals(db[PULL_DAY], { ["Elsie-Proudmoore"] = { status = 3, gearSnapshotTaken = true } })
 end
 
 tests["the countdown-cancel handler changes nothing after a countdown start"] = function()
@@ -773,7 +773,7 @@ tests["the schema migration preserves legacy days characters and statuses"] = fu
     end
 end
 
-tests["a pull records the latest available item level without requiring one"] = function()
+tests["the first attended pull snapshots the available item level without requiring one"] = function()
     local db = resetDB()
 
     Store:OnCountdownStart({ "Elsie-Proudmoore", "Grimgrace-Proudmoore" }, {}, 6, {
@@ -781,12 +781,12 @@ tests["a pull records the latest available item level without requiring one"] = 
     })
 
     assertTableEquals(db[PULL_DAY], {
-        ["Elsie-Proudmoore"] = { status = 3, itemLevel = 712.5 },
-        ["Grimgrace-Proudmoore"] = { status = 3 },
+        ["Elsie-Proudmoore"] = { status = 3, itemLevel = 712.5, gearSnapshotTaken = true },
+        ["Grimgrace-Proudmoore"] = { status = 3, gearSnapshotTaken = true },
     })
 end
 
-tests["later pulls replace an attendance item level only when a newer value is available"] = function()
+tests["later pulls never replace the arrival item level"] = function()
     local db = resetDB()
 
     Store:OnCountdownStart({ "Elsie-Proudmoore" }, {}, 6, {
@@ -799,7 +799,8 @@ tests["later pulls replace an attendance item level only when a newer value is a
 
     assertTableEquals(db[PULL_DAY]["Elsie-Proudmoore"], {
         status = 3,
-        itemLevel = 712.5,
+        itemLevel = 710,
+        gearSnapshotTaken = true,
     })
 end
 
@@ -815,6 +816,83 @@ tests["manual status changes preserve the recorded item level"] = function()
         status = 1,
         itemLevel = 712.5,
     })
+end
+
+tests["arrival snapshots store only deficiencies and ignore gear fixed later that night"] = function()
+    local db = resetDB()
+    local name = "Elsie-Proudmoore"
+    local audit = {
+        enchants = { status = "unknown", missing = { { slot = 11, count = 1 } }, unknown = { 1 } },
+        gems = { status = "missing", missing = { { slot = 2, count = 2 } }, unknown = {} },
+    }
+    Store:OnCountdownStart({ name }, {}, 6, { [name] = 100 }, { [name] = audit })
+    assertTableEquals(db[PULL_DAY][name], { status = 3, itemLevel = 100, gearSnapshotTaken = true,
+        missingEnchants = { [11] = 1 }, missingGems = { [2] = 2 } })
+    audit.enchants.missing[1].slot = 12
+    audit.gems.missing[1].count = 1
+    local clean = { enchants = { missing = {}, unknown = {} }, gems = { missing = {}, unknown = {} } }
+    Store:OnCountdownStart({ name }, {}, 6, { [name] = 110 }, { [name] = clean })
+    assertTableEquals(db[PULL_DAY][name].missingEnchants, { [11] = 1 })
+    assertTableEquals(db[PULL_DAY][name].missingGems, { [2] = 2 })
+    assertEquals(db[PULL_DAY][name].itemLevel, 100)
+end
+
+tests["an unknown arrival snapshot stays unknown after later inspections and a manual Missing edit"] = function()
+    local db = resetDB()
+    local name = "Elsie-Proudmoore"
+    Store:OnCountdownStart({ name }, {}, 6)
+    Store:SetStatus(PULL_DAY, name, Store.STATUS.MISSING)
+    Store:OnCountdownStart({ name }, {}, 6, { [name] = 123 }, {
+        [name] = { enchants = { missing = { { slot = 5, count = 1 } } } },
+    })
+    assertTableEquals(db[PULL_DAY][name], { status = 2, gearSnapshotTaken = true })
+end
+
+tests["late arrivals snapshot their first attended pull and start fresh on the next raid day"] = function()
+    local db = resetDB()
+    local name = "Elsie-Proudmoore"
+    Store:OnCountdownStart({ "Niven-Proudmoore" }, { rosterEntry("Elsie", name) }, 6)
+    assertNil(db[PULL_DAY][name].gearSnapshotTaken)
+    Store:OnCountdownStart({ name }, {}, 6, { [name] = 100 })
+    assertEquals(db[PULL_DAY][name].status, 2)
+    assertEquals(db[PULL_DAY][name].itemLevel, 100)
+    atServerTime(PULL_TIME + DAY, function()
+        Store:OnCountdownStart({ name }, {}, 6, { [name] = 110 })
+        assertEquals(db[Store:GetRaidDay(6)][name].itemLevel, 110)
+    end)
+    assertEquals(db[PULL_DAY][name].itemLevel, 100)
+end
+
+tests["reloading the store preserves frozen snapshots including arrivals without measurements"] = function()
+    local db = resetDB()
+    local name = "Elsie-Proudmoore"
+    Store:OnCountdownStart({ name }, {}, 6)
+    local savedStore = PRT.AttendanceStore
+    local ok, err = pcall(function()
+        dofile("Modules/Attendance/AttendanceStore.lua")
+        PRT.AttendanceStore:OnCountdownStart({ name }, {}, 6, { [name] = 999 })
+        assertNil(db[PULL_DAY][name].itemLevel)
+        assertTrue(db[PULL_DAY][name].gearSnapshotTaken)
+    end)
+    PRT.AttendanceStore = savedStore
+    if not ok then error(err, 0) end
+end
+
+tests["record validation rejects full equipment and malformed missing-slot maps"] = function()
+    local invalid = {
+        { status = 3, equipment = {} },
+        { status = 3, missingEnchants = { [5] = 2 } },
+        { status = 3, missingGems = { [2] = 0 } },
+        { status = 3, missingGems = { [4] = 1 } },
+        { status = 3, missingGems = { [18] = 1 } },
+        { status = 3, missingGems = { neck = 1 } },
+        { status = 3, missingGems = { [2] = 0 / 0 } },
+        { status = 3, gearSnapshotTaken = false },
+    }
+    for _, record in ipairs(invalid) do
+        assertNil(Store.PrepareRecord(record))
+    end
+    assertTableEquals(Store.PrepareRecord({ status = 3, missingGems = {}, missingEnchants = {} }), { status = 3 })
 end
 
 return tests

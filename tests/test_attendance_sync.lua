@@ -2474,4 +2474,23 @@ tests["combat ending does not apply a discarded roster or notify a deferred refr
     end)
 end
 
+tests["day synchronization preserves frozen readiness deficiencies and rejects malformed gear"] = function()
+    withDatabases({}, localRoster(), function()
+        freshSync()
+        local record = { status = 3, itemLevel = 120, gearSnapshotTaken = true,
+            missingEnchants = { [11] = 1 }, missingGems = { [2] = 2 } }
+        withGlobals(LEADER_GLOBALS, function()
+            dispatch(DAY_PUSH, { day = AUG_05, records = { [NIVEN] = record } }, LEADER)
+        end)
+        assertTrue(Sync:AcceptPendingDay())
+        assertTableEquals(PurplexityRaidToolsAttendanceDB[AUG_05][NIVEN], record)
+        record.missingGems[2] = 0
+        withGlobals(LEADER_GLOBALS, function()
+            dispatch(DAY_PUSH, { day = AUG_05, records = { [NIVEN] = record } }, LEADER)
+        end)
+        assertNil(Sync:GetPendingDay())
+        assertEquals(PurplexityRaidToolsAttendanceDB[AUG_05][NIVEN].missingGems[2], 2)
+    end)
+end
+
 return tests

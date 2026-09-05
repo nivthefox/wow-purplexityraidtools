@@ -126,35 +126,11 @@ local function IsSoundInventory(days)
     return true
 end
 
-local function IsItemLevel(itemLevel)
-    return type(itemLevel) == "number" and itemLevel == itemLevel
-        and itemLevel > 0 and itemLevel < math.huge
-end
-
 local function PrepareRecord(record)
     if VALID_STATUSES[record] then
         return { status = record }
     end
-    if type(record) ~= "table" then
-        return nil
-    end
-    for key in pairs(record) do
-        if key ~= "status" and key ~= "itemLevel" then
-            return nil
-        end
-    end
-    if not VALID_STATUSES[record.status] then
-        return nil
-    end
-    if record.itemLevel ~= nil and not IsItemLevel(record.itemLevel) then
-        return nil
-    end
-
-    local prepared = { status = record.status }
-    if record.itemLevel then
-        prepared.itemLevel = record.itemLevel
-    end
-    return prepared
+    return PRT.AttendanceStore.PrepareRecord(record)
 end
 
 local function PrepareDayRecord(data)

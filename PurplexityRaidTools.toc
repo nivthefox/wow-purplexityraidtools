@@ -71,6 +71,7 @@ Modules/RosterNicknames/Grid2.lua
 Modules/RosterNicknames/EnhanceQoL.lua
 Modules/Attendance/RecordsUI.lua
 Modules/Attendance/AttendanceDatabaseUI.lua
+Modules/Attendance/AttendanceDetailsUI.lua
 Modules/Attendance/AttendanceUI.lua
 Modules/Attendance/RosterUI.lua
 Modules/Profiles.lua

@@ -38,7 +38,11 @@ Creates timed encounter notes in a visual editor or from imported [NSRT-style te
 
 ### Attendance
 
-Records attendance automatically from pull countdowns in configured content types, including each character's latest available equipped item level. Reports combine a raider's characters under the roster and distinguish present, late, absent, and missing attendance. Records can be corrected manually, retained for a configurable period, and synced within the raid. The complete attendance history and roster can be backed up and restored together through a versioned text export.
+Records attendance automatically from pull countdowns in configured content types. Each character's first attended pull of the raid night freezes the available equipped item level and any known missing enchants or gems. Late arrivals are captured on their first attended pull. Later gear changes do not replace the snapshot, and data unavailable on arrival remains unmeasured. Only missing slots and missing gem counts are saved, along with a snapshot marker; full equipment and successful enhancements are not stored.
+
+The attendance overview combines a raider's characters and shows attendance and the most recent available item-level measurement across those characters. Click a player name to open character-specific gear progression, daily attendance, and recorded deficiencies, starting with the character whose item level was recorded most recently. Click a raid-day cell to edit attendance as before. The detail view includes a character selector, older/newer history pages, and a return button. Existing history keeps its previously recorded values; it cannot be reconstructed as arrival snapshots retroactively.
+
+Reports distinguish present, standby, late, absent, and missing attendance. Present, standby, and late count as attended. Records can be corrected manually, retained for a configurable period, and synced within the raid. The complete attendance history and roster, including gear snapshots, can be backed up and restored together through a versioned text export.
 
 ### Roster
 

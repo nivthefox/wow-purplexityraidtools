@@ -335,12 +335,13 @@ end
 local function storeSpy()
     local spy = { starts = {}, cancels = 0, expiries = {} }
 
-    function spy:OnCountdownStart(group, roster, rolloverHour, itemLevels)
+    function spy:OnCountdownStart(group, roster, rolloverHour, itemLevels, gearAudits)
         self.starts[#self.starts + 1] = {
             group = group,
             roster = roster,
             rolloverHour = rolloverHour,
             itemLevels = itemLevels,
+            gearAudits = gearAudits,
         }
     end
 
@@ -753,8 +754,8 @@ tests["a countdown start records Present for the group and Missing for the absen
     assertNil(attendance[AUG_04],
         "03:00 with a rollover hour of 2 belongs to the new day, not the night before")
     assertTableEquals(attendance[AUG_05], {
-        [NIV] = { status = PRESENT },
-        [BOB] = { status = PRESENT },
+        [NIV] = { status = PRESENT, gearSnapshotTaken = true },
+        [BOB] = { status = PRESENT, gearSnapshotTaken = true },
         [SASJAH] = { status = MISSING },
     }, "the placeholder must reach neither the record nor the database")
 end
@@ -1231,6 +1232,27 @@ tests["after Initialize the roster falls back to the guild for a character outsi
                 assertEquals(Roster:ResolveClass(NIV), "MAGE",
                     "the group source answers first, and it is the one that is current")
                 assertNil(Roster:ResolveClass(SASJAH))
+            end)
+        end)
+    end)
+end
+
+tests["the attendance snapshot uses the shared inspection audit at the first attended pull"] = function()
+    local missing = { enchants = { missing = { { slot = 11, count = 1 } }, unknown = {} },
+        gems = { missing = {}, unknown = {} } }
+    local member = { name = NIV, itemLevel = 100, gearAudit = missing }
+    local attendance = {}
+    withPRT({ GroupInspect = groupInspectFake(groupData({ member })) }, function()
+        withDatabases(attendance, {}, function()
+            withSettings(settingsWith(), function()
+                AttendanceWiring:OnCountdownStart()
+                member.itemLevel = 200
+                member.gearAudit = { enchants = { missing = {}, unknown = {} }, gems = { missing = {}, unknown = {} } }
+                AttendanceWiring:OnCountdownStart()
+                local record = attendance[PRT.AttendanceStore:GetRaidDay(6)][NIV]
+                assertEquals(record.itemLevel, 100)
+                assertTableEquals(record.missingEnchants, { [11] = 1 })
+                assertNil(record.missingGems)
             end)
         end)
     end)

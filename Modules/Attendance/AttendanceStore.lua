@@ -1,5 +1,6 @@
 -- AttendanceStore: pull-driven attendance records, stored as
--- PurplexityRaidToolsAttendanceDB[raidDay]["Name-Realm"] = { status, itemLevel }.
+-- PurplexityRaidToolsAttendanceDB[raidDay]["Name-Realm"] = { status, itemLevel,
+-- gearSnapshotTaken, missingEnchants, missingGems }. Gear is frozen on arrival.
 --
 -- Every day key is derived from the realm's CalendarTime. This keeps one raid
 -- night on the same day for players in different client timezones.
@@ -83,9 +84,71 @@ function AttendanceStore.GetItemLevel(record)
     return nil
 end
 
-local function UpdateItemLevel(record, itemLevel)
-    if type(record) == "table" and IsItemLevel(itemLevel) then
+local function CopyMissing(missing, enchants)
+    if type(missing) ~= "table" then
+        return nil, false
+    end
+    local copied = {}
+    for slot, count in pairs(missing) do
+        if type(slot) ~= "number" or slot % 1 ~= 0 or slot < 1 or slot > 17 or slot == 4
+            or type(count) ~= "number" or count <= 0 or count >= math.huge or count % 1 ~= 0
+            or enchants and count ~= 1 then
+            return nil, false
+        end
+        copied[slot] = count
+    end
+    return next(copied) and copied or nil, true
+end
+
+function AttendanceStore.PrepareRecord(record)
+    if type(record) ~= "table" or not VALID_STATUSES[record.status] then
+        return nil
+    end
+    for key in pairs(record) do
+        if key ~= "status" and key ~= "itemLevel" and key ~= "gearSnapshotTaken"
+            and key ~= "missingEnchants" and key ~= "missingGems" then
+            return nil
+        end
+    end
+    if record.itemLevel ~= nil and not IsItemLevel(record.itemLevel) then
+        return nil
+    end
+    if record.gearSnapshotTaken ~= nil and record.gearSnapshotTaken ~= true then
+        return nil
+    end
+    local prepared = NewRecord(record.status, record.itemLevel)
+    prepared.gearSnapshotTaken = record.gearSnapshotTaken
+    for _, field in ipairs({ "missingEnchants", "missingGems" }) do
+        if record[field] ~= nil then
+            local missing, valid = CopyMissing(record[field], field == "missingEnchants")
+            if not valid then
+                return nil
+            end
+            prepared[field] = missing
+        end
+    end
+    return prepared
+end
+
+local function MissingFromAudit(result)
+    if type(result) ~= "table" or type(result.missing) ~= "table" then
+        return nil
+    end
+    local missing = {}
+    for _, entry in ipairs(result.missing) do
+        missing[entry.slot] = entry.count
+    end
+    return next(missing) and missing or nil
+end
+
+local function CaptureArrivalGear(record, itemLevel, audit)
+    record.gearSnapshotTaken = true
+    if IsItemLevel(itemLevel) then
         record.itemLevel = itemLevel
+    end
+    if audit then
+        record.missingEnchants = MissingFromAudit(audit.enchants)
+        record.missingGems = MissingFromAudit(audit.gems)
     end
 end
 
@@ -125,7 +188,7 @@ function AttendanceStore:GetRaidDay(rolloverHour)
     return CalendarDayKey(raidDay)
 end
 
-function AttendanceStore:OnCountdownStart(group, roster, rolloverHour, itemLevels)
+function AttendanceStore:OnCountdownStart(group, roster, rolloverHour, itemLevels, gearAudits)
     local db = EnsureDB()
     local day = self:GetRaidDay(rolloverHour)
 
@@ -141,17 +204,20 @@ function AttendanceStore:OnCountdownStart(group, roster, rolloverHour, itemLevel
         local character = group[i]
         local recorded = dayRecord[character]
         if recorded == nil then
-            recorded = NewRecord(arrivalStatus, itemLevels and itemLevels[character])
+            recorded = NewRecord(arrivalStatus)
+            CaptureArrivalGear(recorded, itemLevels and itemLevels[character], gearAudits and gearAudits[character])
             dayRecord[character] = recorded
         elseif self.GetStatus(recorded) == STATUS.MISSING then
-            if type(recorded) == "table" then
-                recorded.status = STATUS.LATE
-            else
+            if type(recorded) ~= "table" then
                 recorded = NewRecord(STATUS.LATE)
                 dayRecord[character] = recorded
             end
+            if not recorded.gearSnapshotTaken and not recorded.itemLevel
+                and not recorded.missingEnchants and not recorded.missingGems then
+                CaptureArrivalGear(recorded, itemLevels and itemLevels[character], gearAudits and gearAudits[character])
+            end
+            recorded.status = STATUS.LATE
         end
-        UpdateItemLevel(recorded, itemLevels and itemLevels[character])
     end
 
     if not roster then
@@ -185,10 +251,14 @@ function AttendanceStore:SetStatus(day, character, status)
     end
 
     local record = dayRecord[character]
+    local hadAttendance = record ~= nil and self.GetStatus(record) ~= STATUS.MISSING
     if type(record) == "table" then
         record.status = status
     else
         dayRecord[character] = NewRecord(status)
+    end
+    if status == STATUS.MISSING and hadAttendance then
+        dayRecord[character].gearSnapshotTaken = true
     end
     return true
 end

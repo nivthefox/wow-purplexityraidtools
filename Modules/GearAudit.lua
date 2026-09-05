@@ -12,6 +12,10 @@ local SLOT_NAMES = { "Head", "Neck", "Shoulders", "Shirt", "Chest", "Waist", "Le
     "Feet", "Wrists", "Hands", "Ring 1", "Ring 2", "Trinket 1", "Trinket 2", "Back",
     "Main hand", "Off hand" }
 
+function GearAudit.GetSlotName(slot)
+    return SLOT_NAMES[slot]
+end
+
 function GearAudit.Capture(unit)
     local equipment = {}
     if not GetInventoryItemLink then

@@ -619,7 +619,7 @@ tests["a pull after a roster removal writes no Missing record for the removed pl
 
         local day = Store:GetRaidDay(6)
         assertTableEquals(PurplexityRaidToolsAttendanceDB[day],
-            { [ELSIE] = { status = PRESENT } },
+            { [ELSIE] = { status = PRESENT, gearSnapshotTaken = true } },
             "a removed player is no longer Missing-filled, however much history they have")
         assertTableEquals(PurplexityRaidToolsAttendanceDB[JUL_31],
             { [OMNIVICENT] = PRESENT, [ELSIE] = PRESENT },
@@ -669,6 +669,86 @@ tests["a report row carries its own character list, not the roster entry's array
     assertFalse(rowNamed(report.players, HURRICANE).characters == entryNamed(entries, HURRICANE).characters,
         "a row handed the entry's own array lets the view mutate the roster")
     assertTableEquals(rowNamed(report.players, HURRICANE).characters, { OMNIVICENT, NIVEN })
+end
+
+tests["gear history keeps character changes separate and leaves unmeasured days empty"] = function()
+    local days = { AUG_05, AUG_03, JUL_31, JUL_29 }
+    local db = {
+        [JUL_29] = { [OMNIVICENT] = { status = PRESENT, itemLevel = 100 } },
+        [JUL_31] = { [NIVEN] = { status = PRESENT, itemLevel = 900 } },
+        [AUG_03] = { [OMNIVICENT] = { status = PRESENT } },
+        [AUG_05] = { [OMNIVICENT] = { status = LATE, itemLevel = 112.5,
+            missingEnchants = { [11] = 1 }, missingGems = { [2] = 2 } } },
+    }
+    local history = Report:GetCharacterHistory(db, days, OMNIVICENT)
+    assertEquals(history.first.day, JUL_29)
+    assertEquals(history.last.day, AUG_05)
+    assertEquals(history.change, 12.5)
+    assertEquals(history.measuredDays, 2)
+    assertNil(history.observations[2].itemLevel)
+    assertNil(history.observations[2].status)
+    assertEquals(history.observations[3].status, PRESENT)
+    assertNil(history.observations[3].itemLevel)
+    assertTableEquals(history.last.missingGems, { [2] = 2 })
+    assertEquals(Report:GetCharacterHistory(db, days, NIVEN).last.itemLevel, 900)
+end
+
+tests["gear summary retains the last measured date and does not invent zero changes"] = function()
+    local db = { [AUG_03] = { [NIVEN] = { status = PRESENT, itemLevel = 120 } },
+        [AUG_05] = { [NIVEN] = { status = ABSENT }, [ELSIE] = { status = PRESENT } } }
+    local days = { AUG_05, AUG_03 }
+    local history = Report:GetCharacterHistory(db, days, NIVEN)
+    assertEquals(history.last.day, AUG_03)
+    assertNil(history.change)
+    local unknown = Report:GetCharacterHistory(db, days, ELSIE)
+    assertNil(unknown.last)
+    assertEquals(unknown.measuredDays, 0)
+    local attended, recorded = Report:GetAttendanceCounts({ [AUG_03] = PRESENT, [AUG_05] = STANDBY })
+    assertEquals(attended, 2)
+    assertEquals(recorded, 2)
+end
+
+tests["latest item level follows measurement dates across characters instead of roster order"] = function()
+    local db = {
+        [JUL_29] = { ["Qixt-Realm"] = { status = PRESENT, itemLevel = 120 } },
+        [AUG_03] = { ["Qixt-Realm"] = { status = MISSING },
+            ["Kixt-Realm"] = { status = LATE, itemLevel = 110 } },
+        [AUG_05] = { ["Qixt-Realm"] = { status = PRESENT, gearSnapshotTaken = true } },
+    }
+    local days = { AUG_05, AUG_03, JUL_29 }
+    local before = CopyTable(db)
+    for _, characters in ipairs({ { "Qixt-Realm", "Kixt-Realm" }, { "Kixt-Realm", "Qixt-Realm" } }) do
+        local level, character = Report:GetLatestItemLevel(db, days, characters)
+        assertEquals(level, 110)
+        assertEquals(character, "Kixt-Realm")
+    end
+    assertTableEquals(db, before)
+end
+
+tests["latest item level ignores invalid measurements and does not invent missing data"] = function()
+    local characters = { OMNIVICENT, NIVEN }
+    local db = {
+        [AUG_03] = { [NIVEN] = { status = PRESENT, itemLevel = 100 } },
+        [AUG_05] = { [OMNIVICENT] = { status = PRESENT, itemLevel = math.huge },
+            [NIVEN] = { status = PRESENT, itemLevel = 0 } },
+    }
+    local days = { AUG_05, AUG_03 }
+    local level, character = Report:GetLatestItemLevel(db, days, characters)
+    assertEquals(level, 100)
+    assertEquals(character, NIVEN)
+    db[AUG_03] = nil
+    level, character = Report:GetLatestItemLevel(db, days, characters)
+    assertNil(level)
+    assertNil(character)
+end
+
+tests["same-day item-level measurements resolve consistently when roster characters are reordered"] = function()
+    local db = { [AUG_05] = { [OMNIVICENT] = { status = PRESENT, itemLevel = 110 },
+        [NIVEN] = { status = PRESENT, itemLevel = 100 } } }
+    local level, character = Report:GetLatestItemLevel(db, { AUG_05 }, { OMNIVICENT, NIVEN })
+    local reorderedLevel, reorderedCharacter = Report:GetLatestItemLevel(db, { AUG_05 }, { NIVEN, OMNIVICENT })
+    assertEquals(level, reorderedLevel)
+    assertEquals(character, reorderedCharacter)
 end
 
 return tests

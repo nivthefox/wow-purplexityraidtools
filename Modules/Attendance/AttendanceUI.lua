@@ -489,12 +489,9 @@ PRT:RegisterTab("Attendance", function(parent)
         local title = overview:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
         title:SetPoint("TOPLEFT", 20, -10)
         title:SetText("Attendance & gear")
-        local summary = overview:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-        summary:SetPoint("TOPLEFT", 20, -34)
-        summary:SetText("Click a player for gear history. Click a raid-day cell to edit attendance.")
         local header = CreateFrame("Frame", nil, overview)
         header:SetHeight(HEADER_HEIGHT)
-        header:SetPoint("TOPLEFT", 20, -60)
+        header:SetPoint("TOPLEFT", 20, -34)
         header:SetPoint("RIGHT", panel, "RIGHT", -26, 0)
 
         local nameHeading = header:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -524,7 +521,7 @@ PRT:RegisterTab("Attendance", function(parent)
 
         local scrollFrame = CreateFrame("ScrollFrame", nil, overview, "UIPanelScrollFrameTemplate")
         scrollFrame:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -4)
-        scrollFrame:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -26, 48)
+        scrollFrame:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -26, 8)
 
         local scrollChild = CreateFrame("Frame", nil, scrollFrame)
         scrollChild:SetSize(panel:GetWidth() - 60, GRID_HEIGHT)
@@ -538,13 +535,6 @@ PRT:RegisterTab("Attendance", function(parent)
         local emptyLabel = overview:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
         emptyLabel:SetPoint("TOPLEFT", scrollFrame, "TOPLEFT", 4, -4)
         emptyLabel:SetText("No attendance records yet. A pull countdown creates the first one.")
-
-        local truncationNote = overview:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-        truncationNote:SetPoint("TOPLEFT", scrollFrame, "BOTTOMLEFT", 4, -8)
-        truncationNote:Hide()
-        local legend = overview:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-        legend:SetPoint("BOTTOMLEFT", 20, 8)
-        legend:SetText("P Present   S Standby   L Late   A Absent   M Missing   - No record")
 
         RefreshGrid = function()
             local report = BuildReport()
@@ -619,10 +609,6 @@ PRT:RegisterTab("Attendance", function(parent)
             else
                 emptyLabel:Hide()
             end
-
-            truncationNote:SetText("Showing " .. #days .. " of " .. #report.days
-                .. " days. Percentages use all recorded history.")
-            truncationNote:Show()
         end
 
         panel:SetScript("OnShow", function()

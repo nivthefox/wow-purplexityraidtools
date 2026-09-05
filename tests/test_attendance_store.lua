@@ -890,6 +890,22 @@ tests["an unknown arrival snapshot stays unknown after later inspections and a m
     assertTableEquals(db[PULL_DAY][name], { status = 2, gearSnapshotTaken = true })
 end
 
+tests["arrival snapshots distinguish confirmed zero deficiencies from uninspected gear"] = function()
+    local db = resetDB()
+    local name = "Elsie-Proudmoore"
+    Store:OnCountdownStart({ name }, {}, 6, nil, {
+        [name] = {
+            enchants = { status = "complete", missing = {}, unknown = {} },
+            gems = { status = "unknown", missing = {}, unknown = { 2 } },
+        },
+    })
+    assertTableEquals(db[PULL_DAY][name].missingEnchants, {})
+    assertNil(db[PULL_DAY][name].missingGems)
+    local prepared = Store.PrepareRecord(db[PULL_DAY][name])
+    assertTableEquals(prepared.missingEnchants, {})
+    assertNil(prepared.missingGems)
+end
+
 tests["late arrivals snapshot their first attended pull and start fresh on the next raid day"] = function()
     local db = resetDB()
     local name = "Elsie-Proudmoore"
@@ -934,7 +950,8 @@ tests["record validation rejects full equipment and malformed missing-slot maps"
     for _, record in ipairs(invalid) do
         assertNil(Store.PrepareRecord(record))
     end
-    assertTableEquals(Store.PrepareRecord({ status = 3, missingGems = {}, missingEnchants = {} }), { status = 3 })
+    assertTableEquals(Store.PrepareRecord({ status = 3, missingGems = {}, missingEnchants = {} }),
+        { status = 3, missingGems = {}, missingEnchants = {} })
 end
 
 return tests

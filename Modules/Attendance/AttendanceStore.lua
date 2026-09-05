@@ -97,7 +97,7 @@ local function CopyMissing(missing, enchants)
         end
         copied[slot] = count
     end
-    return next(copied) and copied or nil, true
+    return copied, true
 end
 
 function AttendanceStore.PrepareRecord(record)
@@ -138,7 +138,10 @@ local function MissingFromAudit(result)
     for _, entry in ipairs(result.missing) do
         missing[entry.slot] = entry.count
     end
-    return next(missing) and missing or nil
+    if next(missing) or result.status == "complete" then
+        return missing
+    end
+    return nil
 end
 
 local function CaptureArrivalGear(record, itemLevel, audit)

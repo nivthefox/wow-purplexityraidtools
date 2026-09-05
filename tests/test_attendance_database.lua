@@ -27,7 +27,7 @@ local function RichAttendance()
             ["Cinder-Illidan"] = { status = 4 },
         },
         ["2026-08-26"] = {
-            ["Aster-MoonGuard"] = { status = 2, itemLevel = 713 },
+            ["Aster-MoonGuard"] = { status = 2, itemLevel = 713, missingEnchants = {}, missingGems = {} },
             ["Cinder-Illidan"] = { status = 1 },
             ["Zephyra-Area52"] = { status = 0 },
         },

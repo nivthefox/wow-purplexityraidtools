@@ -5,6 +5,11 @@ PRT.AttendanceDetailsUI = AttendanceDetailsUI
 local PAGE_SIZE = 10
 local PLOT_HEIGHT = 155
 local GOLD = { 0.84, 0.72, 0.47 }
+local SERIES = {
+    { field = "itemLevel", label = "Equipped item level", color = GOLD, offset = 0 },
+    { field = "missingEnchants", label = "Missing enchants", color = { 0.2, 0.6, 1 }, offset = 1 },
+    { field = "missingGems", label = "Missing gems", color = { 1, 0.25, 0.25 }, offset = 2 },
+}
 
 local function Label(parent, template, x, y, width)
     local label = parent:CreateFontString(nil, "OVERLAY", template)
@@ -29,8 +34,11 @@ local function ItemLevel(value)
 end
 
 local function MissingText(missing)
+    if not missing then
+        return "None recorded"
+    end
     local slots = {}
-    for slot in pairs(missing or {}) do
+    for slot in pairs(missing) do
         slots[#slots + 1] = slot
     end
     table.sort(slots)
@@ -42,7 +50,19 @@ local function MissingText(missing)
         end
         names[#names + 1] = name
     end
-    return #names > 0 and table.concat(names, ", ") or "None recorded"
+    return #names > 0 and table.concat(names, ", ") or "0"
+end
+
+local function SeriesValue(observation, field)
+    local value = observation[field]
+    if field == "itemLevel" or value == nil then
+        return value
+    end
+    local count = 0
+    for _, missing in pairs(value) do
+        count = count + missing
+    end
+    return count
 end
 
 local function RenderObservation(view)
@@ -75,63 +95,100 @@ local function RenderObservation(view)
     end
 end
 
-local function DrawColumn(view, column, observation, x, y, previous)
+local function DrawSeries(view, series, x, y, previous)
+    series.marker:Hide()
+    series.line:Hide()
+    if y == nil then
+        return nil
+    end
+    series.marker:ClearAllPoints()
+    series.marker:SetPoint("CENTER", view.plot, "TOPLEFT", x, -y)
+    series.marker:Show()
+    if previous then
+        series.line:SetStartPoint("TOPLEFT", view.plot, previous.x, -previous.y)
+        series.line:SetEndPoint("TOPLEFT", view.plot, x, -y)
+        series.line:Show()
+    end
+    return { x = x, y = y }
+end
+
+local function DrawColumn(view, column, observation, x)
     column.day = observation.day
     column:ClearAllPoints()
     column:SetPoint("TOPLEFT", view.plot, "TOPLEFT", x - 22, 0)
     column:SetSize(44, PLOT_HEIGHT + 63)
     column.date:SetText(view.format.Date(observation.day))
     column.status:SetText(view.format.Status(observation.status))
-    column.marker:Hide()
-    column.line:Hide()
-    if y then
-        column.marker:ClearAllPoints()
-        column.marker:SetPoint("CENTER", view.plot, "TOPLEFT", x, -y)
-        column.marker:Show()
-        if previous then
-            column.line:SetStartPoint("TOPLEFT", view.plot, previous.x, -previous.y)
-            column.line:SetEndPoint("TOPLEFT", view.plot, x, -y)
-            column.line:Show()
+    column:Show()
+end
+
+local function ChartBounds(observations, first, last)
+    local low, high, countHigh
+    for index = first, last do
+        local observation = observations[index]
+        local level = observation and observation.itemLevel
+        if level then
+            low = low and math.min(low, level) or level
+            high = high and math.max(high, level) or level
+        end
+        if observation then
+            for _, field in ipairs({ "missingEnchants", "missingGems" }) do
+                local count = SeriesValue(observation, field)
+                if count ~= nil then
+                    countHigh = math.max(countHigh or 0, count)
+                end
+            end
         end
     end
-    column:Show()
+    return low, high, countHigh
 end
 
 local function RenderChart(view)
     local observations = view.history.observations
     local last = math.max(1, #observations - view.pageOffset)
     local first = math.max(1, last - PAGE_SIZE + 1)
-    local low, high
-    for index = first, last do
-        local level = observations[index] and observations[index].itemLevel
-        if level then
-            low = low and math.min(low, level) or level
-            high = high and math.max(high, level) or level
-        end
-    end
-    view.empty:SetShown(low == nil)
+    local low, high, countHigh = ChartBounds(observations, first, last)
+    local hasLevels, hasCounts = low ~= nil, countHigh ~= nil
+    view.empty:SetShown(not hasLevels and not hasCounts)
     low, high = math.floor((low or 0) - 2), math.ceil((high or 0) + 2)
+    countHigh = math.max(2, math.ceil((countHigh or 0) / 2) * 2)
     local width = math.max(1, view.plot:GetWidth())
+    view.countTitle:SetShown(hasCounts)
     for index, axis in ipairs(view.axes) do
         local fraction = (index - 1) / 2
         axis.label:SetText(ItemLevel(high - (high - low) * fraction))
-        axis.label:SetShown(not view.empty:IsShown())
+        axis.label:SetShown(hasLevels)
+        axis.count:SetText(string.format("%d", countHigh * (1 - fraction)))
+        axis.count:SetShown(hasCounts)
         axis.line:SetStartPoint("TOPLEFT", view.plot, 0, -fraction * PLOT_HEIGHT)
         axis.line:SetEndPoint("TOPLEFT", view.plot, width, -fraction * PLOT_HEIGHT)
     end
-    local previous
+    local previous = {}
     for order, column in ipairs(view.columns) do
         local observation = order <= last - first + 1 and observations[first + order - 1]
         if observation then
             local x = width * (order - 0.5) / (last - first + 1)
-            local y = observation.itemLevel and (high - observation.itemLevel)
-                / (high - low) * PLOT_HEIGHT
-            DrawColumn(view, column, observation, x, y, previous)
-            previous = y and { x = x, y = y } or nil
+            DrawColumn(view, column, observation, x)
+            for _, definition in ipairs(SERIES) do
+                local field = definition.field
+                local value = SeriesValue(observation, field)
+                local y
+                if value ~= nil then
+                    if field == "itemLevel" then
+                        y = (high - value) / (high - low) * PLOT_HEIGHT
+                    else
+                        y = (countHigh - value) / countHigh * PLOT_HEIGHT
+                    end
+                    y = y - definition.offset
+                end
+                previous[field] = DrawSeries(view, column.series[field], x, y, previous[field])
+            end
         else
             column:Hide()
-            column.marker:Hide()
-            column.line:Hide()
+            for _, series in pairs(column.series) do
+                series.marker:Hide()
+                series.line:Hide()
+            end
         end
     end
     view.older:SetEnabled(first > 1)
@@ -174,12 +231,16 @@ local function CreateColumn(view)
     column.date:SetJustifyH("CENTER")
     column.status = Label(column, "GameFontHighlightSmall", 0, -(PLOT_HEIGHT + 39), 44)
     column.status:SetJustifyH("CENTER")
-    column.marker = column:CreateTexture(nil, "OVERLAY")
-    column.marker:SetSize(6, 6)
-    column.marker:SetColorTexture(unpack(GOLD))
-    column.line = view.plot:CreateLine(nil, "ARTWORK")
-    column.line:SetColorTexture(unpack(GOLD))
-    column.line:SetThickness(2)
+    column.series = {}
+    for layer, definition in ipairs(SERIES) do
+        local marker = column:CreateTexture(nil, "OVERLAY", nil, layer)
+        marker:SetSize(4, 4)
+        marker:SetColorTexture(unpack(definition.color))
+        local line = view.plot:CreateLine(nil, "ARTWORK", nil, layer)
+        line:SetColorTexture(unpack(definition.color))
+        line:SetThickness(1)
+        column.series[definition.field] = { marker = marker, line = line }
+    end
     column:SetScript("OnClick", function()
         view.selectedDay = column.day
         RenderObservation(view)
@@ -217,25 +278,35 @@ function AttendanceDetailsUI:Build(parent, callbacks)
     view.latest = Label(view, "GameFontHighlight", 20, -137, 150)
     view.first = Label(view, "GameFontHighlight", 185, -137, 150)
     view.change = Label(view, "GameFontHighlight", 350, -137, 150)
-    local chartTitle = Label(view, "GameFontNormal", 64, -202)
-    chartTitle:SetText("Equipped item level")
+    for index, definition in ipairs(SERIES) do
+        local legend = Label(view, "GameFontNormal", 64 + (index - 1) * 175, -202)
+        legend:SetText(definition.label)
+        legend:SetTextColor(unpack(definition.color))
+    end
     view.plot = CreateFrame("Frame", nil, view)
     view.plot:SetPoint("TOPLEFT", 64, -226)
-    view.plot:SetPoint("RIGHT", view, "RIGHT", -30, 0)
+    view.plot:SetPoint("RIGHT", view, "RIGHT", -70, 0)
     view.plot:SetHeight(PLOT_HEIGHT)
+    view.countTitle = Label(view.plot, "GameFontDisableSmall", 0, 0)
+    view.countTitle:ClearAllPoints()
+    view.countTitle:SetPoint("TOPLEFT", view.plot, "TOPRIGHT", 8, 24)
+    view.countTitle:SetText("Count")
     view.axes = {}
     for index = 1, 3 do
         local label = Label(view.plot, "GameFontDisableSmall", -44, 5 - (index - 1) * PLOT_HEIGHT / 2, 36)
         label:SetJustifyH("RIGHT")
+        local count = Label(view.plot, "GameFontDisableSmall", 0, 0, 36)
+        count:ClearAllPoints()
+        count:SetPoint("TOPLEFT", view.plot, "TOPRIGHT", 8, 5 - (index - 1) * PLOT_HEIGHT / 2)
         local line = view.plot:CreateLine(nil, "BACKGROUND")
         line:SetColorTexture(0.35, 0.35, 0.35, 0.6)
         line:SetThickness(1)
-        view.axes[index] = { label = label, line = line }
+        view.axes[index] = { label = label, count = count, line = line }
     end
     view.empty = Label(view.plot, "GameFontDisableSmall", 0, -65)
     view.empty:SetPoint("RIGHT", 0, 0)
     view.empty:SetJustifyH("CENTER")
-    view.empty:SetText("No item-level measurements were recorded in these raid days.")
+    view.empty:SetText("No gear measurements were recorded in these raid days.")
     view.columns = {}
     for index = 1, PAGE_SIZE do
         view.columns[index] = CreateColumn(view)
@@ -261,8 +332,10 @@ function AttendanceDetailsUI:Build(parent, callbacks)
     end)
     view.edit:SetPoint("TOPRIGHT", -25, -491)
     view.enchants = Label(view, "GameFontHighlightSmall", 20, -526)
+    view.enchants:SetTextColor(unpack(SERIES[2].color))
     view.enchants:SetPoint("RIGHT", -25, 0)
     view.gems = Label(view, "GameFontHighlightSmall", 20, -555)
+    view.gems:SetTextColor(unpack(SERIES[3].color))
     view.gems:ClearAllPoints()
     view.gems:SetPoint("TOPLEFT", view.enchants, "BOTTOMLEFT", 0, -10)
     view.gems:SetPoint("RIGHT", -25, 0)
@@ -270,7 +343,8 @@ function AttendanceDetailsUI:Build(parent, callbacks)
     note:ClearAllPoints()
     note:SetPoint("TOPLEFT", view.gems, "BOTTOMLEFT", 0, -14)
     note:SetPoint("RIGHT", -25, 0)
-    note:SetText("Missing lists reflect arrival snapshots. None recorded can include uninspected slots.")
+    note:SetText("Missing counts reflect arrival snapshots and can exclude uninspected slots. "
+        .. "Zero means none missing; unrecorded values leave gaps.")
     view:SetScript("OnSizeChanged", function()
         if view.history and view:IsShown() then
             RenderChart(view)

@@ -2493,4 +2493,16 @@ tests["day synchronization preserves frozen readiness deficiencies and rejects m
     end)
 end
 
+tests["day synchronization preserves zero missing counts without filling in unrecorded metrics"] = function()
+    withDatabases({}, localRoster(), function()
+        freshSync()
+        local record = { status = 3, gearSnapshotTaken = true, missingEnchants = {} }
+        withGlobals(LEADER_GLOBALS, function()
+            dispatch(DAY_PUSH, { day = AUG_05, records = { [NIVEN] = record } }, LEADER)
+        end)
+        assertTrue(Sync:AcceptPendingDay())
+        assertTableEquals(PurplexityRaidToolsAttendanceDB[AUG_05][NIVEN], record)
+    end)
+end
+
 return tests

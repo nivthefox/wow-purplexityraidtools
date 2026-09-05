@@ -30,6 +30,8 @@ local function WithAttendanceFrames(body)
         function object:SetupMenu(callback) self.menu = callback end
         function object:SetStartPoint(...) self.start = { ... } end
         function object:SetEndPoint(...) self.finish = { ... } end
+        function object:SetPoint(...) self.point = { ... } end
+        function object:SetColorTexture(...) self.color = { ... } end
         setmetatable(object, { __index = function() return function() end end })
         objects[#objects + 1] = object
         return object
@@ -105,8 +107,9 @@ tests["names navigate to character history while attendance cells still edit the
         assertFalse(row:IsVisible())
         assertEquals(detail.character, "Aster-Realm")
         assertEquals(detail.history.change, 10)
-        assertFalse(detail.columns[2].marker:IsShown())
-        assertFalse(detail.columns[3].line:IsShown(), "the graph must not connect across an unmeasured day")
+        assertFalse(detail.columns[2].series.itemLevel.marker:IsShown())
+        assertFalse(detail.columns[3].series.itemLevel.line:IsShown(),
+            "the graph must not connect across an unmeasured day")
         assertEquals(detail.gems.text, "Missing gems: Neck (2)")
         detail.back.scripts.OnClick()
         assertFalse(detail:IsShown())
@@ -124,6 +127,73 @@ tests["names navigate to character history while attendance cells still edit the
         assertTableEquals(db["2026-09-03"]["Aster-Realm"].missingGems, { [2] = 2 })
         prt.AttendanceUI:Refresh()
         assertEquals(row.itemLevel.text, "110.0")
+    end)
+end
+
+tests["gear chart totals missing slots on a count axis and includes zero arrival counts without item levels"] = function()
+    WithAttendanceFrames(function(_, row, detail, _, db)
+        db["2026-09-01"]["Aster-Realm"] = { status = 3, gearSnapshotTaken = true,
+            missingEnchants = { [11] = 1, [12] = 1 }, missingGems = { [2] = 3, [11] = 2 } }
+        db["2026-09-02"] = { ["Aster-Realm"] = { status = 3, gearSnapshotTaken = true,
+            missingEnchants = {}, missingGems = {} } }
+        db["2026-09-03"]["Aster-Realm"].itemLevel = nil
+        row.nameButton.scripts.OnClick()
+
+        assertFalse(detail.empty:IsShown())
+        assertFalse(detail.axes[1].label:IsShown())
+        assertEquals(detail.axes[1].count.text, "6")
+        assertEquals(detail.axes[2].count.text, "3")
+        assertEquals(detail.axes[3].count.text, "0")
+        local first = detail.columns[1].series
+        assertTrue(first.missingEnchants.marker:IsShown())
+        assertTrue(first.missingGems.marker:IsShown())
+        assertFalse(first.itemLevel.marker:IsShown())
+        assertNear(first.missingEnchants.marker.point[5], -155 * 4 / 6 + 1, 0.001)
+        assertNear(first.missingGems.marker.point[5], -155 / 6 + 2, 0.001)
+        assertTableEquals(first.missingEnchants.line.color, { 0.2, 0.6, 1 })
+        assertTableEquals(first.missingGems.line.color, { 1, 0.25, 0.25 })
+        local second = detail.columns[2].series
+        assertTrue(second.missingEnchants.line:IsShown())
+        assertTrue(second.missingGems.line:IsShown())
+        assertEquals(second.missingEnchants.marker.point[5], -155 + 1)
+        assertEquals(second.missingGems.marker.point[5], -155 + 2)
+        detail.columns[2].scripts.OnClick()
+        assertEquals(detail.enchants.text, "Missing enchants: 0")
+        assertEquals(detail.gems.text, "Missing gems: 0")
+        assertTrue(detail.columns[3].series.missingEnchants.line:IsShown())
+        assertTrue(detail.columns[3].series.missingGems.line:IsShown())
+    end)
+end
+
+tests["gear chart leaves independent gaps for unrecorded missing counts"] = function()
+    WithAttendanceFrames(function(_, row, detail, _, db)
+        db["2026-09-01"]["Aster-Realm"].missingEnchants = { [11] = 1 }
+        db["2026-09-02"]["Aster-Realm"] = { status = 3, itemLevel = 105,
+            gearSnapshotTaken = true, missingGems = { [2] = 2 } }
+        row.nameButton.scripts.OnClick()
+
+        local first, second, third = detail.columns[1].series, detail.columns[2].series, detail.columns[3].series
+        assertTrue(first.missingEnchants.marker:IsShown())
+        assertFalse(first.missingGems.marker:IsShown())
+        assertFalse(second.missingEnchants.marker:IsShown())
+        assertTrue(second.missingGems.marker:IsShown())
+        assertFalse(second.missingGems.line:IsShown())
+        assertFalse(third.missingEnchants.line:IsShown())
+        assertTrue(third.missingGems.line:IsShown())
+        assertTrue(third.itemLevel.line:IsShown())
+        detail.columns[2].scripts.OnClick()
+        assertEquals(detail.enchants.text, "Missing enchants: None recorded")
+
+        local choices = {}
+        detail.dropdown.menu(nil, { CreateRadio = function(_, name, _, callback) choices[name] = callback end })
+        choices["Astris-Realm"]()
+        assertFalse(detail.axes[1].count:IsShown())
+        for _, column in ipairs(detail.columns) do
+            assertFalse(column.series.missingEnchants.marker:IsShown())
+            assertFalse(column.series.missingEnchants.line:IsShown())
+            assertFalse(column.series.missingGems.marker:IsShown())
+            assertFalse(column.series.missingGems.line:IsShown())
+        end
     end)
 end
 

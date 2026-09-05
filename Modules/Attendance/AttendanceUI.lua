@@ -204,6 +204,20 @@ local function SortPlayers(players, key, descending)
     end)
 end
 
+local function AverageOf(players, key)
+    local total, count = 0, 0
+    for _, entry in ipairs(players) do
+        if entry[key] ~= nil then
+            total = total + entry[key]
+            count = count + 1
+        end
+    end
+    if count == 0 then
+        return nil
+    end
+    return total / count
+end
+
 local function CreateSortHeading(parent, key, label, width, xOffset, onClick)
     local heading = CreateFrame("Button", nil, parent)
     heading:SetSize(width, HEADER_HEIGHT)
@@ -490,6 +504,29 @@ local function CreateGridRow(parent, cellCount)
     return row
 end
 
+local function CreateAverageRow(parent)
+    local row = CreateFrame("Frame", nil, parent)
+    row:SetHeight(ROW_HEIGHT)
+
+    row.name = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    row.name:SetPoint("LEFT", 0, 0)
+    row.name:SetWidth(NAME_WIDTH)
+    row.name:SetJustifyH("LEFT")
+    row.name:SetText("Average")
+
+    row.percentage = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    row.percentage:SetPoint("LEFT", NAME_WIDTH, 0)
+    row.percentage:SetWidth(PCT_WIDTH)
+    row.percentage:SetJustifyH("CENTER")
+
+    row.itemLevel = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    row.itemLevel:SetPoint("LEFT", NAME_WIDTH + PCT_WIDTH, 0)
+    row.itemLevel:SetWidth(ITEM_LEVEL_WIDTH)
+    row.itemLevel:SetJustifyH("CENTER")
+
+    return row
+end
+
 local function FillGridRow(row, entry, days, reportDays, deleteCharacter)
     local selected = false
     for _, character in ipairs(entry.characters) do
@@ -592,6 +629,8 @@ PRT:RegisterTab("Attendance", function(parent)
         scrollChild:SetSize(panel:GetWidth() - 60, GRID_HEIGHT)
         scrollFrame:SetScrollChild(scrollChild)
 
+        local averageRow = CreateAverageRow(scrollChild)
+
         local sectionLabel = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
         sectionLabel:SetJustifyH("LEFT")
         sectionLabel:SetText("Not on roster")
@@ -653,6 +692,18 @@ PRT:RegisterTab("Attendance", function(parent)
 
             for _, entry in ipairs(report.players) do
                 PlaceRow(entry)
+            end
+
+            averageRow:SetShown(#report.players > 0)
+            if #report.players > 0 then
+                averageRow:ClearAllPoints()
+                averageRow:SetPoint("TOPLEFT", 0, -yOffset)
+                averageRow:SetPoint("RIGHT", scrollChild, "RIGHT", 0, 0)
+                local percentage = AverageOf(report.players, "percentage")
+                averageRow.percentage:SetText(PercentageText(math.floor(percentage + 0.5)))
+                local itemLevel = AverageOf(report.players, "itemLevel")
+                averageRow.itemLevel:SetText(itemLevel and string.format("%.1f", itemLevel) or "-")
+                yOffset = yOffset + ROW_HEIGHT
             end
 
             if #report.unrostered > 0 then

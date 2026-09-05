@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-09-05
+
 ### Added
 
 - Attendance now shows item-level summaries, roster averages, and raider histories accessible by clicking a name.
@@ -278,7 +280,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Initial alpha release with Don't Release and Ready Check modules.
 
-[Unreleased]: https://github.com/nivthefox/wow-purplexityraidtools/compare/v1.4.2...HEAD
+[Unreleased]: https://github.com/nivthefox/wow-purplexityraidtools/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/nivthefox/wow-purplexityraidtools/compare/v1.4.2...v1.5.0
 [1.4.2]: https://github.com/nivthefox/wow-purplexityraidtools/compare/v1.4.1...v1.4.2
 [1.4.1]: https://github.com/nivthefox/wow-purplexityraidtools/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/nivthefox/wow-purplexityraidtools/compare/v1.3.1...v1.4.0

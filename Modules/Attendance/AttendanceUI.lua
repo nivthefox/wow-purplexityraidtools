@@ -19,6 +19,7 @@ local HEADER_HEIGHT = 22
 local SECTION_HEIGHT = 22
 local GRID_HEIGHT = 380
 local NAME_WIDTH = 116
+local DELETE_BUTTON_WIDTH = 16
 local PCT_WIDTH = 46
 local ITEM_LEVEL_WIDTH = 82
 local SUMMARY_WIDTH = NAME_WIDTH + PCT_WIDTH + ITEM_LEVEL_WIDTH
@@ -336,6 +337,24 @@ end
 -- Grid
 --------------------------------------------------------------------------------
 
+local DELETE_CHARACTER_DIALOG = {
+    text = "Are you sure you want to delete all attendance and recorded gear history for %s across all saved days?",
+    button1 = "Delete",
+    button2 = "Cancel",
+    timeout = 0,
+    whileDead = true,
+    hideOnEscape = true,
+    showAlert = true,
+    OnAccept = function(_, character)
+        local ok, err = PRT.AttendanceStore:DeleteCharacter(character)
+        if not ok then
+            print("|cFFFF0000PurplexityRaidTools:|r " .. tostring(err))
+            return
+        end
+        AttendanceUI:Refresh()
+    end,
+}
+
 local function CreateGridRow(parent, cellCount)
     local row = CreateFrame("Frame", nil, parent)
     row:SetHeight(ROW_HEIGHT)
@@ -352,6 +371,27 @@ local function CreateGridRow(parent, cellCount)
     row.name:SetWidth(NAME_WIDTH)
     row.name:SetJustifyH("LEFT")
     row.name:SetWordWrap(false)
+
+    row.delete = CreateFrame("Button", nil, row)
+    row.delete:SetSize(DELETE_BUTTON_WIDTH, ROW_HEIGHT)
+    row.delete:SetPoint("LEFT", NAME_WIDTH - DELETE_BUTTON_WIDTH, 0)
+    row.delete:SetNormalFontObject("GameFontNormalSmall")
+    row.delete:SetText(Colored("FFFF0000", "x"))
+    row.delete:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
+    row.delete:SetScript("OnClick", function()
+        if not row.deleteCharacter then
+            return
+        end
+        GameTooltip:Hide()
+        StaticPopupDialogs["PRT_ATTENDANCE_DELETE_CHARACTER"] = DELETE_CHARACTER_DIALOG
+        StaticPopup_Show("PRT_ATTENDANCE_DELETE_CHARACTER", row.deleteCharacter, nil, row.deleteCharacter)
+    end)
+    row.delete:SetScript("OnEnter", function(button)
+        GameTooltip:SetOwner(button, "ANCHOR_RIGHT")
+        GameTooltip:SetText("Delete all attendance records for " .. row.deleteCharacter .. ".", 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    row.delete:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
     row.percentage = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     row.percentage:SetPoint("LEFT", NAME_WIDTH, 0)
@@ -383,7 +423,7 @@ local function CreateGridRow(parent, cellCount)
     return row
 end
 
-local function FillGridRow(row, entry, days, reportDays)
+local function FillGridRow(row, entry, days, reportDays, deleteCharacter)
     local selected = false
     for _, character in ipairs(entry.characters) do
         if character == lastViewedCharacter then
@@ -392,6 +432,11 @@ local function FillGridRow(row, entry, days, reportDays)
         end
     end
     row.selection:SetShown(selected)
+    row.deleteCharacter = deleteCharacter
+    row.delete:SetShown(deleteCharacter ~= nil)
+    local nameWidth = NAME_WIDTH - (deleteCharacter and DELETE_BUTTON_WIDTH or 0)
+    row.nameButton:SetWidth(nameWidth)
+    row.name:SetWidth(nameWidth)
     row.name:SetText(entry.name)
     row.percentage:SetText(PercentageText(entry.percentage))
     row.nameButton:SetScript("OnClick", function() OpenDetails(entry, reportDays) end)
@@ -532,7 +577,7 @@ PRT:RegisterTab("Attendance", function(parent)
             end
 
             local placed, yOffset = 0, 0
-            local function PlaceRow(entry)
+            local function PlaceRow(entry, deleteCharacter)
                 placed = placed + 1
                 local row = gridRows[placed]
                 if not row then
@@ -542,7 +587,7 @@ PRT:RegisterTab("Attendance", function(parent)
                 row:ClearAllPoints()
                 row:SetPoint("TOPLEFT", 0, -yOffset)
                 row:SetPoint("RIGHT", scrollChild, "RIGHT", 0, 0)
-                FillGridRow(row, entry, days, report.days)
+                FillGridRow(row, entry, days, report.days, deleteCharacter)
                 yOffset = yOffset + ROW_HEIGHT
             end
 
@@ -557,7 +602,7 @@ PRT:RegisterTab("Attendance", function(parent)
                 yOffset = yOffset + SECTION_HEIGHT
 
                 for _, entry in ipairs(report.unrostered) do
-                    PlaceRow(entry)
+                    PlaceRow(entry, entry.characters[1])
                 end
             else
                 sectionLabel:Hide()

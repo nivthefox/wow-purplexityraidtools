@@ -637,6 +637,48 @@ tests["deleting a missing character status changes nothing"] = function()
     assertTableEquals(db, { [PULL_DAY] = { ["Elsie-Proudmoore"] = 3 } })
 end
 
+tests["deleting a character removes all their history and preserves other characters and gear"] = function()
+    local db = resetDB()
+    local survivor = { status = 2, itemLevel = 110, missingGems = { [2] = 1 } }
+    db[PULL_DAY] = {
+        ["Guest-Proudmoore"] = { status = 3, itemLevel = 105 },
+        ["Elsie-Proudmoore"] = survivor,
+    }
+    db["2026-08-03"] = { ["Guest-Proudmoore"] = { status = 0 } }
+    db["2026-07-31"] = { ["Guest-Proudmoore"] = 4, ["Guest-OtherRealm"] = { status = 3 } }
+
+    local ok, err = Store:DeleteCharacter("Guest-Proudmoore")
+
+    assertTrue(ok)
+    assertNil(err)
+    assertTableEquals(db, {
+        [PULL_DAY] = { ["Elsie-Proudmoore"] = survivor },
+        ["2026-07-31"] = { ["Guest-OtherRealm"] = { status = 3 } },
+    })
+    assertEquals(db[PULL_DAY]["Elsie-Proudmoore"], survivor)
+end
+
+tests["deleting a character with no history leaves the database unchanged"] = function()
+    local db = resetDB()
+    db[PULL_DAY] = { ["Elsie-Proudmoore"] = { status = 3, itemLevel = 110 } }
+
+    local ok, err = Store:DeleteCharacter("Guest-Proudmoore")
+
+    assertFalse(ok)
+    assertEquals(type(err), "string")
+    assertTableEquals(db, { [PULL_DAY] = { ["Elsie-Proudmoore"] = { status = 3, itemLevel = 110 } } })
+end
+
+tests["deleting a character before any attendance is recorded does not create a database"] = function()
+    withGlobals({ PurplexityRaidToolsAttendanceDB = false }, function()
+        PurplexityRaidToolsAttendanceDB = nil
+        local ok, err = Store:DeleteCharacter("Guest-Proudmoore")
+        assertFalse(ok)
+        assertEquals(type(err), "string")
+        assertNil(PurplexityRaidToolsAttendanceDB)
+    end)
+end
+
 tests["the expiry routine deletes a day older than the threshold"] = function()
     local db = resetDB()
     db[NINETY_ONE_DAYS_OLD] = { ["Elsie-Proudmoore"] = 3 }

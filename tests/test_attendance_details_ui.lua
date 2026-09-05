@@ -6,6 +6,7 @@ if not PurplexityRaidTools.GearAudit then dofile("Modules/GearAudit.lua") end
 
 local function WithAttendanceFrames(body)
     local objects, tabSetup, grid = {}, nil, nil
+    local popups = {}
     local function Object(parent)
         local object = { parent = parent, shown = true, scripts = {} }
         function object:SetText(text) self.text = text end
@@ -63,7 +64,18 @@ local function WithAttendanceFrames(body)
         end,
         ButtonFrameTemplate_HidePortrait = function() end,
         ButtonFrameTemplate_HideButtonBar = function() end,
-        UIParent = Object(), UISpecialFrames = {}, RAID_CLASS_COLORS = {},
+        UIParent = Object(), UISpecialFrames = {}, RAID_CLASS_COLORS = {}, GameTooltip = Object(),
+        StaticPopupDialogs = {},
+        StaticPopup_Show = function(which, text, _, data)
+            local dialog = StaticPopupDialogs[which]
+            local popup = { dialog = dialog, text = string.format(dialog.text, text), data = data }
+            function popup:Accept() self.dialog.OnAccept(self, self.data) end
+            function popup:Cancel()
+                if self.dialog.OnCancel then self.dialog.OnCancel(self, self.data) end
+            end
+            popups[#popups + 1] = popup
+            return popup
+        end,
         Ambiguate = function(name) return name:match("^[^-]+") end,
         strcmputf8i = function(a, b) return a < b and -1 or a > b and 1 or 0 end,
     }
@@ -79,7 +91,7 @@ local function WithAttendanceFrames(body)
             if rawget(object, "nameButton") then row = object end
             if rawget(object, "columns") then detail = object end
         end
-        body(prt, row, detail, objects, db, roster)
+        body(prt, row, detail, objects, db, roster, popups)
     end)
     for key in pairs(overrides) do _G[key] = saved[key] end
     if not ok then error(err, 0) end
@@ -168,6 +180,130 @@ tests["older chart pages select a day from that page and can open its attendance
         detail.newer.scripts.OnClick()
         assertEquals(detail.selectedDay, "2026-09-20")
         row.nameButton.scripts.OnClick()
+    end)
+end
+
+tests["the unrostered delete button removes every day including history outside the visible columns"] = function()
+    WithAttendanceFrames(function(prt, rosterRow, _, objects, db, _, popups)
+        local original = CopyTable(db)
+        for index = 4, 20 do
+            db[string.format("2026-09-%02d", index)] = { ["Guest-Realm"] = { status = 3, itemLevel = 100 } }
+        end
+        db["2026-09-01"]["Guest-Realm"] = { status = 0 }
+        db["2026-09-01"]["Guest-OtherRealm"] = { status = 3 }
+        original["2026-09-01"]["Guest-OtherRealm"] = { status = 3 }
+        prt.AttendanceUI:Refresh()
+
+        assertFalse(rosterRow.delete:IsShown())
+        local guestRow
+        for _, object in ipairs(objects) do
+            if rawget(object, "nameButton") and object.name.text == "Guest-Realm" then guestRow = object end
+        end
+        assertNotNil(guestRow)
+        assertTrue(guestRow.delete:IsShown())
+        assertEquals(guestRow.delete.text, "|cFFFF0000x|r")
+        local beforeConfirmation = CopyTable(db)
+        guestRow.delete.scripts.OnClick()
+        assertTableEquals(db, beforeConfirmation)
+        assertEquals(#popups, 1)
+        assertEquals(popups[1].data, "Guest-Realm")
+        assertEquals(popups[1].text, "Are you sure you want to delete all attendance and recorded gear history for "
+            .. "Guest-Realm across all saved days?")
+        assertEquals(popups[1].dialog.button1, "Delete")
+        assertEquals(popups[1].dialog.button2, "Cancel")
+        popups[1]:Accept()
+
+        assertTableEquals(db, original)
+        assertFalse(guestRow:IsShown())
+        assertTrue(rosterRow:IsShown())
+        assertEquals(rosterRow.itemLevel.text, "110.0")
+    end)
+end
+
+tests["deleting the last unrostered row closes its editor and hides the empty section"] = function()
+    WithAttendanceFrames(function(prt, _, _, objects, db, _, popups)
+        db["2026-09-03"]["Guest-Realm"] = { status = 3 }
+        prt.AttendanceUI:Refresh()
+        local guestRow, section
+        for _, object in ipairs(objects) do
+            if rawget(object, "nameButton") and object.name.text == "Guest-Realm" then guestRow = object end
+            if rawget(object, "text") == "Not on roster" then section = object end
+        end
+        guestRow.cells[1].scripts.OnClick()
+        local modal
+        for _, object in ipairs(objects) do
+            if rawget(object, "characterRows") then modal = object end
+        end
+        assertTrue(modal:IsShown())
+        assertTrue(section:IsShown())
+
+        guestRow.delete.scripts.OnClick()
+        popups[1]:Accept()
+
+        assertFalse(guestRow:IsShown())
+        assertFalse(modal:IsShown())
+        assertFalse(section:IsShown())
+    end)
+end
+
+tests["a reused unrostered row loses its delete action when the player joins the roster"] = function()
+    WithAttendanceFrames(function(prt, rosterRow, _, objects, db, roster)
+        db["2026-09-03"]["Guest-Realm"] = { status = 3 }
+        prt.AttendanceUI:Refresh()
+        local guestRow
+        for _, object in ipairs(objects) do
+            if rawget(object, "nameButton") and object.name.text == "Guest-Realm" then guestRow = object end
+        end
+        assertTrue(guestRow.delete:IsShown())
+        assertTrue(guestRow.nameButton.width < rosterRow.nameButton.width)
+        roster[#roster + 1] = { nickname = "Guest", characters = { "Guest-Realm" } }
+
+        prt.AttendanceUI:Refresh()
+
+        assertEquals(guestRow.name.text, "Guest")
+        assertFalse(guestRow.delete:IsShown())
+        assertEquals(guestRow.nameButton.width, rosterRow.nameButton.width)
+        guestRow.delete.scripts.OnClick()
+        assertTableEquals(db["2026-09-03"]["Guest-Realm"], { status = 3 })
+    end)
+end
+
+tests["cancelling character deletion preserves attendance gear and the visible row"] = function()
+    WithAttendanceFrames(function(prt, _, _, objects, db, _, popups)
+        db["2026-09-03"]["Guest-Realm"] = { status = 3, itemLevel = 110, missingGems = { [2] = 1 } }
+        prt.AttendanceUI:Refresh()
+        local guestRow
+        for _, object in ipairs(objects) do
+            if rawget(object, "nameButton") and object.name.text == "Guest-Realm" then guestRow = object end
+        end
+        local original = CopyTable(db)
+        guestRow.delete.scripts.OnClick()
+        assertEquals(#popups, 1)
+        assertTrue(popups[1].dialog.hideOnEscape)
+        popups[1]:Cancel()
+
+        assertTableEquals(db, original)
+        assertTrue(guestRow:IsShown())
+    end)
+end
+
+tests["a deletion confirmation retains its character when the grid reuses the row"] = function()
+    WithAttendanceFrames(function(prt, _, _, objects, db, _, popups)
+        db["2026-09-03"]["Guest-Realm"] = { status = 3 }
+        prt.AttendanceUI:Refresh()
+        local guestRow
+        for _, object in ipairs(objects) do
+            if rawget(object, "nameButton") and object.name.text == "Guest-Realm" then guestRow = object end
+        end
+        guestRow.delete.scripts.OnClick()
+        db["2026-09-03"]["Earlier-Realm"] = { status = 2, itemLevel = 105 }
+        prt.AttendanceUI:Refresh()
+        assertEquals(guestRow.name.text, "Earlier-Realm")
+
+        popups[1]:Accept()
+
+        assertNil(db["2026-09-03"]["Guest-Realm"])
+        assertTableEquals(db["2026-09-03"]["Earlier-Realm"], { status = 2, itemLevel = 105 })
     end)
 end
 

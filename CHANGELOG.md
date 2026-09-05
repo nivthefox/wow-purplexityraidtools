@@ -12,7 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Item level and missing enchants or gems are recorded at each character’s first pull and preserved for the night.
 - The Gear view now identifies raid members with missing enchants or gems.
 - Attendance history and the complete roster can now be exported and imported together as a text backup.
-- Attendance entries can now be deleted individually from the status popup.
+- Attendance entries can now be deleted individually from the status popup, or across all days using the red x beside a player who is not on the roster.
 - Roster Nicknames can now replace character names in EnhanceQoL party and raid frames.
 
 ### Fixed

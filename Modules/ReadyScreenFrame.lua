@@ -9,6 +9,15 @@ local BACKDROP_PADDING = 8
 local COL_NAME_WIDTH = 130
 local COL_ICON_WIDTH = 24
 local COL_VERSION_WIDTH = 50
+local GEAR_COLUMNS = {
+    { key = "enchants", name = "Enchants", width = 80, display = "audit" },
+    { key = "gems", name = "Gems", width = 80, display = "audit" },
+}
+local AUDIT_STATUSES = {
+    complete = { text = "Complete", color = { 0.3, 1, 0.3 } },
+    missing = { text = "Missing", color = { 1, 0.3, 0.3 } },
+    unknown = { text = "Unknown", color = { 0.6, 0.6, 0.6 } },
+}
 
 local ROLE_ATLASES = {
     TANK = "groupfinder-icon-role-large-tank",
@@ -144,6 +153,22 @@ local function CreateRow(parent, index)
     row.buffIcons = {}
     row.buffTexts = {}
 
+    row:EnableMouse(true)
+    row:SetScript("OnEnter", function(self)
+        if currentView ~= "gear" then return end
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        for _, column in ipairs(GEAR_COLUMNS) do
+            GameTooltip:AddLine(column.name, 1, 1, 1)
+            GameTooltip:AddLine(PRT.GearAudit.GetDetails(self.gearAudit and self.gearAudit[column.key]),
+                0.8, 0.8, 0.8, true)
+        end
+        GameTooltip:Show()
+    end)
+    row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    row:SetScript("OnHide", function(self)
+        if GameTooltip:IsOwned(self) then GameTooltip:Hide() end
+    end)
+
     return row
 end
 
@@ -237,6 +262,7 @@ local function CreateHeaderRow(parent)
     row.readyLabel = readyLabel
 
     row.buffHeaders = {}
+    row.buffLabels = {}
 
     return row
 end
@@ -275,20 +301,36 @@ local function LayoutHeaderColumns(row, showReady, columns, isGear)
         icon:SetSize(COL_ICON_WIDTH - 4, COL_ICON_WIDTH - 4)
         icon:SetTexCoord(0.1, 0.9, 0.1, 0.9)
         table.insert(row.buffHeaders, icon)
+        local label = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        label:SetJustifyH("CENTER")
+        label:SetTextColor(0.8, 0.8, 0.8)
+        table.insert(row.buffLabels, label)
     end
 
     for i, col in ipairs(columns) do
         local icon = row.buffHeaders[i]
+        local label = row.buffLabels[i]
         local width = ColumnWidth(col)
         icon:ClearAllPoints()
         icon:SetPoint("CENTER", row, "LEFT", x + width / 2, 0)
-        icon:SetTexture(ColumnTexture(col))
-        icon:Show()
+        label:ClearAllPoints()
+        label:SetPoint("LEFT", row, "LEFT", x, 0)
+        label:SetWidth(width)
+        if col.display == "audit" then
+            icon:Hide()
+            label:SetText(col.name)
+            label:Show()
+        else
+            label:Hide()
+            icon:SetTexture(ColumnTexture(col))
+            icon:Show()
+        end
         x = x + width + COLUMN_PADDING
     end
 
     for i = #columns + 1, #row.buffHeaders do
         row.buffHeaders[i]:Hide()
+        row.buffLabels[i]:Hide()
     end
 end
 
@@ -340,6 +382,7 @@ local function BuildRoster()
             specId = member.specId,
             addonVersion = member.addonVersion,
             itemLevel = member.itemLevel,
+            gearAudit = member.gearAudit,
             unit = unitMap[guid],
         })
     end
@@ -502,6 +545,22 @@ local function SetRowItemLevel(row, entry)
     end
 end
 
+local function SetRowGearAudit(row, entry)
+    row.gearAudit = entry.gearAudit
+    for i = 1, #row.buffIcons do
+        row.buffIcons[i]:Hide()
+        row.buffTexts[i]:Hide()
+    end
+    for i, column in ipairs(GEAR_COLUMNS) do
+        local result = entry.gearAudit and entry.gearAudit[column.key]
+        local status = AUDIT_STATUSES[result and result.status or "unknown"]
+        local text = row.buffTexts[i]
+        text:SetText(status.text)
+        text:SetTextColor(unpack(status.color))
+        text:Show()
+    end
+end
+
 local function UpdateRow(row, entry, showReady, responses, rlVersion, isGear)
     local isOffline = (entry.unit and not UnitIsConnected(entry.unit)) or false
     local isDead = (entry.unit and UnitIsDeadOrGhost(entry.unit)) or false
@@ -523,10 +582,7 @@ local function UpdateRow(row, entry, showReady, responses, rlVersion, isGear)
     end
 
     if isGear then
-        for i = 1, #row.buffIcons do
-            row.buffIcons[i]:Hide()
-            row.buffTexts[i]:Hide()
-        end
+        SetRowGearAudit(row, entry)
     else
         SetRowBuffs(row, entry, isOffline)
     end
@@ -663,7 +719,7 @@ function ReadyScreenFrame:Refresh()
     if not frame or not frame:IsShown() then return end
 
     local isGear = currentView == "gear"
-    buffColumns = isGear and {} or GetBuffColumns()
+    buffColumns = isGear and GEAR_COLUMNS or GetBuffColumns()
     local mode = PRT.ReadyScreen:GetMode()
     local showReady = not isGear and (mode == "readycheck" or mode == "completed")
     local rlVersion = GetRaidLeaderVersion()

@@ -443,6 +443,7 @@ function ReadyScreen:ShowGear()
     if PRT.ReadyScreenFrame then
         PRT.ReadyScreenFrame:Show("gear")
     end
+    PRT.GroupInspect:RequestEquipmentRefresh()
 end
 
 function ReadyScreen:ShowReadyCheck(initiator)

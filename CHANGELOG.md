@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- The Gear view now identifies raid members with missing enchants or gems.
 - Attendance history and the complete roster can now be exported and imported together as a text backup.
 - Attendance entries can now be deleted individually from the status popup.
 - Roster Nicknames can now replace character names in EnhanceQoL party and raid frames.

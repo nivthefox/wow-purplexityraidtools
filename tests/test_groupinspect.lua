@@ -7,6 +7,10 @@
 
 local tests = {}
 
+if not PurplexityRaidTools.GearAudit then
+    dofile("Modules/GearAudit.lua")
+end
+
 if not PurplexityRaidTools.Comms then
     dofile("Libs/LibStub/LibStub.lua")
     dofile("Libs/LibSerialize/LibSerialize.lua")
@@ -124,6 +128,19 @@ end
 
 local function makeStubs()
     return {
+        GetInventoryItemLink = function(unit, slot)
+            if sim.onReadEquipment then sim.onReadEquipment(unit, slot) end
+            return sim.equipment and sim.equipment[unit] and sim.equipment[unit][slot]
+        end,
+        C_Item = {
+            IsItemDataCachedByID = function() return sim.itemCached ~= false end,
+            RequestLoadItemDataByID = function()
+                sim.itemRequests = (sim.itemRequests or 0) + 1
+            end,
+            GetItemInfoInstant = function() return 100, nil, nil, "INVTYPE_WEAPON" end,
+            GetItemStats = function() return {} end,
+            GetItemGemID = function() return nil end,
+        },
         UnitGUID = function(unitOrSender)
             local unit = UNITS[unitOrSender]
             if unit then
@@ -932,6 +949,130 @@ tests["INSPECT_READY stores the inspected member's equipped item level"] = funct
         onEventHandler(nil, "INSPECT_READY", "GUID-BOB")
 
         assertEquals(record.itemLevel, REMOTE_EQUIPPED_ITEM_LEVEL)
+    end)
+end
+
+tests["equipment is captured only for a matched inspection and before release"] = function()
+    runSim(function()
+        sim.units = { "raid1", "raid2" }
+        sim.equipment = { raid2 = { [1] = "item:100:5:0:0:0:0:" } }
+        GroupInspect:ScanRoster()
+        driveInspectTick()
+        local record = GroupInspect.members["GUID-BOB"]
+        onEventHandler(nil, "INSPECT_READY", "GUID-ZED")
+        assertNil(record.equipment)
+        local savedClear = ClearInspectPlayer
+        ClearInspectPlayer = function()
+            assertEquals(record.equipment[1], "item:100:5:0:0:0:0:")
+            sim.equipment = nil
+        end
+        local ok, err = pcall(onEventHandler, nil, "INSPECT_READY", "GUID-BOB")
+        ClearInspectPlayer = savedClear
+        assertTrue(ok, err)
+        assertEquals(record.equipment[1], "item:100:5:0:0:0:0:")
+    end)
+end
+
+tests["requesting equipment refresh preserves cached results and reinspects complete members"] = function()
+    runSim(function()
+        sim.units = { "raid1", "raid2" }
+        GroupInspect:ScanRoster()
+        driveInspectTick()
+        onEventHandler(nil, "INSPECT_READY", "GUID-BOB")
+        local record = GroupInspect.members["GUID-BOB"]
+        local cached = record.gearAudit
+        GroupInspect:RequestEquipmentRefresh()
+        assertEquals(record.gearAudit, cached)
+        driveInspectTick()
+        assertEquals(#sim.inspectedUnits, 2)
+        assertEquals(sim.inspectedUnits[2], "raid2")
+    end)
+end
+
+tests["item retries use captured links and stop after three requests"] = function()
+    runSim(function()
+        sim.units = { "raid1", "raid2" }
+        sim.equipment = { raid2 = { [1] = "item:100:0:0:0:0:0:" } }
+        sim.itemCached = false
+        GroupInspect:ScanRoster()
+        driveInspectTick()
+        onEventHandler(nil, "INSPECT_READY", "GUID-BOB")
+        sim.onReadEquipment = function(unit)
+            if unit == "raid2" then error("must not reread released inspection data") end
+        end
+        flushTimers()
+        assertEquals(sim.itemRequests, 3)
+        assertEquals(GroupInspect.members["GUID-BOB"].gearAudit.enchants.status, "unknown")
+    end)
+end
+
+tests["loaded item data updates the captured audit on retry"] = function()
+    runSim(function()
+        sim.units = { "raid1", "raid2" }
+        sim.equipment = { raid2 = { [1] = "item:100:0:0:0:0:0:" } }
+        sim.itemCached = false
+        GroupInspect:ScanRoster()
+        driveInspectTick()
+        onEventHandler(nil, "INSPECT_READY", "GUID-BOB")
+        sim.itemCached = true
+        flushTimers()
+        local result = GroupInspect.members["GUID-BOB"].gearAudit.enchants
+        assertEquals(result.missing[1].slot, 1)
+        assertEquals(sim.itemRequests, 1)
+    end)
+end
+
+tests["reopening Gear retries an unavailable member without dropping its refresh request"] = function()
+    runSim(function()
+        sim.units = { "raid1", "raid2" }
+        GroupInspect:ScanRoster()
+        driveInspectTick()
+        onEventHandler(nil, "INSPECT_READY", "GUID-BOB")
+        sim.uninspectableUnits.raid2 = true
+        GroupInspect:RequestEquipmentRefresh()
+        driveInspectTick()
+        sim.uninspectableUnits.raid2 = nil
+        GroupInspect:RequestEquipmentRefresh()
+        driveInspectTick()
+        assertEquals(#sim.inspectedUnits, 2)
+    end)
+end
+
+tests["an older item retry cannot overwrite a newer equipment snapshot"] = function()
+    runSim(function()
+        sim.units = { "raid1", "raid2" }
+        sim.equipment = { raid2 = { [1] = "item:100:0:0:0:0:0:" } }
+        sim.itemCached = false
+        GroupInspect:ScanRoster()
+        driveInspectTick()
+        onEventHandler(nil, "INSPECT_READY", "GUID-BOB")
+        sim.equipment.raid2[1] = "item:100:123:0:0:0:0:"
+        sim.itemCached = true
+        GroupInspect:RequestEquipmentRefresh()
+        driveInspectTick()
+        onEventHandler(nil, "INSPECT_READY", "GUID-BOB")
+        local record = GroupInspect.members["GUID-BOB"]
+        local audit = record.gearAudit
+        flushTimers()
+        assertEquals(record.gearAudit, audit)
+        assertEquals(#audit.enchants.missing, 0)
+    end)
+end
+
+tests["roster token reassignment cannot attribute an inspection to another member"] = function()
+    runSim(function()
+        sim.units = { "raid1", "raid2", "raid3" }
+        GroupInspect:ScanRoster()
+        driveInspectTick()
+        local savedGUID = UnitGUID
+        UnitGUID = function(unit)
+            if unit == "raid2" then return "GUID-ZED" end
+            return savedGUID(unit)
+        end
+        onEventHandler(nil, "INSPECT_READY", "GUID-ZED")
+        UnitGUID = savedGUID
+        assertNil(GroupInspect.members["GUID-ZED"].equipment)
+        assertNil(GroupInspect.members["GUID-BOB"].equipment)
     end)
 end
 

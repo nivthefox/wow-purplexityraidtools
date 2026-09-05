@@ -300,7 +300,12 @@ local function withShowHarness(body)
         end,
         Hide = function() end,
     }
-    PRT.GroupInspect = { members = {} }
+    PRT.GroupInspect = {
+        members = {},
+        RequestEquipmentRefresh = function()
+            context.equipmentRequests = (context.equipmentRequests or 0) + 1
+        end,
+    }
     PRT.GetSetting = function(_, key)
         assertEquals(key, "readyScreen")
         return { enabled = true }
@@ -340,6 +345,7 @@ tests["ShowGear selects Gear without starting a readiness status request"] = fun
         assertEquals(ReadyScreen:GetMode(), "gear")
         assertTableEquals(context.shown, { "gear" })
         assertEquals(context.statusRequests, 0)
+        assertEquals(context.equipmentRequests, 1)
     end)
 end
 

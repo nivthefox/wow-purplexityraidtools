@@ -29,6 +29,8 @@ end
 local priorityQueue = {}
 local sweepQueue = {}
 local inspectPending = nil
+local inspectPendingGUID = nil
+local equipmentRequests = {}
 local inCombat = false
 
 local inspectTicker = nil
@@ -210,10 +212,13 @@ end
 
 local function BeginInspect(unit)
     inspectPending = unit
+    inspectPendingGUID = UnitGUID(unit)
+    local requestedGUID = inspectPendingGUID
     NotifyInspect(unit)
     C_Timer.After(2, function()
-        if inspectPending == unit then
+        if inspectPending == unit and inspectPendingGUID == requestedGUID then
             inspectPending = nil
+            inspectPendingGUID = nil
         end
     end)
 end
@@ -387,8 +392,9 @@ local function ProcessNextInspect()
         local guid = table.remove(priorityQueue, 1)
         local unit = UnitForGUID(guid)
         local member = GroupInspect.members[guid]
-        if unit and member and (not member.specId or not member.itemLevel)
+        if unit and member and (equipmentRequests[guid] or not member.specId or not member.itemLevel)
             and CanInspect(unit, false) then
+            equipmentRequests[guid] = nil
             BeginInspect(unit)
             return
         end
@@ -461,32 +467,80 @@ local function TalentSetsDiffer(oldTalents, newTalents)
     return false
 end
 
+local function UpdateEquipmentAudit(guid, equipment, retries)
+    local member = GroupInspect.members[guid]
+    if not member or member.equipment ~= equipment then
+        return
+    end
+    local audit, pending = PRT.GearAudit.Evaluate(equipment)
+    member.gearAudit = audit
+    if retries == 0 or not next(pending) then
+        return
+    end
+    for itemID in pairs(pending) do
+        C_Item.RequestLoadItemDataByID(itemID)
+    end
+    C_Timer.After(1, function()
+        if GroupInspect.members[guid] ~= member or member.equipment ~= equipment then
+            return
+        end
+        UpdateEquipmentAudit(guid, equipment, retries - 1)
+        NotifyListeners()
+    end)
+end
+
+local function StoreEquipment(guid, unit)
+    local member = GroupInspect.members[guid]
+    if not member then
+        return
+    end
+    member.equipment = PRT.GearAudit.Capture(unit)
+    UpdateEquipmentAudit(guid, member.equipment, 3)
+end
+
 local function ReadLocalPlayer(guid)
     local member = GroupInspect.members[guid]
     if not member then
         return
     end
 
-    local changed = false
     local specId = GetPlayerSpecId()
     if specId and specId > 0 and member.specId ~= specId then
         member.specId = specId
-        changed = true
     end
 
     local talents = ReadPlayerTalents()
     if talents and TalentSetsDiffer(member.talents, talents) then
         member.talents = talents
-        changed = true
     end
 
     local itemLevel = GetLocalEquippedItemLevel()
     if itemLevel and member.itemLevel ~= itemLevel then
         member.itemLevel = itemLevel
-        changed = true
     end
 
-    return changed
+    StoreEquipment(guid, "player")
+    return true
+end
+
+function GroupInspect:RequestEquipmentRefresh()
+    self:ScanRoster()
+    for unit in PRT:IterateGroup() do
+        local guid = UnitGUID(unit)
+        if guid and self.members[guid] then
+            if UnitIsUnit(unit, "player") then
+                StoreEquipment(guid, "player")
+            else
+                equipmentRequests[guid] = true
+                local queued = false
+                for _, queuedGUID in ipairs(priorityQueue) do
+                    if queuedGUID == guid then queued = true end
+                end
+                if not queued then table.insert(priorityQueue, guid) end
+            end
+        end
+    end
+    NotifyListeners()
 end
 
 --- The unit token is looked up again rather than captured: the roster may have
@@ -561,6 +615,7 @@ function GroupInspect:ScanRoster()
     for guid in pairs(self.members) do
         if not activeGUIDs[guid] then
             self.members[guid] = nil
+            equipmentRequests[guid] = nil
             changed = true
         end
     end
@@ -572,6 +627,7 @@ function GroupInspect:ScanRoster()
         for guid in pairs(self.members) do
             self.members[guid] = nil
         end
+        wipe(equipmentRequests)
         changed = true
     end
 
@@ -589,14 +645,16 @@ local function OnInspectReady(eventGUID)
     -- Verify the event GUID matches the unit we actually requested. Another
     -- addon may have triggered an inspect for a different target.
     local pendingGUID = UnitGUID(inspectPending)
-    if not pendingGUID or eventGUID ~= pendingGUID then
+    if not pendingGUID or eventGUID ~= pendingGUID or pendingGUID ~= inspectPendingGUID then
         return
     end
 
     local specId = GetInspectSpecId(inspectPending)
     local talents = ReadInspectTalents()
     local itemLevel = GetInspectedItemLevel(inspectPending)
+    StoreEquipment(pendingGUID, inspectPending)
     inspectPending = nil
+    inspectPendingGUID = nil
 
     -- Release the single inspect slot so we stop squatting on it between sweeps.
     -- Never clear while the player's inspect window is open, or we would yank the
@@ -610,26 +668,19 @@ local function OnInspectReady(eventGUID)
         return
     end
 
-    local changed = false
-
     if specId and specId > 0 and member.specId ~= specId then
         member.specId = specId
-        changed = true
     end
 
     if talents and TalentSetsDiffer(member.talents, talents) then
         member.talents = talents
-        changed = true
     end
 
     if itemLevel and member.itemLevel ~= itemLevel then
         member.itemLevel = itemLevel
-        changed = true
     end
 
-    if changed then
-        NotifyListeners()
-    end
+    NotifyListeners()
 end
 
 local function OnEvent(_, event, ...)

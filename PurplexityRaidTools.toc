@@ -31,6 +31,7 @@ BossData/TheVenomousAbyss/VashnikTheMalignant.lua
 BossData/TheVenomousAbyss/Nekzali.lua
 BossData/TheVenomousAbyss/Ulatek.lua
 BossData/TheVenomousAbyss/TheLostExplorers.lua
+Modules/GearAudit.lua
 Modules/GroupInspect.lua
 Modules/DontRelease.lua
 Modules/ReadyScreen.lua

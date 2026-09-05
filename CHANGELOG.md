@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 
 - Attendance now shows item-level summaries and raider histories accessible by clicking a name.
+- Attendance columns can now sort rostered players by name, percentage, or latest item level.
 - Item level and missing enchants or gems are recorded at each character’s first pull and preserved for the night.
 - The Gear view now identifies raid members with missing enchants or gems.
 - Attendance history and the complete roster can now be exported and imported together as a text backup.

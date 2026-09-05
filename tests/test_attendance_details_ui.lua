@@ -56,6 +56,14 @@ local function WithAttendanceFrames(body)
             return grid
         end },
     }
+    local tooltip = Object()
+    function tooltip:SetText(text, _, _, _, alpha, wrap)
+        assertTrue(alpha == nil or type(alpha) == "number", "tooltip alpha must be numeric")
+        self.text, self.wrap = text, wrap
+    end
+    function tooltip:AddLine(text, _, _, _, wrap)
+        self.text, self.wrap = text, wrap
+    end
     local overrides = {
         PurplexityRaidTools = prt,
         PurplexityRaidToolsAttendanceDB = db,
@@ -66,7 +74,7 @@ local function WithAttendanceFrames(body)
         end,
         ButtonFrameTemplate_HidePortrait = function() end,
         ButtonFrameTemplate_HideButtonBar = function() end,
-        UIParent = Object(), UISpecialFrames = {}, RAID_CLASS_COLORS = {}, GameTooltip = Object(),
+        UIParent = Object(), UISpecialFrames = {}, RAID_CLASS_COLORS = {}, GameTooltip = tooltip,
         StaticPopupDialogs = {},
         StaticPopup_Show = function(which, text, _, data)
             local dialog = StaticPopupDialogs[which]
@@ -79,7 +87,10 @@ local function WithAttendanceFrames(body)
             return popup
         end,
         Ambiguate = function(name) return name:match("^[^-]+") end,
-        strcmputf8i = function(a, b) return a < b and -1 or a > b and 1 or 0 end,
+        strcmputf8i = function(a, b)
+            a, b = a:lower(), b:lower()
+            return a < b and -1 or a > b and 1 or 0
+        end,
     }
     local saved = {}
     for key, value in pairs(overrides) do saved[key] = _G[key]; _G[key] = value end
@@ -97,6 +108,143 @@ local function WithAttendanceFrames(body)
     end)
     for key in pairs(overrides) do _G[key] = saved[key] end
     if not ok then error(err, 0) end
+end
+
+local function SortingRecords(db, roster)
+    wipe(db)
+    wipe(roster)
+    local names = { "Zulu", "Alpha", "bravo", "Charlie", "Delta", "Echo" }
+    local statuses = { 3, 4, 2, 1, 0 }
+    local levels = { 110, 100, 110, false, 90 }
+    db["2026-09-03"] = {}
+    db["2026-09-02"] = {}
+    for index, name in ipairs(names) do
+        local character = name .. "-Realm"
+        roster[index] = { nickname = name, characters = { character } }
+        if statuses[index] then
+            db["2026-09-03"][character] = { status = statuses[index], itemLevel = levels[index] or nil }
+        end
+        db["2026-09-02"][character] = { status = 1 }
+    end
+    db["2026-09-02"]["Alpha-Realm"].status = 3
+    db["2026-09-02"]["Charlie-Realm"].status = 0
+    db["2026-09-02"]["Echo-Realm"] = { status = 3, itemLevel = 120 }
+    db["2026-09-03"]["GuestA-Realm"] = { status = 1, itemLevel = 90 }
+    db["2026-09-03"]["GuestZ-Realm"] = { status = 3, itemLevel = 100 }
+end
+
+local function GridRows(objects)
+    local rows = {}
+    for _, object in ipairs(objects) do
+        if rawget(object, "nameButton") and object:IsVisible() then
+            rows[#rows + 1] = object
+        end
+    end
+    return rows
+end
+
+local function GridNames(objects)
+    local names = {}
+    for _, row in ipairs(GridRows(objects)) do
+        names[#names + 1] = row.name.text
+    end
+    return names
+end
+
+local function SortHeading(objects, key)
+    for _, object in ipairs(objects) do
+        if rawget(object, "sortKey") == key then
+            return object
+        end
+    end
+    error("No sort heading for " .. key)
+end
+
+tests["attendance hover tooltips wrap without invalid alpha arguments"] = function()
+    WithAttendanceFrames(function(prt, _, _, objects, db, roster)
+        for _, key in ipairs({ "player", "percentage", "itemLevel" }) do
+            local heading = SortHeading(objects, key)
+            heading.scripts.OnEnter(heading)
+            assertEquals(GameTooltip.text, "Click to sort. Click again to reverse the order.")
+            assertTrue(GameTooltip.wrap)
+            assertTrue(GameTooltip:IsShown())
+            heading.scripts.OnLeave(heading)
+            assertFalse(GameTooltip:IsShown())
+        end
+        SortingRecords(db, roster)
+        prt.AttendanceUI:Refresh()
+        local deleteButton = GridRows(objects)[7].delete
+        deleteButton.scripts.OnEnter(deleteButton)
+        assertEquals(GameTooltip.text, "Delete all attendance records for GuestA-Realm.")
+        assertTrue(GameTooltip.wrap)
+        assertTrue(GameTooltip:IsShown())
+        deleteButton.scripts.OnLeave(deleteButton)
+        assertFalse(GameTooltip:IsShown())
+    end)
+end
+
+tests["grid headings sort names and numeric columns both ways without changing saved records"] = function()
+    WithAttendanceFrames(function(prt, _, _, objects, db, roster)
+        SortingRecords(db, roster)
+        local savedDB, savedRoster = CopyTable(db), CopyTable(roster)
+        prt.AttendanceUI:Refresh()
+        assertTableEquals(GridNames(objects), {
+            "Alpha", "bravo", "Charlie", "Delta", "Echo", "Zulu", "GuestA-Realm", "GuestZ-Realm",
+        })
+        SortHeading(objects, "player").scripts.OnClick()
+        assertTableEquals(GridNames(objects), {
+            "Zulu", "Echo", "Delta", "Charlie", "bravo", "Alpha", "GuestA-Realm", "GuestZ-Realm",
+        })
+        SortHeading(objects, "player").scripts.OnClick()
+        assertEquals(GridNames(objects)[1], "Alpha")
+
+        SortHeading(objects, "percentage").scripts.OnClick()
+        assertTableEquals(GridNames(objects), {
+            "Alpha", "Echo", "bravo", "Zulu", "Charlie", "Delta", "GuestA-Realm", "GuestZ-Realm",
+        })
+        SortHeading(objects, "percentage").scripts.OnClick()
+        assertTableEquals(GridNames(objects), {
+            "Charlie", "Delta", "bravo", "Zulu", "Alpha", "Echo", "GuestA-Realm", "GuestZ-Realm",
+        })
+
+        SortHeading(objects, "itemLevel").scripts.OnClick()
+        assertTableEquals(GridNames(objects), {
+            "Echo", "bravo", "Zulu", "Alpha", "Delta", "Charlie", "GuestA-Realm", "GuestZ-Realm",
+        })
+        SortHeading(objects, "itemLevel").scripts.OnClick()
+        assertTableEquals(GridNames(objects), {
+            "Delta", "Alpha", "bravo", "Zulu", "Echo", "Charlie", "GuestA-Realm", "GuestZ-Realm",
+        })
+        assertTableEquals(db, savedDB)
+        assertTableEquals(roster, savedRoster)
+    end)
+end
+
+tests["sorting survives refresh and detail navigation while row actions follow the displayed player"] = function()
+    WithAttendanceFrames(function(prt, _, detail, objects, db, roster)
+        SortingRecords(db, roster)
+        prt.AttendanceUI:Refresh()
+        local heading = SortHeading(objects, "itemLevel")
+        heading.scripts.OnClick()
+        assertTrue(heading.arrow:IsShown())
+        assertFalse(SortHeading(objects, "player").arrow:IsShown())
+        local row = GridRows(objects)[1]
+        assertEquals(row.name.text, "Echo")
+        row.nameButton.scripts.OnClick()
+        assertEquals(detail.character, "Echo-Realm")
+        detail.back.scripts.OnClick()
+        assertEquals(GridNames(objects)[1], "Echo")
+        db["2026-09-03"]["Delta-Realm"].itemLevel = 130
+        prt.AttendanceUI:Refresh()
+        assertEquals(row.name.text, "Delta")
+        assertEquals(row.itemLevel.text, "130.0")
+        row.cells[1].scripts.OnClick()
+        local modal
+        for _, object in ipairs(objects) do
+            if rawget(object, "characterRows") then modal = object end
+        end
+        assertEquals(modal.characterRows[1].character, "Delta-Realm")
+    end)
 end
 
 tests["names navigate to character history while attendance cells still edit the original records"] = function()

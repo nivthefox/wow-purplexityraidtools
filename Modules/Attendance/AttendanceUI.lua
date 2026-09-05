@@ -1,4 +1,4 @@
--- AttendanceUI: the Attendance sidebar tab. Owns the Grid, Records, and Settings
+-- AttendanceUI: the Attendance sidebar tab. Owns the Attendance, Records, and Settings
 -- tabs, the audit grid itself, and the per-character status modal a cell click
 -- opens. The Records tab's content belongs to RecordsUI.
 --
@@ -158,21 +158,88 @@ local function ClassColoredName(character)
     return classColor:WrapTextInColorCode(character)
 end
 
---- Sorted at the presentation seam rather than in the roster: GetEntries hands
---- out the live database, whose array order is data that sync preserves.
-local function AlphabeticalEntries()
-    local entries = {}
-    for index, entry in ipairs(PRT.Roster:GetEntries()) do
-        entries[index] = entry
+local function BuildReport()
+    local db = PurplexityRaidToolsAttendanceDB or {}
+    local report = PRT.AttendanceReport:Build(db, PRT.Roster:GetEntries())
+    for _, rows in ipairs({ report.players, report.unrostered }) do
+        for _, entry in ipairs(rows) do
+            entry.itemLevel = PRT.AttendanceReport:GetLatestItemLevel(db, report.days, entry.characters)
+        end
     end
-    table.sort(entries, function(a, b)
-        return strcmputf8i(a.nickname, b.nickname) < 0
-    end)
-    return entries
+    return report
 end
 
-local function BuildReport()
-    return PRT.AttendanceReport:Build(PurplexityRaidToolsAttendanceDB or {}, AlphabeticalEntries())
+local function CompareNames(a, b)
+    local comparison = strcmputf8i(a.name, b.name)
+    if comparison == 0 and a.name ~= b.name then
+        return a.name < b.name and -1 or 1
+    end
+    return comparison
+end
+
+local function SortPlayers(players, key, descending)
+    table.sort(players, function(a, b)
+        if key == "player" then
+            local comparison = CompareNames(a, b)
+            if descending then
+                return comparison > 0
+            end
+            return comparison < 0
+        end
+
+        local aValue, bValue = a[key], b[key]
+        if aValue == bValue then
+            return CompareNames(a, b) < 0
+        end
+        if aValue == nil then
+            return false
+        end
+        if bValue == nil then
+            return true
+        end
+        if descending then
+            return aValue > bValue
+        end
+        return aValue < bValue
+    end)
+end
+
+local function CreateSortHeading(parent, key, label, width, xOffset, onClick)
+    local heading = CreateFrame("Button", nil, parent)
+    heading:SetSize(width, HEADER_HEIGHT)
+    heading:SetPoint("LEFT", xOffset, 0)
+    heading:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
+    heading.sortKey = key
+    heading.label = heading:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    heading.label:SetPoint("LEFT", 0, 0)
+    heading.label:SetWidth(width - 10)
+    heading.label:SetJustifyH(key == "player" and "LEFT" or "CENTER")
+    heading.label:SetWordWrap(false)
+    heading.label:SetText(label)
+    heading.arrow = heading:CreateTexture(nil, "OVERLAY")
+    heading.arrow:SetSize(8, 8)
+    heading.arrow:SetPoint("RIGHT", -1, 0)
+    heading.arrow:SetTexture("Interface\\Buttons\\UI-SortArrow")
+    heading.arrow:Hide()
+    heading:SetScript("OnClick", function()
+        onClick(heading.sortKey)
+    end)
+    heading:SetScript("OnEnter", function()
+        GameTooltip:SetOwner(heading, "ANCHOR_RIGHT")
+        GameTooltip:AddLine("Click to sort. Click again to reverse the order.", 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    heading:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    return heading
+end
+
+local function UpdateSortHeading(heading, key, descending)
+    heading.arrow:SetShown(heading.sortKey == key)
+    if descending then
+        heading.arrow:SetTexCoord(0, 1, 0, 1)
+    else
+        heading.arrow:SetTexCoord(0, 1, 1, 0)
+    end
 end
 
 local function HasRecordedCharacter(characters)
@@ -388,7 +455,7 @@ local function CreateGridRow(parent, cellCount)
     end)
     row.delete:SetScript("OnEnter", function(button)
         GameTooltip:SetOwner(button, "ANCHOR_RIGHT")
-        GameTooltip:SetText("Delete all attendance records for " .. row.deleteCharacter .. ".", 1, 1, 1, true)
+        GameTooltip:AddLine("Delete all attendance records for " .. row.deleteCharacter .. ".", 1, 1, 1, true)
         GameTooltip:Show()
     end)
     row.delete:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -440,8 +507,7 @@ local function FillGridRow(row, entry, days, reportDays, deleteCharacter)
     row.name:SetText(entry.name)
     row.percentage:SetText(PercentageText(entry.percentage))
     row.nameButton:SetScript("OnClick", function() OpenDetails(entry, reportDays) end)
-    local level = PRT.AttendanceReport:GetLatestItemLevel(
-        PurplexityRaidToolsAttendanceDB or {}, reportDays, entry.characters)
+    local level = entry.itemLevel
     row.itemLevel:SetText(level and string.format("%.1f", level) or "-")
 
     for index, cell in ipairs(row.cells) do
@@ -486,29 +552,28 @@ PRT:RegisterTab("Attendance", function(parent)
         local visibleDayCount = math.max(1,
             math.floor((panel:GetWidth() - 46 - SUMMARY_WIDTH) / CELL_WIDTH))
 
-        local title = overview:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-        title:SetPoint("TOPLEFT", 20, -10)
-        title:SetText("Attendance & gear")
         local header = CreateFrame("Frame", nil, overview)
         header:SetHeight(HEADER_HEIGHT)
-        header:SetPoint("TOPLEFT", 20, -34)
+        header:SetPoint("TOPLEFT", 20, -10)
         header:SetPoint("RIGHT", panel, "RIGHT", -26, 0)
 
-        local nameHeading = header:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        nameHeading:SetPoint("LEFT", 0, 0)
-        nameHeading:SetText("Player")
+        local sortKey, sortDescending = "player", false
+        local function SelectSort(key)
+            if key == sortKey then
+                sortDescending = not sortDescending
+            else
+                sortKey = key
+                sortDescending = key ~= "player"
+            end
+            RefreshGrid()
+        end
 
-        local pctHeading = header:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        pctHeading:SetPoint("LEFT", NAME_WIDTH, 0)
-        pctHeading:SetWidth(PCT_WIDTH)
-        pctHeading:SetJustifyH("CENTER")
-        pctHeading:SetText("PCT")
-
-        local levelHeading = header:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        levelHeading:SetPoint("LEFT", NAME_WIDTH + PCT_WIDTH, 0)
-        levelHeading:SetWidth(ITEM_LEVEL_WIDTH)
-        levelHeading:SetJustifyH("CENTER")
-        levelHeading:SetText("Latest ilvl")
+        local summaryHeadings = {
+            CreateSortHeading(header, "player", "Player", NAME_WIDTH, 0, SelectSort),
+            CreateSortHeading(header, "percentage", "PCT", PCT_WIDTH, NAME_WIDTH, SelectSort),
+            CreateSortHeading(header, "itemLevel", "Latest ilvl", ITEM_LEVEL_WIDTH,
+                NAME_WIDTH + PCT_WIDTH, SelectSort),
+        }
 
         local dayHeadings = {}
         for index = 1, visibleDayCount do
@@ -555,6 +620,11 @@ PRT:RegisterTab("Attendance", function(parent)
             local days = {}
             for index = 1, math.min(visibleDayCount, #report.days) do
                 days[index] = report.days[index]
+            end
+
+            SortPlayers(report.players, sortKey, sortDescending)
+            for _, heading in ipairs(summaryHeadings) do
+                UpdateSortHeading(heading, sortKey, sortDescending)
             end
 
             for index, heading in ipairs(dayHeadings) do
@@ -648,7 +718,7 @@ PRT:RegisterTab("Attendance", function(parent)
     end
 
     return PRT.Components.GetSubTabGroup(parent, {
-        { name = "Grid", setup = SetupGrid },
+        { name = "Attendance", setup = SetupGrid },
         { name = "Records", setup = SetupRecords },
         { name = "Database", setup = SetupDatabase },
         { name = "Settings", setup = SetupSettings },

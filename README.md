@@ -44,6 +44,8 @@ The attendance overview combines a raider's characters and shows attendance and 
 
 Reports distinguish present, standby, late, absent, and missing attendance. Present, standby, and late count as attended. Records can be corrected manually, retained for a configurable period, and synced within the raid. The complete attendance history and roster, including gear snapshots, can be backed up and restored together through a versioned text export.
 
+Click the Player, PCT, or Latest ilvl headings to sort rostered players; click the same heading again to reverse the order. Players without a recorded value remain last in either direction. The "Not on roster" section stays at the bottom in its existing order.
+
 ### Roster
 
 Groups a raider's characters under one nickname and records observed class, main specialization, and off-specialization tags. Officers can add players manually, import characters from attendance records, drag characters between players, and sync the roster within the raid. The optional Roster Nicknames setting shows those nicknames on supported Blizzard frames, NivUI, EllesmereUI, Danders Frames, and Grid2. PRT's setting controls its nicknames on EllesmereUI Unit Frames independently of EllesmereUI's Show Nicknames option. ElvUI users can place `[prt-roster-nickname]` or a shortened `[prt-roster-nickname:1]` through `[prt-roster-nickname:12]` tag in their unit-frame text formats.

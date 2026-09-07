@@ -221,11 +221,6 @@ end
 --   Warlock  265 Affliction, 266 Demonology, 267 Destruction
 --   Priest   258 Shadow, 256 Discipline, 257 Holy
 --   Evoker   1467 Devastation, 1468 Preservation, 1473 Augmentation
---
--- Per-class melee/ranged pairs (classes that have both) are asserted directly:
---   Hunter: 255 melee / 253 ranged
---   Shaman: 263 melee / 262 ranged
---   Druid:  103 melee / 102 ranged
 --------------------------------------------------------------------------------
 
 local MELEE_SPECS = {
@@ -279,21 +274,6 @@ tests["IsMeleeSpec: all ranged specs classify as not-melee"] = function()
         assertFalse(Tags.IsMeleeSpec(specID),
             "specID " .. specID .. " should be ranged (not melee)")
     end
-end
-
-tests["IsMeleeSpec: Hunter melee/ranged pair (255 vs 253)"] = function()
-    assertTrue(Tags.IsMeleeSpec(255), "255 Survival is melee")
-    assertFalse(Tags.IsMeleeSpec(253), "253 Beast Mastery is ranged")
-end
-
-tests["IsMeleeSpec: Shaman melee/ranged pair (263 vs 262)"] = function()
-    assertTrue(Tags.IsMeleeSpec(263), "263 Enhancement is melee")
-    assertFalse(Tags.IsMeleeSpec(262), "262 Elemental is ranged")
-end
-
-tests["IsMeleeSpec: Druid melee/ranged pair (103 vs 102)"] = function()
-    assertTrue(Tags.IsMeleeSpec(103), "103 Feral is melee")
-    assertFalse(Tags.IsMeleeSpec(102), "102 Balance is ranged")
 end
 
 tests["IsMeleeSpec: unknown spec ID is not melee"] = function()

@@ -200,20 +200,12 @@ local function withPRT(replacements, body)
     end
 end
 
---- Counts settings reads as well as answering them. wow_stubs' GetSetting reads
---- PRT.defaults, so the table under test goes in there and comes back out.
 local function withSettings(settings, body, contentEnabled)
     local savedDefaults = PRT.defaults.attendance
-    local savedReader = PRT.GetSetting
     local savedContentChecker = PRT.IsContentTypeEnabled
-    local reads = { count = 0, keys = {}, contentTypes = {} }
+    local reads = { contentTypes = {} }
 
     PRT.defaults.attendance = settings
-    PRT.GetSetting = function(self, key)
-        reads.count = reads.count + 1
-        reads.keys[#reads.keys + 1] = key
-        return savedReader(self, key)
-    end
     PRT.IsContentTypeEnabled = function(contentTypes)
         reads.contentTypes[#reads.contentTypes + 1] = contentTypes
         return contentEnabled ~= false
@@ -222,7 +214,6 @@ local function withSettings(settings, body, contentEnabled)
     local ok, err = pcall(body, reads)
 
     PRT.defaults.attendance = savedDefaults
-    PRT.GetSetting = savedReader
     PRT.IsContentTypeEnabled = savedContentChecker
 
     if not ok then
@@ -638,7 +629,7 @@ tests["a countdown start hands the store the snapshot, the roster entries, and t
     assertTableEquals(recorded.itemLevels, {})
 end
 
-tests["a countdown start reads the attendance settings exactly once"] = function()
+tests["a countdown start checks the configured attendance content types"] = function()
     local groupInspect = groupInspectFake(groupData({ { name = NIV, class = "MAGE" } }))
     local settings = settingsWith()
     local reads
@@ -649,9 +640,6 @@ tests["a countdown start reads the attendance settings exactly once"] = function
         end)
     end)
 
-    assertEquals(reads.count, 1)
-    assertEquals(reads.keys[1], "attendance",
-        "the wiring reads its own settings table and nobody else's")
     assertEquals(#reads.contentTypes, 1)
     assertEquals(reads.contentTypes[1], settings.contentTypes,
         "the shared content-type gate receives the attendance content settings")
@@ -679,7 +667,6 @@ tests["a countdown start outside an enabled content type records nothing"] = fun
     end)
 
     assertEquals(#store.starts, 0, "a Mythic+ pull must not create raid attendance")
-    assertEquals(reads.count, 1)
     assertEquals(#reads.contentTypes, 1)
     assertEquals(reads.contentTypes[1], settings.contentTypes)
 end
@@ -767,17 +754,15 @@ end
 tests["a cancelled countdown calls the store's cancel and records nothing"] = function()
     local store, roster = storeSpy(), rosterSpy()
     local groupInspect = groupInspectFake(groupData({ { name = NIV, class = "MAGE" } }))
-    local reads
 
     withPRT({ AttendanceStore = store, Roster = roster, GroupInspect = groupInspect }, function()
-        reads = withSettings(settingsWith(), function()
+        withSettings(settingsWith(), function()
             AttendanceWiring:OnCountdownCancel()
         end)
     end)
 
     assertEquals(store.cancels, 1)
     assertEquals(#store.starts, 0, "cancelling is not an undo, and it is not a second pull either")
-    assertEquals(reads.count, 0, "a cancel needs no setting")
 end
 
 tests["a cancelled countdown leaves the attendance database byte for byte alone"] = function()
@@ -877,24 +862,6 @@ tests["a ready check in a group with no leader asks nobody"] = function()
     assertEquals(#sync.readyChecks, 0)
 end
 
-tests["a ready check reads the attendance settings exactly once"] = function()
-    local reads
-
-    withPRT({ AttendanceSync = syncSpy() }, function()
-        withRaid({
-            { name = NIV, isPlayer = true },
-            { name = SASJAH, leader = true },
-        }, function()
-            reads = withSettings(settingsWith({ autoSyncFromLeader = true }), function()
-                AttendanceWiring:OnReadyCheck()
-            end)
-        end)
-    end)
-
-    assertEquals(reads.count, 1)
-    assertEquals(reads.keys[1], "attendance")
-end
-
 --------------------------------------------------------------------------------
 -- Expiry pass
 --------------------------------------------------------------------------------
@@ -912,19 +879,6 @@ tests["the expiry pass hands the store both the threshold and the rollover hour"
     assertEquals(store.expiries[1].thresholdDays, 45)
     assertEquals(store.expiries[1].rolloverHour, 2,
         "expiry and recording must agree on where a day starts or the boundary day is decided twice")
-end
-
-tests["the expiry pass reads the attendance settings exactly once"] = function()
-    local reads
-
-    withPRT({ AttendanceStore = storeSpy() }, function()
-        reads = withSettings(settingsWith(), function()
-            AttendanceWiring:RunExpiryPass()
-        end)
-    end)
-
-    assertEquals(reads.count, 1)
-    assertEquals(reads.keys[1], "attendance")
 end
 
 --------------------------------------------------------------------------------

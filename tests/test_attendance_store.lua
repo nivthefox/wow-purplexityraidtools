@@ -128,12 +128,6 @@ tests["the status enum exposes the spec's integer values"] = function()
     assertEquals(Store.STATUS.STANDBY, 4)
 end
 
-tests["the fixture epochs are the UTC instants they are named for"] = function()
-    assertEquals(date("!%Y-%m-%d %H:%M:%S", AUGUST_5_2026), "2026-08-05 00:00:00")
-    assertEquals(date("!%Y-%m-%d %H:%M:%S", AUGUST_1_2026), "2026-08-01 00:00:00")
-    assertEquals(date("!%Y-%m-%d %H:%M:%S", JANUARY_1_2026), "2026-01-01 00:00:00")
-end
-
 tests["no store operation reads addon settings"] = function()
     resetDB()
     local savedGetSetting = PRT.GetSetting

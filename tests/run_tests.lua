@@ -170,23 +170,27 @@ end
 
 local testFiles = discoverTestFiles(testsDir)
 
-local totalPassed = 0
-local totalFailed = 0
+local addonResults = { passed = 0, failed = 0 }
+local harnessResults = { passed = 0, failed = 0 }
 
 for _, filename in ipairs(testFiles) do
+    local results = addonResults
+    if filename == "test_selftest.lua" then
+        results = harnessResults
+    end
     local filepath = testsDir .. "/" .. filename
     local chunk, loadErr = loadfile(filepath)
     if not chunk then
         print(string.format("FAIL %s: (load error) %s", filename, tostring(loadErr)))
-        totalFailed = totalFailed + 1
+        results.failed = results.failed + 1
     else
         local runOk, result = pcall(chunk)
         if not runOk then
             print(string.format("FAIL %s: (runtime error) %s", filename, tostring(result)))
-            totalFailed = totalFailed + 1
+            results.failed = results.failed + 1
         elseif type(result) ~= "table" then
             print(string.format("FAIL %s: test file did not return a table", filename))
-            totalFailed = totalFailed + 1
+            results.failed = results.failed + 1
         else
             local names = {}
             for name, _ in pairs(result) do
@@ -199,19 +203,20 @@ for _, filename in ipairs(testFiles) do
                 local testOk, testErr = pcall(fn)
                 if testOk then
                     print(string.format("PASS %s:%s", filename, name))
-                    totalPassed = totalPassed + 1
+                    results.passed = results.passed + 1
                 else
                     print(string.format("FAIL %s:%s\n  %s", filename, name, tostring(testErr)))
-                    totalFailed = totalFailed + 1
+                    results.failed = results.failed + 1
                 end
             end
         end
     end
 end
 
-print(string.format("\n%d passed, %d failed", totalPassed, totalFailed))
+print(string.format("\nAddon: %d passed, %d failed", addonResults.passed, addonResults.failed))
+print(string.format("Harness: %d passed, %d failed", harnessResults.passed, harnessResults.failed))
 
-if totalFailed > 0 then
+if addonResults.failed + harnessResults.failed > 0 then
     os.exit(1)
 else
     os.exit(0)

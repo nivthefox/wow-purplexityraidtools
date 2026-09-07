@@ -63,6 +63,15 @@ local function addFreeformToNote(note, text)
     note.lines[#note.lines + 1] = { type = "freeform", text = text }
 end
 
+local function requireLine(output, text)
+    for line in output:gmatch("[^\n]+") do
+        if line:find(text, 1, true) then
+            return line
+        end
+    end
+    error("expected a serialized line containing " .. text, 2)
+end
+
 local function reminderFieldsEqual(a, b)
     local fields = {
         "time", "tag", "text", "spellID", "phase", "phaseKey",
@@ -368,12 +377,9 @@ tests["default omission: dur:5 omitted"] = function()
     addReminderToNote(note, r)
 
     local result = Serializer:Serialize(note)
-    for line in result:gmatch("[^\n]+") do
-        if line:find("time:", 1, true) then
-            assertNil(line:find("dur:", 1, true),
-                "dur:5 is the default and should be omitted")
-        end
-    end
+    local line = requireLine(result, "time:")
+    assertNil(line:find("dur:", 1, true),
+        "dur:5 is the default and should be omitted")
 end
 
 tests["default omission: displaytype:Icon omitted when spellID present"] = function()
@@ -386,12 +392,9 @@ tests["default omission: displaytype:Icon omitted when spellID present"] = funct
     addReminderToNote(note, r)
 
     local result = Serializer:Serialize(note)
-    for line in result:gmatch("[^\n]+") do
-        if line:find("spellid:", 1, true) then
-            assertNil(line:lower():find("displaytype:", 1, true),
-                "displaytype:Icon should be omitted when spellID is present")
-        end
-    end
+    local line = requireLine(result, "spellid:")
+    assertNil(line:lower():find("displaytype:", 1, true),
+        "displaytype:Icon should be omitted when spellID is present")
 end
 
 tests["default omission: displaytype:Text omitted when spellID nil"] = function()
@@ -400,12 +403,9 @@ tests["default omission: displaytype:Text omitted when spellID nil"] = function(
     addReminderToNote(note, r)
 
     local result = Serializer:Serialize(note)
-    for line in result:gmatch("[^\n]+") do
-        if line:find("text:Go", 1, true) then
-            assertNil(line:lower():find("displaytype:", 1, true),
-                "displaytype:Text should be omitted when spellID is nil")
-        end
-    end
+    local line = requireLine(result, "text:Go")
+    assertNil(line:lower():find("displaytype:", 1, true),
+        "displaytype:Text should be omitted when spellID is nil")
 end
 
 tests["non-default displaytype is included"] = function()
@@ -437,12 +437,9 @@ tests["TTS true serializes as string true"] = function()
     addReminderToNote(note, r)
 
     local result = Serializer:Serialize(note)
-    for line in result:gmatch("[^\n]+") do
-        if line:find("time:", 1, true) then
-            assertTrue(line:lower():find("tts:true", 1, true) ~= nil,
-                "boolean true should serialize as tts:true")
-        end
-    end
+    local line = requireLine(result, "time:")
+    assertTrue(line:lower():find("tts:true", 1, true) ~= nil,
+        "boolean true should serialize as tts:true")
 end
 
 tests["TTS false serializes as string false"] = function()
@@ -451,12 +448,9 @@ tests["TTS false serializes as string false"] = function()
     addReminderToNote(note, r)
 
     local result = Serializer:Serialize(note)
-    for line in result:gmatch("[^\n]+") do
-        if line:find("time:", 1, true) then
-            assertTrue(line:lower():find("tts:false", 1, true) ~= nil,
-                "boolean false should serialize as tts:false")
-        end
-    end
+    local line = requireLine(result, "time:")
+    assertTrue(line:lower():find("tts:false", 1, true) ~= nil,
+        "boolean false should serialize as tts:false")
 end
 
 tests["TTS custom string serializes as raw string"] = function()
@@ -465,12 +459,9 @@ tests["TTS custom string serializes as raw string"] = function()
     addReminderToNote(note, r)
 
     local result = Serializer:Serialize(note)
-    for line in result:gmatch("[^\n]+") do
-        if line:find("time:", 1, true) then
-            assertTrue(line:find("Move out now", 1, true) ~= nil,
-                "custom TTS string should appear in output")
-        end
-    end
+    local line = requireLine(result, "time:")
+    assertTrue(line:find("Move out now", 1, true) ~= nil,
+        "custom TTS string should appear in output")
 end
 
 tests["duration clamped to time is serialized as-is"] = function()
@@ -479,12 +470,9 @@ tests["duration clamped to time is serialized as-is"] = function()
     addReminderToNote(note, r)
 
     local result = Serializer:Serialize(note)
-    for line in result:gmatch("[^\n]+") do
-        if line:find("time:4", 1, true) then
-            assertNotNil(line:find("dur:4", 1, true),
-                "clamped duration of 4 (not default 5) should be emitted")
-        end
-    end
+    local line = requireLine(result, "time:4")
+    assertNotNil(line:find("dur:4", 1, true),
+        "clamped duration of 4 (not default 5) should be emitted")
 end
 
 tests["colors field preserved"] = function()
@@ -535,12 +523,9 @@ tests["ttstimer omitted when it equals duration"] = function()
     addReminderToNote(note, r)
 
     local result = Serializer:Serialize(note)
-    for line in result:gmatch("[^\n]+") do
-        if line:find("time:", 1, true) then
-            assertNil(line:lower():find("ttstimer:", 1, true),
-                "ttstimer should be omitted when it equals duration")
-        end
-    end
+    local line = requireLine(result, "time:")
+    assertNil(line:lower():find("ttstimer:", 1, true),
+        "ttstimer should be omitted when it equals duration")
 end
 
 tests["ttstimer emitted when it differs from duration"] = function()
@@ -582,12 +567,9 @@ tests["tts nil is not emitted"] = function()
     addReminderToNote(note, r)
 
     local result = Serializer:Serialize(note)
-    for line in result:gmatch("[^\n]+") do
-        if line:find("time:", 1, true) then
-            assertNil(line:lower():find("tts:", 1, true),
-                "tts:nil should not produce a tts field")
-        end
-    end
+    local line = requireLine(result, "time:")
+    assertNil(line:lower():find("tts:", 1, true),
+        "tts:nil should not produce a tts field")
 end
 
 tests["round-trip preserves tts boolean false"] = function()
@@ -628,12 +610,9 @@ tests["serialized output uses semicolon-space separator"] = function()
     addReminderToNote(note, r)
 
     local result = Serializer:Serialize(note)
-    for line in result:gmatch("[^\n]+") do
-        if line:find("time:", 1, true) then
-            assertTrue(line:find("; ", 1, true) ~= nil,
-                "fields should be separated by semicolon-space")
-        end
-    end
+    local line = requireLine(result, "time:")
+    assertTrue(line:find("; ", 1, true) ~= nil,
+        "fields should be separated by semicolon-space")
 end
 
 tests["field keys are lowercase in serialized output"] = function()
@@ -647,18 +626,15 @@ tests["field keys are lowercase in serialized output"] = function()
     addReminderToNote(note, r)
 
     local result = Serializer:Serialize(note)
-    for line in result:gmatch("[^\n]+") do
-        if line:find("spellid:", 1, true) then
-            assertTrue(line:find("displaytype:", 1, true) ~= nil,
-                "displaytype key should be lowercase")
-            assertTrue(line:find("bossspell:", 1, true) ~= nil,
-                "bossspell key should be lowercase")
-            assertNil(line:find("DisplayType", 1, true),
-                "DisplayType should not appear (must be lowercase)")
-            assertNil(line:find("bossSpell", 1, true),
-                "bossSpell should not appear (must be lowercase)")
-        end
-    end
+    local line = requireLine(result, "spellid:")
+    assertTrue(line:find("displaytype:", 1, true) ~= nil,
+        "displaytype key should be lowercase")
+    assertTrue(line:find("bossspell:", 1, true) ~= nil,
+        "bossspell key should be lowercase")
+    assertNil(line:find("DisplayType", 1, true),
+        "DisplayType should not appear (must be lowercase)")
+    assertNil(line:find("bossSpell", 1, true),
+        "bossSpell should not appear (must be lowercase)")
 end
 
 return tests

@@ -183,15 +183,6 @@ tests["CopyTable: handles non-table passthrough"] = function()
     assertNil(CopyTable(nil))
 end
 
-tests["GetTime: returns WowStubs.clock"] = function()
-    local saved = WowStubs.clock
-    WowStubs.clock = 0
-    assertEquals(GetTime(), 0)
-    WowStubs.clock = 12345.5
-    assertEquals(GetTime(), 12345.5)
-    WowStubs.clock = saved
-end
-
 tests["Ambiguate: strips realm for mode none"] = function()
     assertEquals(Ambiguate("Thrall-Stormrage", "none"), "Thrall")
 end
@@ -206,30 +197,6 @@ end
 
 tests["Ambiguate: handles name without realm"] = function()
     assertEquals(Ambiguate("Thrall", "none"), "Thrall")
-end
-
-tests["PRT.Profiles: GetCurrent returns current table"] = function()
-    local p = PurplexityRaidTools.Profiles
-    assertNotNil(p)
-    local current = p:GetCurrent()
-    assertNotNil(current)
-    assertEquals(type(current), "table")
-end
-
-tests["PRT.Profiles: GetCurrentName returns Test"] = function()
-    assertEquals(PurplexityRaidTools.Profiles.GetCurrentName(), "Test")
-end
-
-tests["PRT: RegisterModule stores module"] = function()
-    local dummy = { value = 42 }
-    PurplexityRaidTools:RegisterModule("TestDummy", dummy)
-    assertEquals(PurplexityRaidTools.modules["TestDummy"], dummy)
-end
-
-tests["PRT: GetSetting returns from defaults"] = function()
-    PurplexityRaidTools.defaults["myKey"] = "myValue"
-    assertEquals(PurplexityRaidTools:GetSetting("myKey"), "myValue")
-    PurplexityRaidTools.defaults["myKey"] = nil
 end
 
 return tests

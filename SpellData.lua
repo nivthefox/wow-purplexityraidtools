@@ -2338,6 +2338,7 @@ PRT.SpellData = {
                 duration = 6,
                 cooldown = 90,
                 charges = 1,
+                flags = { "IMPORTANT" },
                 talents = {
                     [444780] = { duration_pct = 0.2 },
                 },
@@ -2751,6 +2752,7 @@ PRT.SpellData = {
                 duration = 6,
                 cooldown = 90,
                 charges = 1,
+                flags = { "IMPORTANT" },
                 talents = {
                     [444780] = { duration_pct = 0.2 },
                 },

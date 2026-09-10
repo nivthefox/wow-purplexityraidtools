@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Notes timeline reminders now show a warning when their linked boss ability does not occur at the reminder's time.
+- The Notes editor is now resizable and remembers its size.
+
 ## [1.5.0] - 2026-09-05
 
 ### Added

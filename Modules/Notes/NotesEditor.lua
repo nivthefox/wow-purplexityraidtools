@@ -10,7 +10,10 @@ local BLOCK_GAP = 4
 local RULER_WIDTH = 50
 local EDIT_PANEL_WIDTH = 260
 local DEFAULT_FRAME_WIDTH = 920
-local DEFAULT_FRAME_HEIGHT = 550
+local DEFAULT_FRAME_HEIGHT = 825
+local MIN_FRAME_WIDTH = 720
+local MIN_FRAME_HEIGHT = 400
+local SCREEN_MARGIN = 40
 local BOSS_CHANNEL_WIDTH = 210
 local BOSS_ABILITY_HEIGHT = 30
 local BOSS_CHANNEL_PADDING = 8
@@ -909,6 +912,8 @@ local function SaveEditorPosition()
         point = "TOPLEFT",
         x = x,
         y = y,
+        width = frame:GetWidth(),
+        height = frame:GetHeight(),
     }
 end
 
@@ -920,8 +925,19 @@ local function RestoreEditorPosition()
     local positions = settings and settings.positions
     local pos = positions and positions.editor
 
+    local maxWidth = math.max(1, UIParent:GetWidth() - SCREEN_MARGIN)
+    local maxHeight = math.max(1, UIParent:GetHeight() - SCREEN_MARGIN)
+    local minWidth = math.min(MIN_FRAME_WIDTH, maxWidth)
+    local minHeight = math.min(MIN_FRAME_HEIGHT, maxHeight)
+    local width = tonumber(pos and pos.width) or DEFAULT_FRAME_WIDTH
+    local height = tonumber(pos and pos.height) or DEFAULT_FRAME_HEIGHT
+
     frame:ClearAllPoints()
-    frame:SetSize(DEFAULT_FRAME_WIDTH, DEFAULT_FRAME_HEIGHT)
+    frame:SetResizeBounds(minWidth, minHeight, maxWidth, maxHeight)
+    frame:SetSize(
+        math.max(minWidth, math.min(width, maxWidth)),
+        math.max(minHeight, math.min(height, maxHeight))
+    )
     if pos then
         frame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", pos.x or 0, pos.y or 0)
     else
@@ -960,6 +976,36 @@ local function GetFromPool(pool, createFn)
     return obj
 end
 
+local function CreateBossLinkWarning(parent)
+    local warning = CreateFrame("Frame", nil, parent)
+    warning:SetSize(14, 14)
+    warning:SetPoint("TOPRIGHT", -3, -3)
+    warning:SetMouseClickEnabled(false)
+    warning:SetMouseMotionEnabled(true)
+
+    local icon = warning:CreateTexture(nil, "OVERLAY")
+    icon:SetAllPoints()
+    icon:SetTexture("Interface\\DialogFrame\\UI-Dialog-Icon-AlertNew")
+
+    warning:SetScript("OnEnter", function(self)
+        if not GameTooltip then
+            return
+        end
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText("The linked ability does not appear at this time.", 1, 0.82, 0, 1, true)
+        GameTooltip:Show()
+    end)
+    local function HideTooltip(self)
+        if GameTooltip and GameTooltip:IsOwned(self) then
+            GameTooltip:Hide()
+        end
+    end
+    warning:SetScript("OnLeave", HideTooltip)
+    warning:SetScript("OnHide", HideTooltip)
+    warning:Hide()
+    return warning
+end
+
 local function CreateBlock(parent)
     local block = CreateFrame("Button", nil, parent, "BackdropTemplate")
     block:SetSize(BLOCK_WIDTH, BLOCK_HEIGHT)
@@ -987,7 +1033,8 @@ local function CreateBlock(parent)
     block.extra:SetTextColor(0.5, 0.5, 0.5)
 
     block.personalBorder = block:CreateTexture(nil, "OVERLAY")
-    block.personalBorder:SetAllPoints()
+    block.personalBorder:SetPoint("TOPLEFT", BACKDROP_INFO.insets.left, -BACKDROP_INFO.insets.top)
+    block.personalBorder:SetPoint("BOTTOMRIGHT", -BACKDROP_INFO.insets.right, BACKDROP_INFO.insets.bottom)
     block.personalBorder:SetColorTexture(0.94, 0.75, 0.25, 0.15)
     block.personalBorder:Hide()
 
@@ -996,6 +1043,8 @@ local function CreateBlock(parent)
     block.annotatedDot:SetPoint("TOPRIGHT", -1, -1)
     block.annotatedDot:SetColorTexture(0.94, 0.75, 0.25, 1)
     block.annotatedDot:Hide()
+
+    block.bossLinkWarning = CreateBossLinkWarning(block)
 
     block:SetScript("OnEnter", function(self)
         self:SetBackdropBorderColor(0.91, 0.27, 0.37, 1)
@@ -1704,6 +1753,7 @@ local function BuildFrame()
     frame:SetFrameStrata("DIALOG")
     frame:SetToplevel(true)
     frame:SetMovable(true)
+    frame:SetResizable(true)
     frame:SetClampedToScreen(true)
     frame:EnableMouse(true)
     frame:RegisterForDrag("LeftButton")
@@ -1716,6 +1766,8 @@ local function BuildFrame()
     frame:Hide()
 
     frame:SetScript("OnHide", function()
+        frame:StopMovingOrSizing()
+        frame:SetUserPlaced(false)
         SaveEditorPosition()
         editPanel:Hide()
         if not state.rawMode then
@@ -1871,7 +1923,7 @@ local function BuildFrame()
 
     timelineArea = CreateFrame("Frame", nil, frame)
     timelineArea:SetPoint("TOPLEFT", phaseTabs, "BOTTOMLEFT", 0, -2)
-    timelineArea:SetPoint("BOTTOMRIGHT", -6, 6)
+    timelineArea:SetPoint("BOTTOMRIGHT", -6, 24)
 
     rulerFrame = CreateFrame("Frame", nil, timelineArea, "BackdropTemplate")
     rulerFrame:SetWidth(RULER_WIDTH)
@@ -1982,6 +2034,33 @@ local function BuildFrame()
     end)
 
     editPanel = BuildEditPanel()
+
+    local resizeHandle = CreateFrame("Button", nil, frame)
+    resizeHandle:SetSize(18, 18)
+    resizeHandle:SetPoint("BOTTOMRIGHT", -2, 2)
+    resizeHandle:SetFrameLevel(frame:GetFrameLevel() + 30)
+    resizeHandle:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+    resizeHandle:SetHighlightTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
+    resizeHandle:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
+    resizeHandle:SetScript("OnMouseDown", function(_, button)
+        if button == "LeftButton" then
+            frame:StartSizing("BOTTOMRIGHT")
+        end
+    end)
+    resizeHandle:SetScript("OnMouseUp", function(_, button)
+        if button ~= "LeftButton" then
+            return
+        end
+        frame:StopMovingOrSizing()
+        frame:SetUserPlaced(false)
+        SaveEditorPosition()
+    end)
+
+    bodyScroll:HookScript("OnSizeChanged", function(self)
+        canvas:SetWidth(math.max(BOSS_CHANNEL_WIDTH + 1, self:GetWidth()))
+        self:UpdateScrollChildRect()
+        NotesEditor:SyncRuler()
+    end)
 end
 
 function NotesEditor:SyncRuler()
@@ -2301,6 +2380,10 @@ function NotesEditor:RenderBlock(reminder, y, stackIdx, height, phases, playerCt
     )
     block:SetHeight(height)
     block:SetFrameLevel(assignmentCanvas:GetFrameLevel() + 5)
+
+    local missingBossAbility = NotesPlanner:HasMissingBossAbility(reminder, state.planningModel)
+    block.bossLinkWarning:SetShown(missingBossAbility)
+    block.who:SetPoint("RIGHT", missingBossAbility and -20 or -4, 0)
 
     local r, g, b = NotesEditor.GetClassColorForTag(reminder.tag)
     block.who:SetText(reminder.tag or "")

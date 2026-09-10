@@ -363,6 +363,49 @@ tests["editor mode state applies to fake widgets without creating frames"] = fun
     assertFalse(controls.difficulty.enabled)
 end
 
+tests["boss link warning clears when a reminder moves to its scheduled occurrence"] = function()
+    local model = {
+        occurrences = { { phase = 1, time = 30, spellID = 101 } },
+    }
+    local reminder = { phaseKey = "1", time = 35, bossSpell = 101 }
+
+    assertTrue(Planner:HasMissingBossAbility(reminder, model))
+    reminder.time = 30
+    assertFalse(Planner:HasMissingBossAbility(reminder, model))
+    reminder.time = 31
+    assertTrue(Planner:HasMissingBossAbility(reminder, model))
+end
+
+tests["boss link warning requires the same spell and phase at the reminder time"] = function()
+    local model = {
+        occurrences = {
+            { phase = 1, time = 30, spellID = 102 },
+            { phase = 2, time = 30, spellID = 101 },
+            { phase = 1, time = 45, spellID = 101 },
+        },
+    }
+    local reminder = { phase = 1, time = 30, bossSpell = 101 }
+
+    assertTrue(Planner:HasMissingBossAbility(reminder, model))
+    reminder.phase = 2
+    assertFalse(Planner:HasMissingBossAbility(reminder, model))
+    reminder.bossSpell = 999
+    assertTrue(Planner:HasMissingBossAbility(reminder, model))
+end
+
+tests["boss link warning skips unlinked reminders and unavailable timings"] = function()
+    local reminder = { phase = 1, time = 30 }
+    local model = {
+        occurrences = { { phase = 1, time = 45, spellID = 101 } },
+    }
+
+    assertFalse(Planner:HasMissingBossAbility(reminder, model))
+    reminder.bossSpell = 101
+    assertFalse(Planner:HasMissingBossAbility(reminder, nil))
+    assertFalse(Planner:HasMissingBossAbility(reminder, {}))
+    assertFalse(Planner:HasMissingBossAbility(reminder, { occurrences = {} }))
+end
+
 tests["planner construction does not mutate notes or planning models"] = function()
     local note = makeNote({ ["1"] = { { time = 5, phase = 1 } } })
     local model = {

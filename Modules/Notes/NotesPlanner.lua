@@ -455,6 +455,27 @@ function NotesPlanner:BuildAbilityEntries(
     return self:AllocateColumns(entries, gap)
 end
 
+function NotesPlanner:HasMissingBossAbility(reminder, planningModel)
+    if not reminder.bossSpell then
+        return false
+    end
+    local occurrences = type(planningModel) == "table" and planningModel.occurrences
+    if type(occurrences) ~= "table" or #occurrences == 0 then
+        return false
+    end
+
+    local phase = tonumber(reminder.phaseKey or reminder.phase) or 1
+    for _, occurrence in ipairs(occurrences) do
+        if occurrence.phase == phase
+            and occurrence.time == reminder.time
+            and occurrence.spellID == reminder.bossSpell
+        then
+            return false
+        end
+    end
+    return true
+end
+
 function NotesPlanner:GetUnavailableMessage(planningModel)
     local occurrences = type(planningModel) == "table" and planningModel.occurrences
     if type(occurrences) == "table" and #occurrences > 0 then

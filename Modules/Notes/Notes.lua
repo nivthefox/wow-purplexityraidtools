@@ -73,6 +73,7 @@ PRT.defaults.notes = {
         growDirection = "Down",
         ttsEnabled = true,
         soundsEnabled = true,
+        soundChannel = "Master",
     },
     contentTypes = {
         openWorld = false,

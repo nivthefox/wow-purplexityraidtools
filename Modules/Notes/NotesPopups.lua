@@ -640,6 +640,21 @@ end
 -- resolve) and the Enable TTS setting is on.
 local LSM
 local lsmSoundCache
+local SOUND_CHANNELS = {
+    Master = true,
+    SFX = true,
+    Music = true,
+    Ambience = true,
+    Dialog = true,
+}
+
+function NotesPopups:GetSoundChannel()
+    local p = GetPopupSettings()
+    if p and SOUND_CHANNELS[p.soundChannel] then
+        return p.soundChannel
+    end
+    return "Master"
+end
 
 local function GetLSM()
     if LSM == nil then
@@ -684,11 +699,12 @@ function NotesPopups:PreviewSound(name)
         return false
     end
 
+    local channel = self:GetSoundChannel()
     local path = ResolveLSMSound(name)
-    if path and PlaySoundFile(path, "Master") then
+    if path and PlaySoundFile(path, channel) then
         return true
     end
-    return PlaySoundFile(name, "Master") == true
+    return PlaySoundFile(name, channel) == true
 end
 
 function NotesPopups:PlayAudio(reminder)
@@ -734,7 +750,7 @@ local COUNTDOWN_SOUND = "Interface\\AddOns\\BigWigs\\Media\\Sounds\\Amy\\%d.ogg"
 
 function NotesPopups:AnnounceCountdown(n)
     if not n or n < 1 or n > 10 then return end
-    PlaySoundFile(COUNTDOWN_SOUND:format(n), "Master")
+    PlaySoundFile(COUNTDOWN_SOUND:format(n), self:GetSoundChannel())
 end
 
 local function GetPositionsStore()

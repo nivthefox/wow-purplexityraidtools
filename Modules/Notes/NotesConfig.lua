@@ -31,6 +31,14 @@ local GROW_OPTIONS = {
     { name = "Down", value = "Down" },
 }
 
+local SOUND_CHANNEL_OPTIONS = {
+    { name = "Master",              value = "Master" },
+    { name = "Sound Effects (SFX)", value = "SFX" },
+    { name = "Music",               value = "Music" },
+    { name = "Ambience",            value = "Ambience" },
+    { name = "Dialog",              value = "Dialog" },
+}
+
 local POPUP_TYPES = { "Icon", "Bar", "Text", "Circle" }
 
 local CONTENT_CHECKBOXES = {
@@ -802,6 +810,16 @@ PRT:RegisterTab("Notes", function(parent)
             PRT:ApplySettings("notes")
         end)
         soundsCheckbox:SetPoint("TOPLEFT", 0, yOffset)
+        yOffset = yOffset - ROW_HEIGHT
+
+        local soundChannelDropdown = PRT.Components.GetBasicDropdown(panel, "Sound Channel",
+            function() return SOUND_CHANNEL_OPTIONS end,
+            function(value) return PRT.NotesPopups:GetSoundChannel() == value end,
+            function(value)
+                GetSettings().popups.soundChannel = value
+                PRT:ApplySettings("notes")
+            end)
+        soundChannelDropdown:SetPoint("TOPLEFT", 0, yOffset)
         yOffset = yOffset - ROW_HEIGHT - 8
 
         testPopupsButton = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
@@ -828,6 +846,7 @@ PRT:RegisterTab("Notes", function(parent)
             growDropdown:SetValue()
             ttsCheckbox:SetValue(settings.popups.ttsEnabled)
             soundsCheckbox:SetValue(settings.popups.soundsEnabled)
+            soundChannelDropdown:SetValue()
             RefreshTestButton()
         end)
     end

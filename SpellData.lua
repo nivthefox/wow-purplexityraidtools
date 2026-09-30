@@ -1,5 +1,5 @@
 -- SpellData.lua (auto-generated, do not edit)
--- Source: SimulationCraft dbc_extract3 (build 12.1.0.69587)
+-- Source: SimulationCraft dbc_extract3 (build 12.1.0.69933)
 
 local PRT = PurplexityRaidTools
 
@@ -395,8 +395,8 @@ PRT.SpellData = {
                 charges = 1,
                 talents = {
                     [431166] = { charges_pct = 0.04, duration_pct = 0.04 },
-                    [451035] = { duration_pct = 0.03 },
-                    [1248014] = { duration_pct = 0.1 },
+                    [451035] = { duration_pct = 0.06 },
+                    [1248014] = { duration_pct = 0.15 },
                 },
             },
             [2139] = {
@@ -652,8 +652,8 @@ PRT.SpellData = {
                 charges = 1,
                 talents = {
                     [431166] = { charges_pct = 0.04, duration_pct = 0.04 },
-                    [451035] = { duration_pct = 0.03 },
-                    [1248014] = { duration_pct = 0.1 },
+                    [451035] = { duration_pct = 0.06 },
+                    [1248014] = { duration_pct = 0.15 },
                 },
             },
         },
@@ -2338,6 +2338,7 @@ PRT.SpellData = {
                 duration = 6,
                 cooldown = 90,
                 charges = 1,
+                flags = { "IMPORTANT" },
                 talents = {
                     [444780] = { duration_pct = 0.2 },
                 },
@@ -2751,6 +2752,7 @@ PRT.SpellData = {
                 duration = 6,
                 cooldown = 90,
                 charges = 1,
+                flags = { "IMPORTANT" },
                 talents = {
                     [444780] = { duration_pct = 0.2 },
                 },
@@ -3806,7 +3808,7 @@ PRT.SpellData = {
                     [474530] = { charges_pct = 0.25, duration_pct = 0.25 },
                     [1244632] = { charges_pct = 0.1, duration_pct = 0.1 },
                     [1263660] = { charges_pct = 0.3 },
-                    [1270592] = { charges_pct = 0.08 },
+                    [1270592] = { charges_pct = 0.1 },
                 },
             },
             [1126] = {
@@ -3831,7 +3833,7 @@ PRT.SpellData = {
                     [474526] = { charges_pct = 0.1, duration_pct = 0.1 },
                     [474530] = { charges_pct = 0.25, duration_pct = 0.25 },
                     [1244632] = { charges_pct = 0.1, duration_pct = 0.1 },
-                    [1270592] = { charges_pct = 0.08 },
+                    [1270592] = { charges_pct = 0.1 },
                 },
             },
             [1850] = {
@@ -4081,7 +4083,7 @@ PRT.SpellData = {
                 cooldown = 30,
                 charges = 1,
                 talents = {
-                    [1270592] = { charges_pct = 0.08 },
+                    [1270592] = { charges_pct = 0.1 },
                 },
             },
             [102401] = {
@@ -4221,7 +4223,7 @@ PRT.SpellData = {
                     [441846] = { charges_pct = 0.25, duration_pct = 0.25 },
                     [1244544] = { charges_pct = 0.15, cooldown = -15, duration_pct = 0.15 },
                     [1244632] = { charges_pct = 0.1, duration_pct = 0.1 },
-                    [1270592] = { charges_pct = 0.08 },
+                    [1270592] = { charges_pct = 0.1 },
                 },
             },
             [285381] = {
@@ -4271,7 +4273,7 @@ PRT.SpellData = {
                     [441846] = { charges_pct = 0.25, duration_pct = 0.25 },
                     [1244544] = { charges_pct = 0.15, cooldown = -15, duration_pct = 0.15 },
                     [1244632] = { charges_pct = 0.1, duration_pct = 0.1 },
-                    [1270592] = { charges_pct = 0.08 },
+                    [1270592] = { charges_pct = 0.1 },
                 },
             },
             [1244258] = {
@@ -4938,7 +4940,7 @@ PRT.SpellData = {
                     [439926] = { charges_pct = 0.05 },
                     [474526] = { charges_pct = 0.1, duration_pct = 0.1 },
                     [474530] = { charges_pct = 0.25, duration_pct = 0.25 },
-                    [1270592] = { charges_pct = 0.08 },
+                    [1270592] = { charges_pct = 0.1 },
                 },
             },
             [1126] = {
@@ -4958,7 +4960,7 @@ PRT.SpellData = {
                     [108299] = { charges_pct = 0.06, duration_pct = 0.06 },
                     [474526] = { charges_pct = 0.1, duration_pct = 0.1 },
                     [474530] = { charges_pct = 0.25, duration_pct = 0.25 },
-                    [1270592] = { charges_pct = 0.08 },
+                    [1270592] = { charges_pct = 0.1 },
                 },
             },
             [1850] = {
@@ -5221,7 +5223,7 @@ PRT.SpellData = {
                 cooldown = 30,
                 charges = 1,
                 talents = {
-                    [1270592] = { charges_pct = 0.08 },
+                    [1270592] = { charges_pct = 0.1 },
                 },
             },
             [102401] = {
@@ -5495,7 +5497,7 @@ PRT.SpellData = {
                 cooldown = 0,
                 charges = 1,
                 talents = {
-                    [1265932] = { duration_pct = 0.12 },
+                    [1265932] = { duration_pct = 0.2 },
                 },
             },
             [50842] = {
@@ -5505,7 +5507,7 @@ PRT.SpellData = {
                 cooldown = 7.5,
                 charges = 2,
                 talents = {
-                    [440031] = { duration_pct = 0.3 },
+                    [440031] = { duration_pct = 0.5 },
                 },
             },
             [50977] = {
@@ -5803,7 +5805,7 @@ PRT.SpellData = {
                 cooldown = 0,
                 charges = 1,
                 talents = {
-                    [1265932] = { duration_pct = 0.12 },
+                    [1265932] = { duration_pct = 0.2 },
                 },
             },
             [50977] = {

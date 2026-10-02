@@ -8,9 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- Notes timeline reminders now show a warning when their linked boss ability does not occur at the reminder's time.
+- Notes timeline reminders now warn when their timing does not match their linked ability on the planned boss timeline.
 - The Notes editor is now resizable and remembers its size.
 - Reminder sounds, countdowns, and sound previews now use a selectable sound channel under Notes > Popups.
+- The Notes editor now warns about planned cooldown conflicts and shows recovery guides when selecting or dragging assignments.
+- Attendance now supports horizontal scrolling to reach dates beyond the window's width.
+- The main configuration window is now resizable within screen bounds.
 
 ## [1.5.0] - 2026-09-05
 

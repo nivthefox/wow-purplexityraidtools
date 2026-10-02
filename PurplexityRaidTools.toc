@@ -49,6 +49,7 @@ Modules/Notes/NotesTags.lua
 Modules/Notes/NotesBossTimeline.lua
 Modules/Notes/NotesTimer.lua
 Modules/Notes/NotesPlanner.lua
+Modules/Notes/NotesCooldowns.lua
 Modules/Notes/NotesFrame.lua
 Modules/Notes/NotesPopups.lua
 Modules/Notes/NotesEditor.lua

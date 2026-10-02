@@ -733,7 +733,11 @@ local function RefreshPlanningModel()
 end
 
 local function DerivePhases(parsedNote)
-    return NotesPlanner:BuildPhases(parsedNote, state.planningModel)
+    local phases = NotesPlanner:BuildPhases(parsedNote, state.planningModel)
+    if PRT.NotesCooldowns then
+        PRT.NotesCooldowns:ExtendPhases(phases, state.cooldownGuide)
+    end
+    return phases
 end
 
 local function TimeToY(time, phaseNum, phases, activePhase)
@@ -900,6 +904,78 @@ function NotesEditor.FindAbilitySpellID(text, knownAbilities)
     return nil
 end
 
+function NotesEditor.ResolveCooldown(reminder)
+    local tag = reminder.tag
+    if not PRT.NotesCooldowns or not PRT.SpellData or not tag or tag == ""
+        or IsRoleOrGroupTag(tag) or IsClassTag(tag) then
+        return nil
+    end
+
+    local members = PRT.GroupInspect and PRT.GroupInspect.members or {}
+    local playerName = UnitName("player")
+    local playerMember = members[UnitGUID("player")]
+    local playerShortName = playerName and playerName:match("^([^%-]+)")
+    local isPlayer = playerShortName and playerShortName:lower() == tag:lower()
+        or playerMember and playerMember.name:lower() == tag:lower()
+    local target = FindTargetOption(tag)
+    if not target then
+        for _, option in ipairs(GetTargetOptions()) do
+            if option.character:lower() == tag:lower() then
+                target = option
+                break
+            end
+        end
+    end
+    local caster = target and target.character
+    local specID = target and target.specId
+    local member
+    if isPlayer then
+        local specIndex = C_SpecializationInfo and C_SpecializationInfo.GetSpecialization
+            and C_SpecializationInfo.GetSpecialization()
+        specID = specIndex and C_SpecializationInfo.GetSpecializationInfo
+            and C_SpecializationInfo.GetSpecializationInfo(specIndex)
+        caster = caster or playerName
+        member = playerMember
+        if member and ResolvedShortName(member.name) then caster = member.name end
+    elseif caster then
+        for _, value in pairs(members) do
+            if value.name:lower() == caster:lower() and value.specId == specID then
+                member = value
+                break
+            end
+        end
+    end
+    local spec = specID and PRT.SpellData[specID]
+    if not caster or not spec or not spec.abilities then
+        return nil
+    end
+    local spellID = reminder.spellID
+        or NotesEditor.FindAbilitySpellID(reminder.text, CollectAbilitiesFromSpec(spec))
+    local ability = spellID and spec.abilities[spellID]
+    local info = PRT.NotesCooldowns:GetAbility(ability, member and member.talents)
+    if info then
+        info.caster = caster
+        info.spellID = spellID
+    end
+    return info
+end
+
+local function EvaluateCooldowns(excluded, candidate)
+    if not PRT.NotesCooldowns then return {} end
+    local cache = {}
+    return PRT.NotesCooldowns:Evaluate(state.parsedNote, function(reminder)
+        local key = (reminder.tag or "") .. "\001" .. (reminder.spellID or reminder.text or "")
+        if cache[key] == nil then cache[key] = NotesEditor.ResolveCooldown(reminder) or false end
+        return cache[key]
+    end, excluded, candidate)
+end
+
+local function CooldownWarning(status)
+    if status and status.ready == false then
+        return "Not ready until " .. FormatTime(math.ceil(status.readyAt)) .. "."
+    end
+end
+
 local function SaveEditorPosition()
     if not frame then
         return
@@ -948,6 +1024,8 @@ end
 local titleBar, modeBar, phaseTabs, bossHeading, timelineArea, editPanel
 local rulerFrame, bodyScroll, canvas, assignmentCanvas, bossChannel
 local cursorOverlay, cursorLine, cursorLabel
+local cooldownOverlay, cooldownShade
+local cooldownDashes = {}
 local blockPool = {}
 local bossAbilityPool = {}
 local gridPool = {}
@@ -957,6 +1035,31 @@ local phaseTabPool = {}
 local phaseDividerPool = {}
 local bossDividerPool = {}
 local freeformPool = {}
+
+local function RefreshBlockBorder(block)
+    if block.cooldownStatus and block.cooldownStatus.ready == false then
+        block:SetBackdropBorderColor(1, 0.25, 0.25, 1)
+    elseif block.dragReady then
+        block:SetBackdropBorderColor(0.3, 0.9, 0.5, 1)
+    elseif block.selected or block.isPersonal or block.isAnnotated then
+        block:SetBackdropBorderColor(0.94, 0.75, 0.25, 1)
+    else
+        block:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
+    end
+end
+
+local function RefreshBlockWarning(block)
+    local warning = CooldownWarning(block.cooldownStatus)
+    block.cooldownWarning.message = warning
+    block.cooldownWarning:SetShown(warning ~= nil)
+    local inset = 4
+    if block.bossLinkWarning:IsShown() then inset = inset + 16 end
+    block.cooldownWarning:ClearAllPoints()
+    block.cooldownWarning:SetPoint("TOPRIGHT", -inset, -3)
+    if warning then inset = inset + 16 end
+    block.who:SetPoint("RIGHT", -inset, 0)
+    RefreshBlockBorder(block)
+end
 
 local function RecyclePool(pool)
     for _, obj in ipairs(pool) do
@@ -1045,17 +1148,22 @@ local function CreateBlock(parent)
     block.annotatedDot:Hide()
 
     block.bossLinkWarning = CreateBossLinkWarning(block)
+    block.cooldownWarning = CreateBossLinkWarning(block)
+    block.cooldownWarning:SetScript("OnEnter", function(self)
+        if not GameTooltip or not self.message then return end
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText(self.message, 1, 0.3, 0.3, 1, true)
+        GameTooltip:Show()
+    end)
 
     block:SetScript("OnEnter", function(self)
-        self:SetBackdropBorderColor(0.91, 0.27, 0.37, 1)
-    end)
-    block:SetScript("OnLeave", function(self)
-        if self.isPersonal or self.isAnnotated then
-            self:SetBackdropBorderColor(0.94, 0.75, 0.25, 1)
+        if self.cooldownStatus and self.cooldownStatus.ready == false or self.dragReady then
+            RefreshBlockBorder(self)
         else
-            self:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
+            self:SetBackdropBorderColor(0.91, 0.27, 0.37, 1)
         end
     end)
+    block:SetScript("OnLeave", RefreshBlockBorder)
 
     return block
 end
@@ -1176,6 +1284,65 @@ end
 
 local editFields = {}
 local currentAbilities = {}
+
+function NotesEditor:RefreshCooldownStatus()
+    if not editPanel or not editPanel:IsShown() or not editFields.cooldownStatus then return end
+    local draft = {
+        time = ParseTimeInput(editFields.time:GetText()),
+        phase = tonumber(editFields.phase:GetText()),
+        tag = editFields.who:GetText(),
+        spellID = editFields.abilitySpellId,
+        text = editFields.abilityText or "",
+    }
+    local status = EvaluateCooldowns(state.editingReminder, draft)[draft]
+    local warning = CooldownWarning(status)
+    if warning then
+        editFields.cooldownStatus:SetText(
+            "|TInterface\\DialogFrame\\UI-Dialog-Icon-AlertNew:12:12|t " .. warning
+        )
+        editFields.cooldownStatus:SetTextColor(1, 0.4, 0.3)
+    else
+        editFields.cooldownStatus:SetText(status and status.ready and "Ready" or "")
+        editFields.cooldownStatus:SetTextColor(0.5, 0.5, 0.5)
+    end
+end
+
+function NotesEditor:RenderCooldownGuide()
+    if not cooldownOverlay then return end
+    cooldownShade:Hide()
+    for _, dash in ipairs(cooldownDashes) do dash:Hide() end
+    local guide = state.cooldownGuide
+    if not guide or state.activePhase ~= "all" and state.activePhase ~= guide.phase then return end
+    local phases = state.timelinePhases or DerivePhases(state.parsedNote)
+    local fromY = TimeToY(guide.start, guide.phase, phases, state.activePhase)
+    local toY = TimeToY(guide.finish, guide.phase, phases, state.activePhase)
+    local column
+    for _, block in ipairs(blockPool) do
+        if block:IsShown() and block.reminder == state.selectedReminder then
+            column = block.column
+            break
+        end
+    end
+    if column == nil then return end
+    cooldownShade:ClearAllPoints()
+    cooldownShade:SetPoint("TOPLEFT", assignmentCanvas, "TOPLEFT", column * (BLOCK_WIDTH + BLOCK_GAP), -fromY)
+    cooldownShade:SetSize(BLOCK_WIDTH, math.max(1, toY - fromY))
+    cooldownShade:Show()
+    local width = assignmentCanvas:GetWidth()
+    for x = 0, width - 1, 14 do
+        local index = math.floor(x / 14) + 1
+        local dash = cooldownDashes[index]
+        if not dash then
+            dash = cooldownOverlay:CreateTexture(nil, "OVERLAY")
+            dash:SetColorTexture(0.3, 0.9, 0.5, 1)
+            cooldownDashes[index] = dash
+        end
+        dash:ClearAllPoints()
+        dash:SetPoint("TOPLEFT", cooldownOverlay, "TOPLEFT", x, -toY)
+        dash:SetSize(math.min(8, width - x), 2)
+        dash:Show()
+    end
+end
 
 local function CreateFieldLabel(parent, text)
     local label = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -1552,15 +1719,18 @@ local function BuildEditPanel()
     editFields.phaseLabel = AddLabel("PHASE")
     editFields.phase = AddInput()
     editFields.phase:SetNumeric(true)
+    editFields.phase:SetScript("OnTextChanged", function() NotesEditor:RefreshCooldownStatus() end)
 
     editFields.timeLabel = AddLabel("TIME (PHASE-RELATIVE)")
     editFields.time = AddInput()
+    editFields.time:SetScript("OnTextChanged", function() NotesEditor:RefreshCooldownStatus() end)
 
     editFields.whoLabel = AddLabel("WHO")
     editFields.who = AddTargetPicker(GetTargetOptions, NotesEditor.GetClassColorForTag, function(tag)
         local abilities = NotesEditor.GetAbilitiesForTag(tag)
         currentAbilities = abilities
         editFields.ability:GenerateMenu()
+        NotesEditor:RefreshCooldownStatus()
     end)
 
     editFields.abilityLabel = AddLabel("ABILITY")
@@ -1589,8 +1759,14 @@ local function BuildEditPanel()
                 editFields.abilityText = nil
                 editFields.abilitySpellId = nil
             end
+            NotesEditor:RefreshCooldownStatus()
         end
     )
+    editFields.cooldownStatus = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    editFields.cooldownStatus:SetPoint("TOPLEFT", editFields.ability, "BOTTOMLEFT", 2, -2)
+    editFields.cooldownStatus:SetSize(fieldWidth - 2, 16)
+    editFields.cooldownStatus:SetJustifyH("LEFT")
+    editFields.cooldownStatus:SetWordWrap(false)
 
     editFields.displayTextLabel = AddLabel("DISPLAY TEXT (OPTIONAL)")
     editFields.displayText = AddInput()
@@ -1641,7 +1817,7 @@ local function BuildEditPanel()
         { key = "phase", label = editFields.phaseLabel, field = editFields.phase },
         { key = "time", label = editFields.timeLabel, field = editFields.time },
         { key = "who", label = editFields.whoLabel, field = editFields.who },
-        { key = "ability", label = editFields.abilityLabel, field = editFields.ability },
+        { key = "ability", label = editFields.abilityLabel, field = editFields.ability, fieldHeight = 46 },
         { key = "displayText", label = editFields.displayTextLabel, field = editFields.displayText },
         { key = "duration", label = editFields.durationLabel, field = editFields.duration },
         { key = "displayType", label = editFields.displayTypeLabel, field = editFields.displayType },
@@ -1680,6 +1856,8 @@ local function BuildEditPanel()
             end
         end
         scrollChild:SetHeight(math.abs(y) + 20)
+        editFields.cooldownStatus:SetShown(lookup.ability == true)
+        NotesEditor:RefreshCooldownStatus()
     end
 
     function panel:RefreshLayout()
@@ -1766,6 +1944,11 @@ local function BuildFrame()
     frame:Hide()
 
     frame:SetScript("OnHide", function()
+        if state.draggingBlock then
+            state.draggingBlock:SetScript("OnUpdate", nil)
+            state.draggingBlock:StopMovingOrSizing()
+            state.draggingBlock = nil
+        end
         frame:StopMovingOrSizing()
         frame:SetUserPlaced(false)
         SaveEditorPosition()
@@ -1977,6 +2160,18 @@ local function BuildFrame()
         NotesEditor:OpenAddPanel(time, phaseNum)
     end)
 
+    local shadeFrame = CreateFrame("Frame", nil, assignmentCanvas)
+    shadeFrame:SetAllPoints()
+    shadeFrame:SetFrameLevel(assignmentCanvas:GetFrameLevel() + 1)
+    shadeFrame:EnableMouse(false)
+    cooldownShade = shadeFrame:CreateTexture(nil, "BACKGROUND")
+    cooldownShade:SetColorTexture(0.4, 0.6, 0.8, 0.12)
+    cooldownShade:Hide()
+    cooldownOverlay = CreateFrame("Frame", nil, assignmentCanvas)
+    cooldownOverlay:SetAllPoints()
+    cooldownOverlay:SetFrameLevel(assignmentCanvas:GetFrameLevel() + 30)
+    cooldownOverlay:EnableMouse(false)
+
     cursorOverlay = CreateFrame("Frame", nil, canvas)
     cursorOverlay:SetAllPoints()
     cursorOverlay:SetFrameLevel(canvas:GetFrameLevel() + 20)
@@ -2001,7 +2196,7 @@ local function BuildFrame()
 
     local cursorUpdateFrame = CreateFrame("Frame", nil, canvas)
     cursorUpdateFrame:SetScript("OnUpdate", function()
-        if not canvas:IsMouseOver() then
+        if state.draggingBlock or not canvas:IsMouseOver() then
             cursorLine:Hide()
             cursorLabel:Hide()
             return
@@ -2034,6 +2229,11 @@ local function BuildFrame()
     end)
 
     editPanel = BuildEditPanel()
+    if PRT.GroupInspect and PRT.GroupInspect.Listen then
+        PRT.GroupInspect:Listen(function()
+            if frame:IsShown() then NotesEditor:Render() end
+        end)
+    end
 
     local resizeHandle = CreateFrame("Button", nil, frame)
     resizeHandle:SetSize(18, 18)
@@ -2060,6 +2260,7 @@ local function BuildFrame()
         canvas:SetWidth(math.max(BOSS_CHANNEL_WIDTH + 1, self:GetWidth()))
         self:UpdateScrollChildRect()
         NotesEditor:SyncRuler()
+        NotesEditor:RenderCooldownGuide()
     end)
 end
 
@@ -2146,7 +2347,7 @@ function NotesEditor:RenderPhaseTabs()
 end
 
 function NotesEditor:RenderTimeline()
-    RecyclePool(blockPool)
+    if not state.preparingDrag then RecyclePool(blockPool) end
     RecyclePool(bossAbilityPool)
     RecyclePool(gridPool)
     RecyclePool(bossGridPool)
@@ -2155,7 +2356,27 @@ function NotesEditor:RenderTimeline()
     RecyclePool(bossDividerPool)
     RecyclePool(freeformPool)
 
+    state.cooldownStatuses = EvaluateCooldowns()
+    state.cooldownGuide = PRT.NotesCooldowns and PRT.NotesCooldowns:GetGuide(
+        state.cooldownStatuses[state.selectedReminder]
+    )
     local phases = DerivePhases(state.parsedNote)
+    if state.preparingDrag then
+        -- Keep the grabbed block under the cursor when a previous selection
+        -- had extended an earlier phase's display area.
+        local start = 0
+        for _, phase in ipairs(phases) do
+            for _, previous in ipairs(state.timelinePhases or {}) do
+                if phase.num == previous.num then
+                    phase.duration = math.max(phase.duration, previous.duration)
+                    break
+                end
+            end
+            phase.start = start
+            start = start + phase.duration
+        end
+    end
+    state.timelinePhases = phases
     local totalDur = TotalDuration(phases, state.activePhase)
     local canvasHeight = totalDur * VPPS + TOP_PAD + 20
     canvas:SetHeight(canvasHeight)
@@ -2364,12 +2585,28 @@ function NotesEditor:RenderTimeline()
         block.spellID = ability.spellID
         block:Show()
     end
+    self:RenderCooldownGuide()
+    self:RefreshCooldownStatus()
 end
 
 function NotesEditor:RenderBlock(reminder, y, stackIdx, height, phases, playerCtx)
-    local block = GetFromPool(blockPool, function()
-        return CreateBlock(assignmentCanvas)
-    end)
+    local block
+    if state.preparingDrag then
+        for _, existing in ipairs(blockPool) do
+            if existing:IsShown() and existing.reminder == reminder then
+                block = existing
+                break
+            end
+        end
+    end
+    block = block or GetFromPool(blockPool, function() return CreateBlock(assignmentCanvas) end)
+    block:ClearAllPoints()
+    block.reminder = reminder
+    block.column = stackIdx
+    block.selected = state.selectedReminder == reminder
+    block.cooldownStatus = state.cooldownStatuses and state.cooldownStatuses[reminder]
+    block.dragReady = nil
+    block:SetScript("OnUpdate", nil)
 
     block:SetPoint(
         "TOPLEFT",
@@ -2413,6 +2650,7 @@ function NotesEditor:RenderBlock(reminder, y, stackIdx, height, phases, playerCt
         block:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
         block.personalBorder:Hide()
     end
+    RefreshBlockWarning(block)
 
     local isInteractive = true
     if state.mode == "annotate" and playerCtx
@@ -2432,17 +2670,47 @@ function NotesEditor:RenderBlock(reminder, y, stackIdx, height, phases, playerCt
     if canDrag then
         block:RegisterForDrag("LeftButton")
         block:SetScript("OnDragStart", function(blockFrame)
+            state.selectedReminder = reminder
+            state.selectedPersonal = reminder.isPersonal or false
+            state.preparingDrag = true
+            NotesEditor:RenderTimeline()
+            state.preparingDrag = nil
+            local originalStatus = state.cooldownStatuses[reminder]
+            local fixedGuide = originalStatus and originalStatus.ready == false and state.cooldownGuide
+            local dragPhases = state.timelinePhases
+            state.draggingBlock = blockFrame
             blockFrame.wasDragged = true
             blockFrame:StartMoving()
+            blockFrame:SetScript("OnUpdate", function(dragged, elapsed)
+                dragged.dragElapsed = (dragged.dragElapsed or 0) + elapsed
+                if dragged.dragElapsed < 0.03 then return end
+                dragged.dragElapsed = 0
+                local _, cursorY = GetCursorPosition()
+                local dropY = assignmentCanvas:GetTop() - cursorY / assignmentCanvas:GetEffectiveScale()
+                local time, phase = NotesEditor.GetReminderDropTarget(dropY, dragPhases, state.activePhase)
+                if dragged.dropTime == time and dragged.dropPhase == phase then return end
+                dragged.dropTime, dragged.dropPhase = time, phase
+                local draft = NotesEditor.BuildMovedReminder(reminder, time, phase)
+                dragged.cooldownStatus = EvaluateCooldowns(reminder, draft)[draft]
+                dragged.dragReady = dragged.cooldownStatus and dragged.cooldownStatus.ready
+                if PRT.NotesCooldowns then
+                    state.cooldownGuide = fixedGuide or PRT.NotesCooldowns:GetGuide(dragged.cooldownStatus)
+                end
+                RefreshBlockWarning(dragged)
+                NotesEditor:RenderCooldownGuide()
+            end)
         end)
         block:SetScript("OnDragStop", function(blockFrame)
+            blockFrame:SetScript("OnUpdate", nil)
             blockFrame:StopMovingOrSizing()
+            blockFrame.dropTime, blockFrame.dropPhase, blockFrame.dragElapsed = nil, nil, nil
+            state.draggingBlock = nil
             local _, cursorY = GetCursorPosition()
             local scale = assignmentCanvas:GetEffectiveScale()
             local dropY = assignmentCanvas:GetTop() - (cursorY / scale)
             local dropTime, dropPhase = NotesEditor.GetReminderDropTarget(
                 dropY,
-                phases,
+                state.timelinePhases or phases,
                 state.activePhase
             )
             NotesEditor:MoveReminderTo(reminder, dropTime, dropPhase)
@@ -2459,6 +2727,9 @@ function NotesEditor:RenderBlock(reminder, y, stackIdx, height, phases, playerCt
             return
         end
         if not isInteractive then
+            state.selectedReminder = reminder
+            state.selectedPersonal = reminder.isPersonal or false
+            NotesEditor:RenderTimeline()
             return
         end
         NotesEditor:OpenEditPanel(reminder)
@@ -2468,7 +2739,7 @@ function NotesEditor:RenderBlock(reminder, y, stackIdx, height, phases, playerCt
 end
 
 function NotesEditor:Render()
-    if not frame or not frame:IsShown() then
+    if not frame or not frame:IsShown() or state.draggingBlock then
         return
     end
 
@@ -2713,6 +2984,17 @@ local function SameStoredReminder(a, b)
         and a.text == b.text
 end
 
+function NotesEditor.FindMatchingReminder(note, source, personal)
+    if not note or not source then return nil end
+    for _, reminder in ipairs((note.reminders or {})[source.phaseKey] or {}) do
+        if SameStoredReminder(reminder, source)
+            and reminder.spellID == source.spellID
+            and (reminder.isPersonal or false) == (personal or false) then
+            return reminder
+        end
+    end
+end
+
 function NotesEditor.ReplaceAnnotationReminder(note, source, replacement)
     if not note or not source then
         return false
@@ -2829,6 +3111,7 @@ function NotesEditor:MoveReminderTo(reminder, time, phaseNum)
             replacement
         )
         if moved then
+            state.selectedReminder = replacement
             self:SaveCurrentAnnotation()
             self:ReloadNote()
         end
@@ -2886,6 +3169,9 @@ local function ReadAlertFields()
 end
 
 function NotesEditor:OpenAddPanel(time, phaseNum)
+    state.selectedReminder = nil
+    state.selectedPersonal = nil
+    self:RenderTimeline()
     editPanel:Show()
     editPanel.errorText:SetText("")
     editPanel.deleteBtn:Hide()
@@ -2930,6 +3216,9 @@ function NotesEditor:OpenAddPanel(time, phaseNum)
 end
 
 function NotesEditor:OpenEditPanel(reminder)
+    state.selectedReminder = reminder
+    state.selectedPersonal = reminder.isPersonal or false
+    self:RenderTimeline()
     editPanel:Show()
     editPanel.errorText:SetText("")
     state.editingReminder = reminder
@@ -3086,6 +3375,8 @@ function NotesEditor:SaveFromPanel()
         else
             AppendReminderToNote(annotationNote, newReminder)
         end
+        state.selectedReminder = newReminder
+        state.selectedPersonal = true
         self:SaveCurrentAnnotation()
         self:ReloadNote()
     else
@@ -3094,6 +3385,8 @@ function NotesEditor:SaveFromPanel()
             RemoveReminderFromNote(note, state.editingReminder)
         end
         AppendReminderToNote(note, newReminder)
+        state.selectedReminder = newReminder
+        state.selectedPersonal = false
         self:SaveCurrentNote()
     end
 
@@ -3168,6 +3461,8 @@ function NotesEditor:DeleteFromPanel()
         self:SaveCurrentNote()
     end
 
+    state.selectedReminder = nil
+    state.selectedPersonal = nil
     editPanel:Hide()
     state.editingReminder = nil
     self:ReloadNote()
@@ -3228,6 +3523,7 @@ function NotesEditor:ReloadNote()
     end
 
     state.parsedNote = parsed
+    state.selectedReminder = NotesEditor.FindMatchingReminder(parsed, state.selectedReminder, state.selectedPersonal)
     state.encounterName = parsed.name or (parsed.encounterID and tostring(parsed.encounterID)) or ""
     state.difficulty = parsed.difficulty
 end

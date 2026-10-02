@@ -483,14 +483,64 @@ ConfigFrame:SetTitle(string.format(
 ))
 
 ConfigFrame:SetMovable(true)
+ConfigFrame:SetResizable(true)
 ConfigFrame:SetClampedToScreen(true)
+
+local function UpdateWindowBounds()
+    local viewportWidth, viewportHeight = UIParent:GetWidth(), UIParent:GetHeight()
+    local minWidth = math.min(FRAME_WIDTH, viewportWidth)
+    local minHeight = math.min(FRAME_HEIGHT, viewportHeight)
+    local width = math.max(minWidth, math.min(ConfigFrame:GetWidth(), viewportWidth))
+    local height = math.max(minHeight, math.min(ConfigFrame:GetHeight(), viewportHeight))
+    local left = math.max(0, math.min(ConfigFrame:GetLeft() or 0, viewportWidth - width))
+    local top = math.max(height, math.min(ConfigFrame:GetTop() or viewportHeight, viewportHeight))
+
+    ConfigFrame:SetResizeBounds(minWidth, minHeight, viewportWidth - left, top)
+    ConfigFrame:SetSize(width, height)
+    ConfigFrame:ClearAllPoints()
+    ConfigFrame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left, top)
+end
+
+ConfigFrame:RegisterEvent("DISPLAY_SIZE_CHANGED")
+ConfigFrame:RegisterEvent("UI_SCALE_CHANGED")
+ConfigFrame:SetScript("OnEvent", function()
+    ConfigFrame:StopMovingOrSizing()
+    UpdateWindowBounds()
+end)
+UpdateWindowBounds()
+
 ConfigFrame:EnableMouse(true)
 ConfigFrame:RegisterForDrag("LeftButton")
 ConfigFrame:SetScript("OnDragStart", ConfigFrame.StartMoving)
 ConfigFrame:SetScript("OnDragStop", function(self)
     self:StopMovingOrSizing()
     self:SetUserPlaced(false)
+    UpdateWindowBounds()
 end)
+
+local resizeHandle = CreateFrame("Button", nil, ConfigFrame)
+resizeHandle:SetSize(18, 18)
+resizeHandle:SetPoint("BOTTOMRIGHT", -2, 2)
+resizeHandle:SetFrameLevel(ConfigFrame:GetFrameLevel() + 30)
+resizeHandle:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+resizeHandle:SetHighlightTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
+resizeHandle:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
+resizeHandle:SetScript("OnMouseDown", function(_, button)
+    if button ~= "LeftButton" then return end
+    UpdateWindowBounds()
+    ConfigFrame:StartSizing("BOTTOMRIGHT")
+end)
+
+local function StopResizing()
+    ConfigFrame:StopMovingOrSizing()
+    ConfigFrame:SetUserPlaced(false)
+end
+
+resizeHandle:SetScript("OnMouseUp", function(_, button)
+    if button ~= "LeftButton" then return end
+    StopResizing()
+end)
+ConfigFrame:HookScript("OnHide", StopResizing)
 
 -- UISpecialFrames membership makes Escape close the frame.
 table.insert(UISpecialFrames, "PurplexityRaidToolsConfigFrame")
@@ -591,6 +641,7 @@ PRT.RegisterTab = function(self, name, setupFunc, opts)
 end
 
 ConfigFrame:SetScript("OnShow", function()
+    UpdateWindowBounds()
     if #tabEntries > 0 or #bottomEntries > 0 then
         SelectTab(currentEntry or tabEntries[1] or bottomEntries[1])
     end

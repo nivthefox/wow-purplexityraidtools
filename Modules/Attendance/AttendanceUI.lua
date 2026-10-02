@@ -436,7 +436,25 @@ local DELETE_CHARACTER_DIALOG = {
     end,
 }
 
-local function CreateGridRow(parent, cellCount)
+local function EnsureGridCells(row, cellCount)
+    for index = #row.cells + 1, cellCount do
+        local cell = CreateFrame("Button", nil, row)
+        cell:SetSize(CELL_WIDTH, ROW_HEIGHT)
+        cell:SetPoint("LEFT", SUMMARY_WIDTH + (index - 1) * CELL_WIDTH, 0)
+
+        cell.highlight = cell:CreateTexture(nil, "HIGHLIGHT")
+        cell.highlight:SetAllPoints()
+        cell.highlight:SetColorTexture(0.3, 0.3, 0.3, 0.5)
+
+        cell.text = cell:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        cell.text:SetAllPoints()
+        cell.text:SetJustifyH("CENTER")
+
+        row.cells[index] = cell
+    end
+end
+
+local function CreateGridRow(parent)
     local row = CreateFrame("Frame", nil, parent)
     row:SetHeight(ROW_HEIGHT)
     row.selection = row:CreateTexture(nil, "BACKGROUND")
@@ -485,22 +503,6 @@ local function CreateGridRow(parent, cellCount)
     row.itemLevel:SetJustifyH("CENTER")
 
     row.cells = {}
-    for index = 1, cellCount do
-        local cell = CreateFrame("Button", nil, row)
-        cell:SetSize(CELL_WIDTH, ROW_HEIGHT)
-        cell:SetPoint("LEFT", SUMMARY_WIDTH + (index - 1) * CELL_WIDTH, 0)
-
-        cell.highlight = cell:CreateTexture(nil, "HIGHLIGHT")
-        cell.highlight:SetAllPoints()
-        cell.highlight:SetColorTexture(0.3, 0.3, 0.3, 0.5)
-
-        cell.text = cell:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        cell.text:SetAllPoints()
-        cell.text:SetJustifyH("CENTER")
-
-        row.cells[index] = cell
-    end
-
     return row
 end
 
@@ -547,6 +549,7 @@ local function FillGridRow(row, entry, days, reportDays, deleteCharacter)
     local level = entry.itemLevel
     row.itemLevel:SetText(level and string.format("%.1f", level) or "-")
 
+    EnsureGridCells(row, #days)
     for index, cell in ipairs(row.cells) do
         local day = days[index]
         if day then
@@ -586,13 +589,16 @@ PRT:RegisterTab("Attendance", function(parent)
         end
 
         local gridRows = {}
-        local visibleDayCount = math.max(1,
-            math.floor((panel:GetWidth() - 46 - SUMMARY_WIDTH) / CELL_WIDTH))
+        local dayCount = 0
 
-        local header = CreateFrame("Frame", nil, overview)
-        header:SetHeight(HEADER_HEIGHT)
-        header:SetPoint("TOPLEFT", 20, -10)
-        header:SetPoint("RIGHT", panel, "RIGHT", -26, 0)
+        local headerScroll = CreateFrame("ScrollFrame", nil, overview)
+        headerScroll:SetHeight(HEADER_HEIGHT)
+        headerScroll:SetPoint("TOPLEFT", 20, -10)
+        headerScroll:SetPoint("RIGHT", panel, "RIGHT", -26, 0)
+
+        local header = CreateFrame("Frame", nil, headerScroll)
+        header:SetSize(SUMMARY_WIDTH, HEADER_HEIGHT)
+        headerScroll:SetScrollChild(header)
 
         local sortKey, sortDescending = "player", false
         local function SelectSort(key)
@@ -613,21 +619,66 @@ PRT:RegisterTab("Attendance", function(parent)
         }
 
         local dayHeadings = {}
-        for index = 1, visibleDayCount do
-            local heading = header:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            heading:SetPoint("LEFT", SUMMARY_WIDTH + (index - 1) * CELL_WIDTH, 0)
-            heading:SetWidth(CELL_WIDTH)
-            heading:SetJustifyH("CENTER")
-            dayHeadings[index] = heading
-        end
 
         local scrollFrame = CreateFrame("ScrollFrame", nil, overview, "UIPanelScrollFrameTemplate")
-        scrollFrame:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -4)
+        scrollFrame:SetPoint("TOPLEFT", headerScroll, "BOTTOMLEFT", 0, -4)
         scrollFrame:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -26, 8)
 
         local scrollChild = CreateFrame("Frame", nil, scrollFrame)
         scrollChild:SetSize(panel:GetWidth() - 60, GRID_HEIGHT)
         scrollFrame:SetScrollChild(scrollChild)
+
+        local horizontalScrollBar = CreateFrame("Slider", nil, overview, "UIPanelScrollBarTemplate")
+        horizontalScrollBar:SetOrientation("HORIZONTAL")
+        horizontalScrollBar:SetPoint("BOTTOMLEFT", overview, "BOTTOMLEFT", 36, 8)
+        horizontalScrollBar:SetPoint("BOTTOMRIGHT", overview, "BOTTOMRIGHT", -42, 8)
+        horizontalScrollBar:SetHeight(16)
+        horizontalScrollBar:SetValueStep(1)
+        horizontalScrollBar.scrollStep = CELL_WIDTH
+        horizontalScrollBar.ThumbTexture:SetSize(24, 18)
+        horizontalScrollBar.ThumbTexture:SetTexCoord(0.80, 0.125, 0.20, 0.125, 0.80, 0.875, 0.20, 0.875)
+        local scrollLeft = horizontalScrollBar.ScrollUpButton
+        local scrollRight = horizontalScrollBar.ScrollDownButton
+        scrollLeft:ClearAllPoints()
+        scrollLeft:SetPoint("RIGHT", horizontalScrollBar, "LEFT", 0, 0)
+        scrollRight:ClearAllPoints()
+        scrollRight:SetPoint("LEFT", horizontalScrollBar, "RIGHT", 0, 0)
+        for _, button in ipairs({ scrollLeft, scrollRight }) do
+            button:GetNormalTexture():SetRotation(math.pi / 2)
+            button:GetPushedTexture():SetRotation(math.pi / 2)
+            button:GetDisabledTexture():SetRotation(math.pi / 2)
+            button:GetHighlightTexture():SetRotation(math.pi / 2)
+        end
+        horizontalScrollBar:Hide()
+
+        local function SetHorizontalScroll(value)
+            scrollFrame:SetHorizontalScroll(value)
+            headerScroll:SetHorizontalScroll(value)
+            local _, maximum = horizontalScrollBar:GetMinMaxValues()
+            scrollLeft:SetEnabled(value > 0)
+            scrollRight:SetEnabled(maximum - value > 0.005)
+        end
+
+        horizontalScrollBar:SetScript("OnValueChanged",
+            function(_, value) SetHorizontalScroll(value) end)
+
+        local function UpdateHorizontalScroll()
+            local viewportWidth = scrollFrame:GetWidth()
+            local contentWidth = math.max(viewportWidth, SUMMARY_WIDTH + dayCount * CELL_WIDTH)
+            local scrollRange = math.max(0, contentWidth - viewportWidth)
+            local offset = math.min(scrollFrame:GetHorizontalScroll(), scrollRange)
+            header:SetWidth(contentWidth)
+            scrollChild:SetWidth(contentWidth)
+            headerScroll:UpdateScrollChildRect()
+            scrollFrame:UpdateScrollChildRect()
+            horizontalScrollBar:SetMinMaxValues(0, scrollRange)
+            horizontalScrollBar:SetValue(offset)
+            horizontalScrollBar:SetShown(scrollRange > 0)
+            scrollFrame:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -26, scrollRange > 0 and 32 or 8)
+            SetHorizontalScroll(offset)
+        end
+
+        overview:SetScript("OnSizeChanged", UpdateHorizontalScroll)
 
         local averageRow = CreateAverageRow(scrollChild)
 
@@ -656,10 +707,17 @@ PRT:RegisterTab("Attendance", function(parent)
                 detailPanel:Hide()
                 overview:Show()
             end
-            local days = {}
-            for index = 1, math.min(visibleDayCount, #report.days) do
-                days[index] = report.days[index]
+            local days = report.days
+            dayCount = #days
+
+            for index = #dayHeadings + 1, dayCount do
+                local heading = header:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                heading:SetPoint("LEFT", SUMMARY_WIDTH + (index - 1) * CELL_WIDTH, 0)
+                heading:SetWidth(CELL_WIDTH)
+                heading:SetJustifyH("CENTER")
+                dayHeadings[index] = heading
             end
+            UpdateHorizontalScroll()
 
             SortPlayers(report.players, sortKey, sortDescending)
             for _, heading in ipairs(summaryHeadings) do
@@ -680,7 +738,7 @@ PRT:RegisterTab("Attendance", function(parent)
                 placed = placed + 1
                 local row = gridRows[placed]
                 if not row then
-                    row = CreateGridRow(scrollChild, visibleDayCount)
+                    row = CreateGridRow(scrollChild)
                     gridRows[placed] = row
                 end
                 row:ClearAllPoints()

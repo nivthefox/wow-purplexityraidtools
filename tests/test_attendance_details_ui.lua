@@ -13,6 +13,21 @@ local function WithAttendanceFrames(body)
         function object:SetWidth(width) self.width = width end
         function object:SetHeight(height) self.height = height end
         function object:SetSize(width, height) self.width, self.height = width, height end
+        function object:SetScrollChild(child) self.scrollChild = child end
+        function object:SetHorizontalScroll(value) self.horizontalScroll = value end
+        function object:GetHorizontalScroll() return rawget(self, "horizontalScroll") or 0 end
+        function object:SetVerticalScroll(value) self.verticalScroll = value end
+        function object:GetVerticalScroll() return rawget(self, "verticalScroll") or 0 end
+        function object:SetOrientation(value) self.orientation = value end
+        function object:SetRotation(value) self.rotation = value end
+        function object:SetTexCoord(...) self.texCoord = { ... } end
+        function object:SetMinMaxValues(minimum, maximum) self.minimum, self.maximum = minimum, maximum end
+        function object:GetMinMaxValues() return self.minimum, self.maximum end
+        function object:GetValue() return self.value end
+        function object:SetValue(value)
+            self.value = math.max(self.minimum, math.min(self.maximum, value))
+            if self.scripts.OnValueChanged then self.scripts.OnValueChanged(self, self.value) end
+        end
         function object:GetWidth()
             return rawget(self, "width") or (rawget(self, "parent") and self.parent:GetWidth()) or 730
         end
@@ -69,7 +84,27 @@ local function WithAttendanceFrames(body)
         PurplexityRaidToolsAttendanceDB = db,
         CreateFrame = function(_, _, parent, template)
             local frame = Object(parent)
+            frame.template = template
             if template == "ButtonFrameTemplate" then frame.Inset = Object(frame) end
+            if template == "UIPanelScrollBarTemplate" then
+                frame.ThumbTexture = Object(frame)
+                frame.ScrollUpButton = Object(frame)
+                frame.ScrollDownButton = Object(frame)
+                for _, button in ipairs({ frame.ScrollUpButton, frame.ScrollDownButton }) do
+                    button.normal, button.pushed = Object(button), Object(button)
+                    button.disabled, button.highlight = Object(button), Object(button)
+                    function button:GetNormalTexture() return self.normal end
+                    function button:GetPushedTexture() return self.pushed end
+                    function button:GetDisabledTexture() return self.disabled end
+                    function button:GetHighlightTexture() return self.highlight end
+                end
+                frame.ScrollUpButton:SetScript("OnClick", function()
+                    frame:SetValue(frame:GetValue() - (frame.scrollStep or frame:GetHeight() / 2))
+                end)
+                frame.ScrollDownButton:SetScript("OnClick", function()
+                    frame:SetValue(frame:GetValue() + (frame.scrollStep or frame:GetHeight() / 2))
+                end)
+            end
             return frame
         end,
         ButtonFrameTemplate_HidePortrait = function() end,
@@ -158,6 +193,134 @@ local function SortHeading(objects, key)
         end
     end
     error("No sort heading for " .. key)
+end
+
+local function AddGridDays(db, count)
+    for day = 1, count do
+        db[string.format("2026-09-%02d", day)] = { ["Aster-Realm"] = { status = 3, itemLevel = 100 } }
+    end
+end
+
+local function HorizontalScrollBar(objects)
+    for _, object in ipairs(objects) do
+        if rawget(object, "orientation") == "HORIZONTAL" then
+            return object
+        end
+    end
+    error("No horizontal attendance scrollbar")
+end
+
+tests["horizontal attendance scrollbar uses the vertical style and arrows stop at each end"] = function()
+    WithAttendanceFrames(function(prt, _, _, objects, db)
+        AddGridDays(db, 20)
+        prt.AttendanceUI:Refresh()
+        local bar = HorizontalScrollBar(objects)
+        assertEquals(bar.template, "UIPanelScrollBarTemplate")
+        assertEquals(bar.ThumbTexture:GetWidth(), 24)
+        assertEquals(bar.ThumbTexture:GetHeight(), 18)
+        for _, button in ipairs({ bar.ScrollUpButton, bar.ScrollDownButton }) do
+            assertEquals(button.normal.rotation, math.pi / 2)
+            assertEquals(button.pushed.rotation, math.pi / 2)
+            assertEquals(button.disabled.rotation, math.pi / 2)
+            assertEquals(button.highlight.rotation, math.pi / 2)
+        end
+        assertFalse(bar.ScrollUpButton.enabled)
+        assertTrue(bar.ScrollDownButton.enabled)
+        bar.ScrollDownButton.scripts.OnClick()
+        assertEquals(bar:GetValue(), 42)
+        assertTrue(bar.ScrollUpButton.enabled)
+        bar:SetValue(bar.maximum - 1)
+        bar.ScrollDownButton.scripts.OnClick()
+        assertEquals(bar:GetValue(), bar.maximum)
+        assertFalse(bar.ScrollDownButton.enabled)
+        bar:SetValue(1)
+        bar.ScrollUpButton.scripts.OnClick()
+        assertEquals(bar:GetValue(), 0)
+        assertFalse(bar.ScrollUpButton.enabled)
+    end)
+end
+
+tests["wide attendance grids retain every date and scroll headings with editable cells"] = function()
+    WithAttendanceFrames(function(prt, row, _, objects, db)
+        AddGridDays(db, 20)
+        prt.AttendanceUI:Refresh()
+        assertEquals(#row.cells, 20)
+        local scrollFrame = row.parent.parent
+        local header = SortHeading(objects, "player").parent
+        local headerScroll = header.parent
+        local bar = HorizontalScrollBar(objects)
+        assertTrue(bar:IsShown())
+        assertEquals(bar.maximum, row.parent:GetWidth() - scrollFrame:GetWidth())
+        assertEquals(header:GetWidth(), row.parent:GetWidth())
+        scrollFrame:SetVerticalScroll(120)
+        bar:SetValue(bar.maximum)
+        assertEquals(scrollFrame:GetHorizontalScroll(), bar.maximum)
+        assertEquals(headerScroll:GetHorizontalScroll(), bar.maximum)
+        assertEquals(scrollFrame:GetVerticalScroll(), 120)
+        local oldestHeading
+        for _, object in ipairs(objects) do
+            if object.parent == header and rawget(object, "text") == "9/1" then oldestHeading = object end
+        end
+        assertNotNil(oldestHeading)
+        assertTrue(oldestHeading:IsShown())
+        row.cells[20].scripts.OnClick()
+        local modal
+        for _, object in ipairs(objects) do
+            if rawget(object, "characterRows") then modal = object end
+        end
+        assertEquals(modal.subtitle.text, "9/1")
+    end)
+end
+
+tests["attendance scrolling grows and clamps as recorded dates change"] = function()
+    WithAttendanceFrames(function(prt, row, _, objects, db)
+        AddGridDays(db, 20)
+        prt.AttendanceUI:Refresh()
+        local bar = HorizontalScrollBar(objects)
+        local scrollFrame = row.parent.parent
+        local headerScroll = SortHeading(objects, "player").parent.parent
+        bar:SetValue(bar.maximum)
+        local offset = scrollFrame:GetHorizontalScroll()
+        AddGridDays(db, 21)
+        prt.AttendanceUI:Refresh()
+        assertEquals(#row.cells, 21)
+        assertTrue(row.cells[21]:IsShown())
+        assertEquals(scrollFrame:GetHorizontalScroll(), offset)
+        bar:SetValue(bar.maximum)
+        db["2026-09-21"] = nil
+        prt.AttendanceUI:Refresh()
+        assertEquals(scrollFrame:GetHorizontalScroll(), bar.maximum)
+        assertEquals(headerScroll:GetHorizontalScroll(), bar.maximum)
+        assertFalse(row.cells[21]:IsShown())
+        wipe(db)
+        AddGridDays(db, 3)
+        prt.AttendanceUI:Refresh()
+        assertFalse(bar:IsShown())
+        assertEquals(scrollFrame:GetHorizontalScroll(), 0)
+        assertEquals(headerScroll:GetHorizontalScroll(), 0)
+        assertFalse(row.cells[4]:IsShown())
+    end)
+end
+
+tests["attendance horizontal scrolling adapts to the available width"] = function()
+    WithAttendanceFrames(function(prt, row, _, objects, db)
+        AddGridDays(db, 20)
+        prt.AttendanceUI:Refresh()
+        local bar = HorizontalScrollBar(objects)
+        local scrollFrame = row.parent.parent
+        local headerScroll = SortHeading(objects, "player").parent.parent
+        local overview = scrollFrame.parent
+        bar:SetValue(bar.maximum)
+        scrollFrame:SetWidth(1200)
+        overview.scripts.OnSizeChanged()
+        assertFalse(bar:IsShown())
+        assertEquals(scrollFrame:GetHorizontalScroll(), 0)
+        assertEquals(headerScroll:GetHorizontalScroll(), 0)
+        scrollFrame:SetWidth(500)
+        overview.scripts.OnSizeChanged()
+        assertTrue(bar:IsShown())
+        assertEquals(bar.maximum, row.parent:GetWidth() - 500)
+    end)
 end
 
 tests["attendance hover tooltips wrap without invalid alpha arguments"] = function()

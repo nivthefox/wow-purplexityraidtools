@@ -8,7 +8,7 @@ local BLOCK_WIDTH = 95
 local BLOCK_HEIGHT = 34
 local BLOCK_GAP = 4
 local RULER_WIDTH = 50
-local EDIT_PANEL_WIDTH = 260
+local EDIT_PANEL_WIDTH = 420
 local DEFAULT_FRAME_WIDTH = 920
 local DEFAULT_FRAME_HEIGHT = 825
 local MIN_FRAME_WIDTH = 720
@@ -25,10 +25,10 @@ local TOP_PAD = 20
 local DIFFICULTY_OPTIONS = NotesPlanner:GetDifficultyOptions()
 
 local DISPLAY_TYPE_OPTIONS = {
-    { name = "Icon (cooldown swipe)", value = "Icon" },
+    { name = "Icon",                 value = "Icon" },
     { name = "Status Bar",           value = "Bar" },
     { name = "Text Overlay",         value = "Text" },
-    { name = "Circle (swipe)",       value = "Circle" },
+    { name = "Circle",               value = "Circle" },
 }
 
 local TTS_MODE_OPTIONS = {
@@ -1656,8 +1656,9 @@ local function BuildEditPanel()
     panel.headerText:SetTextColor(0.91, 0.27, 0.37, 1)
 
     local scrollFrame = CreateFrame("ScrollFrame", nil, panel, "UIPanelScrollFrameTemplate")
-    scrollFrame:SetPoint("TOPLEFT", 8, -46)
-    scrollFrame:SetPoint("BOTTOMRIGHT", -28, 40)
+    scrollFrame:SetPoint("TOPLEFT", 8, -34)
+    scrollFrame:SetPoint("BOTTOMRIGHT", -28, 60)
+    panel.scrollFrame = scrollFrame
 
     local scrollChild = CreateFrame("Frame", nil, scrollFrame)
     scrollChild:SetWidth(EDIT_PANEL_WIDTH - 44)
@@ -1721,7 +1722,7 @@ local function BuildEditPanel()
     editFields.phase:SetNumeric(true)
     editFields.phase:SetScript("OnTextChanged", function() NotesEditor:RefreshCooldownStatus() end)
 
-    editFields.timeLabel = AddLabel("TIME (PHASE-RELATIVE)")
+    editFields.timeLabel = AddLabel("TIME IN PHASE")
     editFields.time = AddInput()
     editFields.time:SetScript("OnTextChanged", function() NotesEditor:RefreshCooldownStatus() end)
 
@@ -1771,11 +1772,11 @@ local function BuildEditPanel()
     editFields.displayTextLabel = AddLabel("DISPLAY TEXT (OPTIONAL)")
     editFields.displayText = AddInput()
 
-    editFields.durationLabel = AddLabel("DURATION (SECONDS)")
+    editFields.durationLabel = AddLabel("DURATION (SEC)")
     editFields.duration = AddInput()
     editFields.duration:SetNumeric(true)
 
-    editFields.displayTypeLabel = AddLabel("DISPLAY TYPE")
+    editFields.displayTypeLabel = AddLabel("DISPLAY")
     editFields.displayType = AddDropdown(
         function() return DISPLAY_TYPE_OPTIONS end,
         function() end
@@ -1784,7 +1785,7 @@ local function BuildEditPanel()
     editFields.soundLabel = AddLabel("SOUND")
     editFields.sound = AddSoundPicker()
 
-    editFields.ttsLabel = AddLabel("TTS")
+    editFields.ttsLabel = AddLabel("TEXT TO SPEECH")
     editFields.ttsMode = AddDropdown(
         function() return TTS_MODE_OPTIONS end,
         function()
@@ -1794,22 +1795,27 @@ local function BuildEditPanel()
         end
     )
 
-    editFields.ttsCustomLabel = AddLabel("CUSTOM TTS TEXT")
+    editFields.ttsCustomLabel = AddLabel("SPOKEN TEXT")
     editFields.ttsCustom = AddInput()
 
-    editFields.audioLeadTimeLabel = AddLabel("AUDIO LEAD TIME (SECONDS)")
+    editFields.audioLeadTimeLabel = AddLabel("AUDIO LEAD (SEC)")
     editFields.audioLeadTime = AddInput()
     editFields.audioLeadTime:SetNumeric(true)
 
-    editFields.countdownLabel = AddLabel("COUNTDOWN (BLANK = OFF)")
-    editFields.countdown = AddInput()
-    editFields.countdown:SetNumeric(true)
+    editFields.countdownLabel = AddLabel("COUNTDOWN")
+    editFields.countdown = AddDropdown(function()
+        local options = { { name = "Off", value = "" } }
+        for seconds = 1, 10 do
+            options[#options + 1] = { name = seconds .. " sec", value = tostring(seconds) }
+        end
+        return options
+    end)
 
     editFields.bossSpellLabel = AddLabel("BOSS SPELL ID")
     editFields.bossSpell = AddInput()
     editFields.bossSpell:SetNumeric(true)
 
-    editFields.colorsLabel = AddLabel("COLORS")
+    editFields.colorsLabel = AddLabel("COLORS (RGBA)")
     editFields.colors = AddInput()
 
     local allFields = {
@@ -1830,6 +1836,23 @@ local function BuildEditPanel()
         { key = "colors", label = editFields.colorsLabel, field = editFields.colors },
     }
 
+    local fieldsByKey = {}
+    for _, row in ipairs(allFields) do
+        fieldsByKey[row.key] = row
+    end
+
+    local personalInfo = CreateFieldLabel(scrollChild, "")
+    local alertHeading = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    alertHeading:SetText("Alert")
+
+    local moreOptionsBtn = CreateFrame("Button", nil, scrollChild, "UIPanelButtonTemplate")
+    moreOptionsBtn:SetSize(120, 22)
+    moreOptionsBtn:SetScript("OnClick", function()
+        panel.moreOptionsExpanded = not panel.moreOptionsExpanded
+        panel:RefreshLayout()
+    end)
+    panel.moreOptionsBtn = moreOptionsBtn
+
     local function layoutFields(layout)
         local lookup = {}
         for _, key in ipairs(NotesEditor.GetAlertFieldKeys(layout)) do
@@ -1839,23 +1862,95 @@ local function BuildEditPanel()
             lookup.ttsCustom = nil
         end
 
-        local y = 0
         for _, row in ipairs(allFields) do
-            if lookup[row.key] then
+            row.label:Hide()
+            row.field:Hide()
+        end
+        personalInfo:Hide()
+        alertHeading:Hide()
+        moreOptionsBtn:Hide()
+
+        local y = 0
+        local function PlaceRow(keys, weights)
+            local totalWeight = 0
+            for i = 1, #keys do
+                totalWeight = totalWeight + (weights and weights[i] or 1)
+            end
+            local availableWidth = fieldWidth - (#keys - 1) * 12
+            local x, height = 4, 0
+            for i, key in ipairs(keys) do
+                local row = fieldsByKey[key]
+                local width = availableWidth * (weights and weights[i] or 1) / totalWeight
                 row.label:ClearAllPoints()
-                row.label:SetPoint("TOPLEFT", 4, y)
+                row.label:SetPoint("TOPLEFT", x, y)
+                row.label:SetWidth(width)
+                row.label:SetWordWrap(false)
                 row.label:Show()
-                y = y - 14
                 row.field:ClearAllPoints()
-                row.field:SetPoint("TOPLEFT", 4, y)
+                row.field:SetPoint("TOPLEFT", x, y - 14)
+                row.field:SetWidth(width)
                 row.field:Show()
-                y = y - (row.fieldHeight or 28)
-            else
-                row.label:Hide()
-                row.field:Hide()
+                height = math.max(height, 14 + (row.fieldHeight or 28))
+                x = x + width + 12
+            end
+            y = y - height
+        end
+
+        if lookup.originalInfo then
+            panel.originalInfo:ClearAllPoints()
+            panel.originalInfo:SetPoint("TOPLEFT", 4, y)
+            panel.originalInfo:Show()
+            y = y - math.max(32, panel.originalInfo:GetStringHeight()) - 8
+        end
+        if lookup.who then
+            PlaceRow({ "who" })
+        elseif layout == "personal" then
+            personalInfo:SetText("For " .. editFields.who:GetText())
+            personalInfo:ClearAllPoints()
+            personalInfo:SetPoint("TOPLEFT", 4, y)
+            personalInfo:Show()
+            y = y - 20
+        end
+        if lookup.ability then
+            PlaceRow({ "ability" })
+            PlaceRow({ "phase", "time", "duration" }, { 0.65, 1, 1 })
+            PlaceRow({ "displayText" })
+        end
+        if lookup.displayType then
+            y = y - 8
+            alertHeading:ClearAllPoints()
+            alertHeading:SetPoint("TOPLEFT", 4, y)
+            alertHeading:Show()
+            y = y - 22
+            PlaceRow({ "displayType", "sound" })
+            PlaceRow({ "ttsMode" })
+            if lookup.ttsCustom then
+                PlaceRow({ "ttsCustom" })
+            end
+            PlaceRow({ "audioLeadTime", "countdown" })
+        end
+        if lookup.bossSpell then
+            moreOptionsBtn:ClearAllPoints()
+            moreOptionsBtn:SetPoint("TOPLEFT", 4, y - 8)
+            moreOptionsBtn:SetText(panel.moreOptionsExpanded and "- More options" or "+ More options")
+            moreOptionsBtn:Show()
+            y = y - 38
+            if panel.moreOptionsExpanded then
+                PlaceRow({ "bossSpell", "colors" })
             end
         end
-        scrollChild:SetHeight(math.abs(y) + 20)
+
+        local contentHeight = math.abs(y) + 4
+        local maxHeight = math.max(1, UIParent:GetHeight() - SCREEN_MARGIN)
+        local left, top = panel:GetLeft(), panel:GetTop()
+        scrollChild:SetHeight(contentHeight)
+        panel:SetHeight(math.min(contentHeight + 94, maxHeight))
+        if left and top then
+            panel:ClearAllPoints()
+            panel:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left, top)
+        end
+        local scrollRange = math.max(0, contentHeight - math.max(1, panel:GetHeight() - 94))
+        scrollFrame:SetVerticalScroll(math.min(scrollFrame:GetVerticalScroll(), scrollRange))
         editFields.cooldownStatus:SetShown(lookup.ability == true)
         NotesEditor:RefreshCooldownStatus()
     end
@@ -1866,19 +1961,24 @@ local function BuildEditPanel()
         end
     end
 
-    function panel:LayoutForEdit()
-        self.currentLayout = "edit"
+    function panel:SetLayout(layout)
+        self.currentLayout = layout
+        self.moreOptionsExpanded = NonEmpty(editFields.bossSpell:GetText()) ~= nil
+            or NonEmpty(editFields.colors:GetText()) ~= nil
+        scrollFrame:SetVerticalScroll(0)
         self:RefreshLayout()
+    end
+
+    function panel:LayoutForEdit()
+        self:SetLayout("edit")
     end
 
     function panel:LayoutForAnnotate()
-        self.currentLayout = "annotation"
-        self:RefreshLayout()
+        self:SetLayout("annotation")
     end
 
     function panel:LayoutForPersonal()
-        self.currentLayout = "personal"
-        self:RefreshLayout()
+        self:SetLayout("personal")
     end
 
     local footer = CreateFrame("Frame", nil, panel)
@@ -3143,7 +3243,7 @@ local function ReadAlertFields()
     local timing, err = NotesEditor.ParseAlertTiming(
         editFields.duration:GetText(),
         editFields.audioLeadTime:GetText(),
-        editFields.countdown:GetText()
+        editFields.countdown:GetValue()
     )
     if not timing then
         return nil, err
@@ -3190,7 +3290,7 @@ function NotesEditor:OpenAddPanel(time, phaseNum)
     editFields.sound:SetValue("")
     SetTTSFields(nil)
     editFields.audioLeadTime:SetText("5")
-    editFields.countdown:SetText("")
+    editFields.countdown:SetValue("")
     editFields.bossSpell:SetText("")
     editFields.colors:SetText("")
     currentAbilities = {}
@@ -3205,7 +3305,7 @@ function NotesEditor:OpenAddPanel(time, phaseNum)
         editFields.ability:GenerateMenu()
         editPanel:LayoutForPersonal()
     else
-        editPanel:SetTitle("Add Reminder")
+        editPanel:SetTitle("Add Assignment")
         editPanel.saveBtn:SetText("Add")
         editPanel:LayoutForEdit()
     end
@@ -3229,14 +3329,15 @@ function NotesEditor:OpenEditPanel(reminder)
         editPanel.saveBtn:SetText("Save")
 
         editPanel.originalInfo:SetText(
-            FormatTime(reminder.time) .. " - " .. (reminder.tag or "") .. " - " .. (reminder.text or "")
+            (reminder.tag or "") .. " - " .. (reminder.text or "")
+                .. "\nPhase " .. tostring(reminder.phase or 1) .. " - " .. FormatTime(reminder.time)
         )
         editFields.duration:SetText(tostring(reminder.duration or 5))
         editFields.displayType:SetValue(reminder.displayType or "Icon")
         editFields.sound:SetValue(reminder.sound)
         SetTTSFields(reminder.tts)
         editFields.audioLeadTime:SetText(reminder.ttsTimer and tostring(reminder.ttsTimer) or "")
-        editFields.countdown:SetText(reminder.countdown and tostring(reminder.countdown) or "")
+        editFields.countdown:SetValue(reminder.countdown and tostring(reminder.countdown) or "")
 
         editPanel:LayoutForAnnotate()
         editPanel.saveBtn:SetScript("OnClick", function()
@@ -3249,7 +3350,7 @@ function NotesEditor:OpenEditPanel(reminder)
         editPanel:SetTitle("Edit Personal Reminder")
         editPanel.deleteBtn:Show()
     else
-        editPanel:SetTitle("Edit Reminder")
+        editPanel:SetTitle("Edit Assignment")
         editPanel.deleteBtn:Show()
     end
     editPanel.saveBtn:SetText("Save")
@@ -3280,7 +3381,7 @@ function NotesEditor:OpenEditPanel(reminder)
     editFields.sound:SetValue(reminder.sound)
     SetTTSFields(reminder.tts)
     editFields.audioLeadTime:SetText(reminder.ttsTimer and tostring(reminder.ttsTimer) or "")
-    editFields.countdown:SetText(reminder.countdown and tostring(reminder.countdown) or "")
+    editFields.countdown:SetValue(reminder.countdown and tostring(reminder.countdown) or "")
     editFields.bossSpell:SetText(reminder.bossSpell and tostring(reminder.bossSpell) or "")
     editFields.colors:SetText(reminder.colors or "")
     editFields.abilitySpellId = reminder.spellID

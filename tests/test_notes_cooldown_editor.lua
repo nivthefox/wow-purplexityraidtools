@@ -56,13 +56,18 @@ local function withEditor(body)
     function methods:StartMoving() self.moving = true end
     function methods:StopMovingOrSizing() self.moving = false end
     function methods:GetFont() return "font", 12 end
+    function methods:GetStringHeight()
+        local _, lines = self:GetText():gsub("\n", "")
+        return (lines + 1) * 12
+    end
+    function methods:SetScrollChild(child) self.scrollChild = child end
     function methods:IsMouseOver() return false end
     for _, name in ipairs({
         "SetAllPoints", "EnableMouse", "SetMouseClickEnabled", "SetMouseMotionEnabled", "SetTexture",
         "SetJustifyH", "SetWordWrap", "SetBackdrop", "SetBackdropColor", "SetMovable", "SetResizable",
         "SetClampedToScreen", "RegisterForDrag", "SetUserPlaced", "SetTitle", "SetFrameStrata",
         "SetToplevel", "SetAutoFocus", "SetFocus", "ClearFocus", "HighlightText", "SetEnabled", "SetChecked",
-        "SetNumeric", "SetClipsChildren", "SetScrollChild", "UpdateScrollChildRect", "RegisterEvent",
+        "SetNumeric", "SetClipsChildren", "UpdateScrollChildRect", "RegisterEvent",
         "SetNormalTexture", "SetHighlightTexture", "SetPushedTexture", "SetAlpha", "SetResizeBounds",
         "SetupMenu", "GenerateMenu", "Enable", "Disable", "SetFont", "SetMaxLetters",
         "SetNormalAtlas", "SetHighlightAtlas", "SetPushedAtlas",
@@ -95,6 +100,7 @@ local function withEditor(body)
         PurplexityRaidTools = prt, UIParent = object("Frame"), UISpecialFrames = {},
         CreateFrame = function(kind, name, parent, template)
             local value = object(kind, parent, name)
+            value.template = template
             if template == "ButtonFrameTemplate" then value.Inset = object("Frame", value) end
             return value
         end,
@@ -136,20 +142,22 @@ local function withEditor(body)
             end
             error("No block at " .. time)
         end
-        function ui:field(labelText)
+        function ui:findField(labelText)
             for _, label in ipairs(objects) do
                 if label.text == labelText and label.shown then
                     local labelPoint = label.points.TOPLEFT
                     for _, value in ipairs(objects) do
                         local point = value.points.TOPLEFT
-                        if value.parent == label.parent and point and point[2] == 4
+                        if value.parent == label.parent and point and point[2] == labelPoint[2]
                             and point[3] == labelPoint[3] - 14 and value.kind ~= "FontString" then
                             return value
                         end
                     end
                 end
             end
-            error("No field " .. labelText)
+        end
+        function ui:field(labelText)
+            return self:findField(labelText) or error("No field " .. labelText)
         end
         function ui:status()
             local ability = self:field("ABILITY")
@@ -181,7 +189,7 @@ tests["Editor keeps status space and selection on Cancel without changing the sa
         local field = ui:field("DISPLAY TEXT (OPTIONAL)")
         local fieldY = field.points.TOPLEFT[3]
         local markerY = ui:dash().points.TOPLEFT[5]
-        ui:field("TIME (PHASE-RELATIVE)"):SetText("3:30")
+        ui:field("TIME IN PHASE"):SetText("3:30")
         assertEquals(ui:status().text, "Ready")
         assertEquals(ui:status().color[1], 0.5)
         assertEquals(field.points.TOPLEFT[3], fieldY)
@@ -202,7 +210,7 @@ end
 tests["Editor saves a valid draft then keeps its new recovery guide after reload"] = function()
     withEditor(function(ui, editor)
         editor:OpenEditPanel(ui:block(90).reminder)
-        ui:field("TIME (PHASE-RELATIVE)"):SetText("3:30")
+        ui:field("TIME IN PHASE"):SetText("3:30")
         editor:SaveFromPanel()
         assertEquals(ui:writes(), 1)
         assertTrue(ui:block(210).cooldownStatus.ready)
@@ -306,10 +314,136 @@ tests["Personal reminder edits retain their selection after annotation merge"] =
         editor:Open("Test", ui.profile.notes.savedNotes.Test, "annotate")
         assertTrue(ui:block(60).reminder.isPersonal)
         editor:OpenEditPanel(ui:block(60).reminder)
-        ui:field("TIME (PHASE-RELATIVE)"):SetText("3:30")
+        ui:field("TIME IN PHASE"):SetText("3:30")
         editor:SaveFromPanel()
         assertTrue(ui:block(210).reminder.isPersonal)
         assertEquals(ui:dash().points.TOPLEFT[5], -(390 * 8 + 20))
+    end)
+end
+
+tests["Assignment editor groups timing and retains the native controls"] = function()
+    withEditor(function(ui, editor)
+        editor:OpenEditPanel(ui:block(90).reminder)
+        local panel = ui.named.PRT_NotesEditPanel
+        local phase = ui:field("PHASE")
+        local time = ui:field("TIME IN PHASE")
+        local duration = ui:field("DURATION (SEC)")
+        assertEquals(phase.points.TOPLEFT[3], time.points.TOPLEFT[3])
+        assertEquals(time.points.TOPLEFT[3], duration.points.TOPLEFT[3])
+        assertTrue(phase.points.TOPLEFT[2] + phase.width < time.points.TOPLEFT[2])
+        assertTrue(time.points.TOPLEFT[2] + time.width < duration.points.TOPLEFT[2])
+        assertEquals(panel.template, "ButtonFrameTemplate")
+        assertEquals(time.template, "InputBoxTemplate")
+        assertEquals(ui:field("ABILITY").template, "WowStyle1DropdownTemplate")
+        assertEquals(panel.saveBtn.template, "UIPanelButtonTemplate")
+        assertTrue(panel.height < 500)
+        assertNil(ui:findField("BOSS SPELL ID"))
+        assertNil(ui:findField("SOUND"))
+    end)
+end
+
+tests["More options preserve hidden values and reset for a new assignment"] = function()
+    withEditor(function(ui, editor)
+        local reminder = ui:block(90).reminder
+        reminder.bossSpell = 12345
+        reminder.colors = "1 0.5 0 1"
+        editor:OpenEditPanel(reminder)
+        local panel = ui.named.PRT_NotesEditPanel
+        assertTrue(panel.moreOptionsExpanded)
+        assertEquals(ui:field("BOSS SPELL ID"):GetText(), "12345")
+        panel.moreOptionsBtn.scripts.OnClick()
+        assertNil(ui:findField("BOSS SPELL ID"))
+        editor:SaveFromPanel()
+        local saved = ui.prt.NotesParser:Parse(ui.profile.notes.savedNotes.Test)
+        assertEquals(saved.reminders["1"][2].bossSpell, 12345)
+        assertEquals(saved.reminders["1"][2].colors, "1 0.5 0 1")
+        editor:OpenAddPanel(120, 1)
+        assertFalse(panel.moreOptionsExpanded)
+        panel.moreOptionsBtn.scripts.OnClick()
+        assertEquals(ui:field("BOSS SPELL ID"):GetText(), "")
+        assertEquals(ui:field("COLORS (RGBA)"):GetText(), "")
+    end)
+end
+
+tests["Annotation controls only save alert overrides and Cancel discards drafts"] = function()
+    withEditor(function(ui, editor)
+        local original = ui.profile.notes.savedNotes.Test
+        editor:Open("Test", original, "annotate")
+        editor:OpenEditPanel(ui:block(90).reminder)
+        local panel = ui.named.PRT_NotesEditPanel
+        for _, label in ipairs({ "WHO", "ABILITY", "PHASE", "TIME IN PHASE", "DURATION (SEC)", "BOSS SPELL ID" }) do
+            assertNil(ui:findField(label), label)
+        end
+        assertFalse(panel.deleteBtn.shown)
+        assertFalse(panel.moreOptionsBtn.shown)
+        assertTrue(panel.originalInfo.shown)
+        assertTrue(panel.originalInfo:GetText():find("Phase 1", 1, true) ~= nil)
+        ui:field("SOUND"):SetValue("Bell")
+        panel:Hide()
+        assertEquals(ui:writes(), 0)
+        editor:OpenEditPanel(ui:block(90).reminder)
+        assertNil(ui:field("SOUND"):GetValue())
+        ui:field("SOUND"):SetValue("Bell")
+        ui:field("COUNTDOWN"):SetValue("3")
+        editor:SaveAnnotationFromPanel()
+        assertEquals(ui.profile.notes.savedNotes.Test, original)
+        local saved = ui.prt.NotesParser:Parse(ui.profile.notes.annotations.Test)
+        assertEquals(saved.reminders["1"][1].sound, "Bell")
+        assertEquals(saved.reminders["1"][1].countdown, 3)
+        assertEquals(saved.reminders["1"][1].time, 90)
+    end)
+end
+
+tests["Personal form shares alert controls and keeps all reminder fields on save"] = function()
+    withEditor(function(ui, editor)
+        editor:Open("Test", ui.profile.notes.savedNotes.Test, "annotate")
+        editor:OpenAddPanel(120, 1)
+        local panel = ui.named.PRT_NotesEditPanel
+        assertNil(ui:findField("WHO"))
+        ui:field("DISPLAY TEXT (OPTIONAL)"):SetText("Move now")
+        ui:field("DURATION (SEC)"):SetText("7")
+        local speech = ui:field("TEXT TO SPEECH")
+        local compactHeight = panel.height
+        speech:SetValue("custom")
+        speech.onSelect("custom")
+        assertTrue(panel.height > compactHeight)
+        ui:field("SPOKEN TEXT"):SetText("Use a defensive")
+        ui:field("SOUND"):SetValue("Bell")
+        ui:field("COUNTDOWN"):SetValue("3")
+        ui:field("AUDIO LEAD (SEC)"):SetText("2")
+        panel.moreOptionsBtn.scripts.OnClick()
+        ui:field("BOSS SPELL ID"):SetText("12345")
+        ui:field("COLORS (RGBA)"):SetText("1 0.5 0 1")
+        editor:SaveFromPanel()
+        local saved = ui.prt.NotesParser:Parse(ui.profile.notes.annotations.Test)
+        local reminder = saved.reminders["1"][1]
+        assertEquals(reminder.duration, 7)
+        assertEquals(reminder.tts, "Use a defensive")
+        assertEquals(reminder.sound, "Bell")
+        assertEquals(reminder.countdown, 3)
+        assertEquals(reminder.ttsTimer, 2)
+        assertEquals(reminder.bossSpell, 12345)
+        assertEquals(reminder.colors, "1 0.5 0 1")
+    end)
+end
+
+tests["Editor bounds long forms to the screen and clears scroll when switching forms"] = function()
+    withEditor(function(ui, editor)
+        UIParent:SetHeight(460)
+        editor:Open("Test", ui.profile.notes.savedNotes.Test, "annotate")
+        editor:OpenAddPanel(120, 1)
+        local panel = ui.named.PRT_NotesEditPanel
+        local speech = ui:field("TEXT TO SPEECH")
+        speech:SetValue("custom")
+        speech.onSelect("custom")
+        panel.moreOptionsBtn.scripts.OnClick()
+        assertTrue(panel.height <= UIParent:GetHeight() - 40)
+        assertTrue(panel.scrollFrame.scrollChild.height > panel.height)
+        panel.scrollFrame:SetVerticalScroll(120)
+        editor:OpenEditPanel(ui:block(90).reminder)
+        assertEquals(panel.scrollFrame:GetVerticalScroll(), 0)
+        assertNil(ui:findField("SPOKEN TEXT"))
+        assertFalse(panel.moreOptionsBtn.shown)
     end)
 end
 

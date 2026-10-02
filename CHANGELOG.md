@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-## [1.5.1] - 2026-10-01
+## [1.6.0] - 2026-10-02
 
 ### Added
 
@@ -291,8 +291,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Initial alpha release with Don't Release and Ready Check modules.
 
-[Unreleased]: https://github.com/nivthefox/wow-purplexityraidtools/compare/v1.5.1...HEAD
-[1.5.1]: https://github.com/nivthefox/wow-purplexityraidtools/compare/v1.5.0...v1.5.1
+[Unreleased]: https://github.com/nivthefox/wow-purplexityraidtools/compare/v1.6.0...HEAD
+[1.6.0]: https://github.com/nivthefox/wow-purplexityraidtools/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/nivthefox/wow-purplexityraidtools/compare/v1.4.2...v1.5.0
 [1.4.2]: https://github.com/nivthefox/wow-purplexityraidtools/compare/v1.4.1...v1.4.2
 [1.4.1]: https://github.com/nivthefox/wow-purplexityraidtools/compare/v1.4.0...v1.4.1

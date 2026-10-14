@@ -1,8 +1,8 @@
-## Interface: 120000, 120100
+## Interface: 120000, 120100, 120105
 ## Title: PurplexityRaidTools
 ## Notes: Raid tools for Purplexity
 ## Author: Niv
-## Version: 1.6.0
+## Version: 1.6.1
 ## OptionalDeps: EllesmereUIRaidFrames, EllesmereUIUnitFrames, MethodInternal, DandersFrames, Grid2
 ## SavedVariables: PurplexityRaidToolsDB, PurplexityRaidToolsAttendanceDB, PurplexityRaidToolsRosterDB
 

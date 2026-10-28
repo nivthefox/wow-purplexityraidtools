@@ -1,5 +1,5 @@
 -- SpellData.lua (auto-generated, do not edit)
--- Source: SimulationCraft dbc_extract3 (build 12.1.5.70391)
+-- Source: SimulationCraft dbc_extract3 (build 12.1.5.70575)
 
 local PRT = PurplexityRaidTools
 
@@ -5092,7 +5092,7 @@ PRT.SpellData = {
                     [33873] = { charges_pct = 0.06, duration_pct = 0.06 },
                     [429402] = { charges_pct = 0.09, duration_pct = 0.09 },
                     [455797] = { duration_pct = 0.2 },
-                    [470549] = { duration_pct = 0.3 },
+                    [470549] = { duration_pct = 0.4 },
                 },
             },
             [20484] = {
